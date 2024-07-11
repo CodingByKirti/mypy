@@ -1,29 +1,31 @@
-I apologize for the mistake. You are correct that `multenterbox` does not have a `file` argument. To select files using EasyGUI, you can use the `fileopenbox` function twice, once for each file. Here's an updated code snippet:
+Here's an example code snippet that uses EasyGUI to create a base window with three buttons to open separate workbooks:
 ```
 import easygui as eg
 
-def select_files():
-    # Create a window with a single title
-    title = "Select Your Files"
+def open_workbook1():
+    # Open workbook 1
+    eg.msgbox("Opening Workbook 1...", title="Workbook 1")
 
-    # Create a window with two labels and two file selection fields
-    msg = "Select your files"
-    label1 = "Main File"
-    label2 = "Secondary File"
-    file1 = eg.fileopenbox(msg=msg, title=title)
-    file2 = eg.fileopenbox(msg=msg, title=title)
+def open_workbook2():
+    # Open workbook 2
+    eg.msgbox("Opening Workbook 2...", title="Workbook 2")
 
-    # Return the selected file paths
-    return file1, file2
+def open_workbook3():
+    # Open workbook 3
+    eg.msgbox("Opening Workbook 3...", title="Workbook 3")
 
-# Call the function to open the window
-file1, file2 = select_files()
+# Create a base window with three buttons
+buttons = ["Open Workbook 1", "Open Workbook 2", "Open Workbook 3"]
+choice = eg.buttonbox(msg="Select a workbook to open", title="Workbook Selector", choices=buttons)
 
-# Print the selected file paths
-if file1 and file2:
-    print("Main File:", file1)
-    print("Secondary File:", file2)
-else:
-    print("No files selected")
+# Handle button clicks
+if choice == "Open Workbook 1":
+    open_workbook1()
+elif choice == "Open Workbook 2":
+    open_workbook2()
+elif choice == "Open Workbook 3":
+    open_workbook3()
 ```
-This code creates a window with a single title, two labels ("Main File" and "Secondary File"), and two file selection fields using `eg.fileopenbox`. The selected file paths are returned as a tuple and printed to the console.
+This code creates a base window with three buttons using `eg.buttonbox`. Each button click calls a separate function to open the corresponding workbook. The `eg.msgbox` function is used to display a message box with a title, indicating which workbook is being opened.
+
+Note: You'll need to replace the `eg.msgbox` calls with the actual code to open the workbooks.
