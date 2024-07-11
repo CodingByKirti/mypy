@@ -1,0 +1,28 @@
+Here's the modified code:
+```
+import easygui as eg
+
+def select_files():
+    # Create a window with a single title
+    title = "Select Your Files"
+
+    # Create a window with two labels and two file selection fields
+    fields = ["Main File", "Secondary File"]
+    file_paths = eg.multenterbox(msg=title, fields=fields, file=True)
+
+    # Return the selected file paths
+    return file_paths
+
+# Call the function to open the window
+file_paths = select_files()
+
+# Print the selected file paths
+if file_paths:
+    print("Main File:", file_paths[0])
+    print("Secondary File:", file_paths[1])
+else:
+    print("No files selected")
+```
+This code creates a window with a single title, two labels ("Main File" and "Secondary File"), and two file selection fields using `eg.multenterbox`. The `file=True` parameter allows file selection. The selected file paths are returned as a list and printed to the console.
+
+The `multenterbox` function also includes submit and cancel buttons. If the user clicks cancel, the function returns `None`.
