@@ -1,55 +1,42 @@
 import pandas as pd
+import re
 
-# Function to process DC sheets
-def process_dc_sheet(df, sheet_name, file_name):
-    # Find the row that contains the headers (Entity, RTN Level 4, etc.)
+# Function to process sheets based on type (HC or DC) and attribute
+def process_sheet(df, sheet_name, file_name, sheet_type):
+    global final_paste_df
+    
+    # Extract common columns (headers)
     header_row = df.index[df.iloc[:, 0] == 'Entity'].tolist()[0]
-
-    # Extracting the headers
     headers = df.iloc[header_row]
     df.columns = headers
     df = df[header_row + 1:].reset_index(drop=True)
-
-    # Extracting the relevant columns: 'RTN Level 4' to 'Function', 'Entity' to 'Entity'
+    
     function_col = df['RTN Level 4']
     entity_col = df['Entity']
-
-    # Setting Attribute Type to 'MoM'
-    attribute_type = 'MoM'
-
-    # Finding the last three Mxx columns (e.g., M07, M06, M05)
-    month_columns = [col for col in df.columns if col.startswith('M')]
-    if len(month_columns) >= 3:
-        last_3_months = month_columns[-3:]
-    else:
-        print(f"Warning: Less than 3 month columns found in sheet {sheet_name}")
-        last_3_months = month_columns
-
-    # Deriving 'Period' based on the last month
-    last_month_col = last_3_months[0]
-    month_number = int(last_month_col[1:])
-    period = pd.to_datetime(f'{2024}-{month_number}', format='%Y-%m').strftime('%b-%y')
-
-    # Extracting cost data for the last 3 months
-    cost_data = df[last_3_months]
-
-    # Creating the final DataFrame for the 'Paste' sheet
-    for month_col in last_3_months:
-        month_number = int(month_col[1:])
-        period = pd.to_datetime(f'{2024}-{month_number}', format='%Y-%m').strftime('%b-%y')
-        
+    country_col = df.get('Country', None)
+    level_3_col = df.get('Level 3', None)
+    level_4_col = df.get('Level 4', None)
+    finance_region_col = df.get('Finance Region', None)
+    
+    # Depending on the sheet type (HC or DC), we process the data differently
+    if sheet_type == 'HC':
+        target_column = 'FTE/Contractor'
+    elif sheet_type == 'DC':
+        target_column = 'Cost'
+    
+    # Function to handle the insertion into final dataframe
+    def insert_into_paste(attribute_type, period, values):
         paste_df = pd.DataFrame({
             'File Name': file_name,
-            'Level 3': df.get('Level 3', None),
-            'Level 4': df.get('Level 4', None),
+            'Level 3': level_3_col,
+            'Level 4': level_4_col,
             'Cost Grouping': df.get('Cost Grouping', None),
             'Cost Type': df.get('Cost Type', None),
-            'Finance Region': df.get('Finance Region', None),
+            'Finance Region': finance_region_col,
             'Attribute Type': attribute_type,
             'Period': period,
-            'Cost': df[month_col],  # Cost data
-            'FTE/Contractor': None,  # Not applicable for DC sheets
-            'Country': df.get('Country', None),
+            target_column: values,
+            'Country': country_col,
             'Level 3.5': df.get('Level 3.5', None),
             'Level 4.5': df.get('Level 4.5', None),
             'Entity': entity_col,
@@ -57,10 +44,55 @@ def process_dc_sheet(df, sheet_name, file_name):
             'Mapped Country': df.get('Mapped Country', None),
             'MICA': df.get('MICA', None)
         })
-
-        # Append this data to the consolidated Paste DataFrame
         global final_paste_df
         final_paste_df = pd.concat([final_paste_df, paste_df], ignore_index=True)
+
+    # 1. MoM - Handle the last three months
+    if 'MoM' in sheet_name:
+        month_columns = [col for col in df.columns if col.startswith('M')]
+        last_3_months = month_columns[-3:] if len(month_columns) >= 3 else month_columns
+        
+        for month_col in last_3_months:
+            month_number = int(month_col[1:])
+            period = pd.to_datetime(f'{2024}-{month_number}', format='%Y-%m').strftime('%b-%y')
+            insert_into_paste('MoM', period, df[month_col])
+    
+    # 2. FY Target & 3. FY Forecast - Copy FY column for Dec-24 period
+    if 'Target' in sheet_name or 'Fcst' in sheet_name:
+        fy_column = df.get('FY', None)
+        if fy_column is not None:
+            period = 'Dec-24'  # Last month of the year
+            attribute_type = 'FY Target' if 'Target' in sheet_name else 'FY Forecast'
+            insert_into_paste(attribute_type, period, fy_column)
+
+    # 4. YTD Target, 5. YTD Forecast, 6. YTD Actual - Sum of months M01 to current month
+    if 'Target' in sheet_name or 'Fcst' in sheet_name or 'Actual' in sheet_name:
+        month_columns = [col for col in df.columns if col.startswith('M')]
+        if month_columns:
+            ytd_sum = df[month_columns].sum(axis=1)
+            period = 'Jun-24'  # Assuming the current month as June (you can make this dynamic)
+            if 'Target' in sheet_name:
+                insert_into_paste('YTD Target', period, ytd_sum)
+            elif 'Fcst' in sheet_name:
+                insert_into_paste('YTD Forecast', period, ytd_sum)
+            elif 'Actual' in sheet_name:
+                insert_into_paste('YTD Actual', period, ytd_sum)
+
+    # 7. Prior Year FY - For 'FY 2023' column
+    if 'Target' in sheet_name or 'Actual' in sheet_name:
+        prior_year_fy_column = df.get('FY 2023', None)
+        if prior_year_fy_column is not None:
+            period = 'Dec-23'  # Prior year full year
+            insert_into_paste('Prior Year FY', period, prior_year_fy_column)
+
+    # 8. Prior Year YTD - For 'YTD xx 2023' column
+    prior_year_ytd_columns = [col for col in df.columns if re.match(r'YTD \d{2} 2023', col)]
+    if prior_year_ytd_columns:
+        for ytd_col in prior_year_ytd_columns:
+            period = re.search(r'YTD (\d{2}) 2023', ytd_col).group(1)  # Extract the month
+            period = pd.to_datetime(f'{2023}-{period}', format='%Y-%m').strftime('%b-%y')
+            insert_into_paste('Prior Year YTD', period, df[ytd_col])
+
 
 # Initialize the final consolidated DataFrame
 final_paste_df = pd.DataFrame(columns=[
@@ -69,15 +101,16 @@ final_paste_df = pd.DataFrame(columns=[
     'Level 3.5', 'Level 4.5', 'Entity', 'Function', 'Mapped Country', 'MICA'
 ])
 
-# Example usage for DC sheets
-sheets = ['DC_Sheet1', 'DC_Sheet2']  # List of sheet names
+# Example usage for both HC and DC sheets
+sheets = ['HC_MoM_Sheet1', 'DC_Target_Sheet1', 'HC_Fcst_Sheet2', 'DC_Actual_Sheet3']  # List of sheet names
 file_name = 'Cost Macro.xlsm'  # Example file name
 
 for sheet in sheets:
-    # Assuming df contains the data loaded from the sheet
     df = pd.read_excel(file_name, sheet_name=sheet)  # Load each sheet into a dataframe
-    process_dc_sheet(df, sheet, file_name)
+    if 'HC' in sheet:
+        process_sheet(df, sheet, file_name, sheet_type='HC')
+    elif 'DC' in sheet:
+        process_sheet(df, sheet, file_name, sheet_type='DC')
 
 # Save the final consolidated 'Paste' sheet to the Cost Macro workbook
-with pd.ExcelWriter('Cost Macro.xlsm', mode='a', engine='openpyxl') as writer:
-    final_paste_df.to_excel(writer, sheet_name='Paste', index=False)
+with pd.ExcelWriter('Cost Macro.xlsm', mode='a', engine='open
