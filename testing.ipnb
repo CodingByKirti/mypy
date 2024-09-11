@@ -1,0 +1,83 @@
+import pandas as pd
+
+# Function to process DC sheets
+def process_dc_sheet(df, sheet_name, file_name):
+    # Find the row that contains the headers (Entity, RTN Level 4, etc.)
+    header_row = df.index[df.iloc[:, 0] == 'Entity'].tolist()[0]
+
+    # Extracting the headers
+    headers = df.iloc[header_row]
+    df.columns = headers
+    df = df[header_row + 1:].reset_index(drop=True)
+
+    # Extracting the relevant columns: 'RTN Level 4' to 'Function', 'Entity' to 'Entity'
+    function_col = df['RTN Level 4']
+    entity_col = df['Entity']
+
+    # Setting Attribute Type to 'MoM'
+    attribute_type = 'MoM'
+
+    # Finding the last three Mxx columns (e.g., M07, M06, M05)
+    month_columns = [col for col in df.columns if col.startswith('M')]
+    if len(month_columns) >= 3:
+        last_3_months = month_columns[-3:]
+    else:
+        print(f"Warning: Less than 3 month columns found in sheet {sheet_name}")
+        last_3_months = month_columns
+
+    # Deriving 'Period' based on the last month
+    last_month_col = last_3_months[0]
+    month_number = int(last_month_col[1:])
+    period = pd.to_datetime(f'{2024}-{month_number}', format='%Y-%m').strftime('%b-%y')
+
+    # Extracting cost data for the last 3 months
+    cost_data = df[last_3_months]
+
+    # Creating the final DataFrame for the 'Paste' sheet
+    for month_col in last_3_months:
+        month_number = int(month_col[1:])
+        period = pd.to_datetime(f'{2024}-{month_number}', format='%Y-%m').strftime('%b-%y')
+        
+        paste_df = pd.DataFrame({
+            'File Name': file_name,
+            'Level 3': df.get('Level 3', None),
+            'Level 4': df.get('Level 4', None),
+            'Cost Grouping': df.get('Cost Grouping', None),
+            'Cost Type': df.get('Cost Type', None),
+            'Finance Region': df.get('Finance Region', None),
+            'Attribute Type': attribute_type,
+            'Period': period,
+            'Cost': df[month_col],  # Cost data
+            'FTE/Contractor': None,  # Not applicable for DC sheets
+            'Country': df.get('Country', None),
+            'Level 3.5': df.get('Level 3.5', None),
+            'Level 4.5': df.get('Level 4.5', None),
+            'Entity': entity_col,
+            'Function': function_col,
+            'Mapped Country': df.get('Mapped Country', None),
+            'MICA': df.get('MICA', None)
+        })
+
+        # Append this data to the consolidated Paste DataFrame
+        global final_paste_df
+        final_paste_df = pd.concat([final_paste_df, paste_df], ignore_index=True)
+
+# Initialize the final consolidated DataFrame
+final_paste_df = pd.DataFrame(columns=[
+    'File Name', 'Level 3', 'Level 4', 'Cost Grouping', 'Cost Type', 'Finance Region', 
+    'Attribute Type', 'Period', 'Cost', 'FTE/Contractor', 'Country', 
+    'Level 3.5', 'Level 4.5', 'Entity', 'Function', 'Mapped Country', 'MICA'
+])
+
+# Example usage for DC sheets
+sheets = ['DC_Sheet1', 'DC_Sheet2']  # List of sheet names
+file_name = 'Cost Macro.xlsm'  # Example file name
+
+for sheet in sheets:
+    # Assuming df contains the data loaded from the sheet
+    df = pd.read_excel(file_name, sheet_name=sheet)  # Load each sheet into a dataframe
+    process_dc_sheet(df, sheet, file_name)
+
+# Save the final consolidated 'Paste' sheet to the Cost Macro workbook
+with pd.ExcelWriter('Cost Macro.xlsm', mode='a', engine='openpyxl') as writer:
+    final_paste_df.to_excel(writer, sheet_name='Paste', index=False)
