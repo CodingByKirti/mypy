@@ -1,0 +1,17 @@
+Hi Team,
+
+I hope this message finds you well!
+
+As part of our ongoing efforts to streamline our data collection process for the Unified Data Integration System, I kindly request your assistance in providing the necessary files. Below is the list of individuals and the corresponding reports or files we need:
+Name	Report/File Name
+[Person 1]	[Report/File Name 1]
+[Person 2]	[Report/File Name 2]
+[Person 3]	[Report/File Name 3]
+[Person 4]	[Report/File Name 4]
+
+If you could share these documents by [specific deadline, e.g., end of the week], it would greatly help us in our project timeline.
+
+Thank you for your cooperation and support! If you have any questions, please feel free to reach out.
+
+Best regards,
+[Your Name]
