@@ -1,31 +1,25 @@
-Here's an example code snippet that uses EasyGUI to create a base window with three buttons to open separate workbooks:
-```
-import easygui as eg
+Subject: Next Steps for Master File Creation: Action Points & Data Requirements
 
-def open_workbook1():
-    # Open workbook 1
-    eg.msgbox("Opening Workbook 1...", title="Workbook 1")
+Dear All,
 
-def open_workbook2():
-    # Open workbook 2
-    eg.msgbox("Opening Workbook 2...", title="Workbook 2")
+As per my recent discussions with Sahil and Sourabh regarding the initial steps for the Master File creation, we have collectively agreed on the following approach:
 
-def open_workbook3():
-    # Open workbook 3
-    eg.msgbox("Opening Workbook 3...", title="Workbook 3")
+    Leveraging Best Practices:
+    We will be using the Position Tracker as the baseline framework for the Master File to maintain consistency and efficiency.
 
-# Create a base window with three buttons
-buttons = ["Open Workbook 1", "Open Workbook 2", "Open Workbook 3"]
-choice = eg.buttonbox(msg="Select a workbook to open", title="Workbook Selector", choices=buttons)
+    Data Requirements from All BMs:
+    In order to proceed, we would need some inputs from all Business Managers:
+        Stock Tab: Please share your expectations on what data columns should be included in this tab.
+        Forecast Tab: This will be used to incorporate confirmed hiring data (HR data), Taleo information, and attrition details. Kindly confirm if any additional data points are required.
+        Appian Data Exploration: We will be categorizing each Position ID against FRC (e.g., replacements and BTO). Any guidance or specific requirements for this categorization would be appreciated.
 
-# Handle button clicks
-if choice == "Open Workbook 1":
-    open_workbook1()
-elif choice == "Open Workbook 2":
-    open_workbook2()
-elif choice == "Open Workbook 3":
-    open_workbook3()
-```
-This code creates a base window with three buttons using `eg.buttonbox`. Each button click calls a separate function to open the corresponding workbook. The `eg.msgbox` function is used to display a message box with a title, indicating which workbook is being opened.
+    Clarifications Needed:
+    A few questions need to be addressed to finalize the structure:
+        Should this exercise focus only on Full-Time Workers (FTW), or should we include Contractors and Consultants as well?
+        Are there any additional considerations that should be factored into this planning?
 
-Note: You'll need to replace the `eg.msgbox` calls with the actual code to open the workbooks.
+Your feedback and insights will be valuable as we move forward with these steps. Please feel free to add any suggestions or comments.
+
+Looking forward to your responses.
+
+Best Regards,
