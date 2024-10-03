@@ -23,3 +23,28 @@ Your feedback and insights will be valuable as we move forward with these steps.
 Looking forward to your responses.
 
 Best Regards,
+
+
+Implementation of Best Practices
+
+    We will implement best practices from the position tracker file to create the master file.
+
+Extending to Finance-Level Data
+
+    The position tracker currently works with FinaOps-level data; we plan to extend it to work with Finance-level data.
+
+Input Requirements
+
+    Certain inputs are not captured in the existing file. We welcome suggestions for additional columns from the GHA and OR files.
+
+Data Compilation
+
+    Most of the data required for the master file has been gathered, except for the Anaplan extract, for which assistance is needed.
+
+Taleo Report Reconciliation
+
+    We will reconcile the data with the Taleo report to identify positions in the Taleo report but already present in the GHA file due to advanced hiring.
+
+Anaplan & Appian Data Suggestions
+
+    What’s your recommendation: Should we add Anaplan and Appian data as separate sheets with the required columns, or would you suggest a different structure?
