@@ -1,61 +1,6 @@
-Initial Steps for Master File Creation
-
-1. Leveraging Best Practices
-
-    Using Position Tracker as the foundational framework to maintain consistency and efficiency.
-
-2. Data Requirements from Business Managers
-
-    Stock Tab: Specify required data columns.
-    Forecast Tab: Confirm inclusion of confirmed hiring data, HR inputs, Taleo, and attrition details.
-    Appian Data Exploration:
-        Categorize Position ID against FRC (e.g., Replacements, BTO).
-        Guidance on categorization is welcome.
-
-3. Clarifications Needed
-
-    Focus Area: Include only FTWs or expand to Contractors/Consultants?
-    Additional Considerations: Any other elements to incorporate?
-
-Implementation of Best Practices
-
-    We will implement best practices from the position tracker file to create the master file.
-
-Extending to Finance-Level Data
-
-    The position tracker currently works with FinaOps-level data; we plan to extend it to work with Finance-level data.
-
-Input Requirements
-
-    Certain inputs are not captured in the existing file. We welcome suggestions for additional columns from the GHA and OR files.
-
-Data Compilation
-
-    Most of the data required for the master file has been gathered, except for the Anaplan extract, for which assistance is needed.
-
-Taleo Report Reconciliation
-
-    We will reconcile the data with the Taleo report to identify positions in the Taleo report but already present in the GHA file due to advanced hiring.
-
-Anaplan & Appian Data Suggestions
-
-    What’s your recommendation: Should we add Anaplan and Appian data as separate sheets with the required columns, or would you suggest a different structure?
--------------
-Implementation of Best Practices
-
-Leveraging position tracker to set the baseline for the master file creation.
-Extending to Finance-Level Data
-
-Expanding the tracker from FinaOps-level to include Finance-level data.
-Input Requirements
-
-Seeking suggestions for additional columns from GHA and OR files.
-Data Compilation Status
-
-All required data has been compiled except for the Anaplan extract.
-Taleo Report Reconciliation
-
-Reconciling Taleo and GHA data to address advanced hiring overlaps.
-Anaplan & Appian Data Suggestions
-
-Recommendation needed: Separate sheets for Anaplan & Appian, or other structure?
+Had a discussion with the BMs about the next steps and the scope for including all data source files.
+We're creating a draft set of columns based on the GHA and OR files for the BMs to review, allowing them to add any more columns they need. This will be finalized by October 8th.
+We decided that we won’t need the Appian extract since Anaplan data will suffice.
+Chandra will be sending over the Anaplan report soon.
+Discussed the plan to reconcile data with the Taleo report to identify positions in the Taleo report that are already present in the GHA file due to advanced hiring.
+We will leverage best practices from the position tracker file to create the master file, extending its functionality to Finance-level data
