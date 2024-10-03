@@ -1,29 +1,21 @@
-Subject: Next Steps for Master File Creation: Action Points & Data Requirements
+Initial Steps for Master File Creation
 
-Dear All,
+1. Leveraging Best Practices
 
-As per my recent discussions with Sahil and Sourabh regarding the initial steps for the Master File creation, we have collectively agreed on the following approach:
+    Using Position Tracker as the foundational framework to maintain consistency and efficiency.
 
-    Leveraging Best Practices:
-    We will be using the Position Tracker as the baseline framework for the Master File to maintain consistency and efficiency.
+2. Data Requirements from Business Managers
 
-    Data Requirements from All BMs:
-    In order to proceed, we would need some inputs from all Business Managers:
-        Stock Tab: Please share your expectations on what data columns should be included in this tab.
-        Forecast Tab: This will be used to incorporate confirmed hiring data (HR data), Taleo information, and attrition details. Kindly confirm if any additional data points are required.
-        Appian Data Exploration: We will be categorizing each Position ID against FRC (e.g., replacements and BTO). Any guidance or specific requirements for this categorization would be appreciated.
+    Stock Tab: Specify required data columns.
+    Forecast Tab: Confirm inclusion of confirmed hiring data, HR inputs, Taleo, and attrition details.
+    Appian Data Exploration:
+        Categorize Position ID against FRC (e.g., Replacements, BTO).
+        Guidance on categorization is welcome.
 
-    Clarifications Needed:
-    A few questions need to be addressed to finalize the structure:
-        Should this exercise focus only on Full-Time Workers (FTW), or should we include Contractors and Consultants as well?
-        Are there any additional considerations that should be factored into this planning?
+3. Clarifications Needed
 
-Your feedback and insights will be valuable as we move forward with these steps. Please feel free to add any suggestions or comments.
-
-Looking forward to your responses.
-
-Best Regards,
-
+    Focus Area: Include only FTWs or expand to Contractors/Consultants?
+    Additional Considerations: Any other elements to incorporate?
 
 Implementation of Best Practices
 
@@ -48,3 +40,22 @@ Taleo Report Reconciliation
 Anaplan & Appian Data Suggestions
 
     What’s your recommendation: Should we add Anaplan and Appian data as separate sheets with the required columns, or would you suggest a different structure?
+-------------
+Implementation of Best Practices
+
+Leveraging position tracker to set the baseline for the master file creation.
+Extending to Finance-Level Data
+
+Expanding the tracker from FinaOps-level to include Finance-level data.
+Input Requirements
+
+Seeking suggestions for additional columns from GHA and OR files.
+Data Compilation Status
+
+All required data has been compiled except for the Anaplan extract.
+Taleo Report Reconciliation
+
+Reconciling Taleo and GHA data to address advanced hiring overlaps.
+Anaplan & Appian Data Suggestions
+
+Recommendation needed: Separate sheets for Anaplan & Appian, or other structure?
