@@ -1,0 +1,22 @@
+Sub FindUnusedNamedRanges()
+    Dim nm As Name
+    Dim isUsed As Boolean
+    Dim ws As Worksheet
+
+    For Each nm In ThisWorkbook.Names
+        isUsed = False
+        ' Loop through each worksheet to check for formulae references
+        For Each ws In ThisWorkbook.Worksheets
+            If ws.UsedRange.Cells.Find(What:=nm.Name, LookIn:=xlFormulas, LookAt:=xlPart, MatchCase:=False) Is Nothing Then
+                ' No reference found in this worksheet
+            Else
+                isUsed = True
+                Exit For
+            End If
+        Next ws
+
+        If Not isUsed Then
+            Debug.Print "Unused Named Range: " & nm.Name
+        End If
+    Next nm
+End Sub
