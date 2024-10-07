@@ -1,6 +1,117 @@
-Had a discussion with the BMs about the next steps and the scope for including all data source files.
-We're creating a draft set of columns based on the GHA and OR files for the BMs to review, allowing them to add any more columns they need. This will be finalized by October 8th.
-We decided that we won’t need the Appian extract since Anaplan data will suffice.
-Chandra will be sending over the Anaplan report soon.
-Discussed the plan to reconcile data with the Taleo report to identify positions in the Taleo report that are already present in the GHA file due to advanced hiring.
-We will leverage best practices from the position tracker file to create the master file, extending its functionality to Finance-level data
+Here's a VBA code to find and delete unused formulas in an Excel workbook:
+
+*Find Unused Formulas:*
+```
+Sub FindUnusedFormulas()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim f As Formula
+    Dim unusedFormulas As String
+    
+    Application.ScreenUpdating = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each rng In ws.UsedRange
+            If rng.HasFormula Then
+                Set f = rng.Formula
+                If Application.CountIfs(ws.UsedRange, "=" & f) = 1 Then
+                    unusedFormulas = unusedFormulas & ws.Name & "!" & rng.Address & vbCrLf
+                End If
+            End If
+        Next rng
+    Next ws
+    
+    If unusedFormulas <> "" Then
+        MsgBox "Unused formulas found:" & vbCrLf & unusedFormulas
+    Else
+        MsgBox "No unused formulas found."
+    End If
+    
+    Application.ScreenUpdating = True
+End Sub
+```
+
+*Delete Unused Formulas:*
+```
+Sub DeleteUnusedFormulas()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim f As Formula
+    
+    Application.ScreenUpdating = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each rng In ws.UsedRange
+            If rng.HasFormula Then
+                Set f = rng.Formula
+                If Application.CountIfs(ws.UsedRange, "=" & f) = 1 Then
+                    rng.ClearContents
+                End If
+            End If
+        Next rng
+    Next ws
+    
+    MsgBox "Unused formulas deleted."
+    
+    Application.ScreenUpdating = True
+End Sub
+```
+
+*Combined Code with User Prompt:*
+```
+Sub FindAndDeleteUnusedFormulas()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim f As Formula
+    Dim unusedFormulas As String
+    
+    Application.ScreenUpdating = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each rng In ws.UsedRange
+            If rng.HasFormula Then
+                Set f = rng.Formula
+                If Application.CountIfs(ws.UsedRange, "=" & f) = 1 Then
+                    unusedFormulas = unusedFormulas & ws.Name & "!" & rng.Address & vbCrLf
+                End If
+            End If
+        Next rng
+    Next ws
+    
+    If unusedFormulas <> "" Then
+        response = MsgBox("Unused formulas found:" & vbCrLf & unusedFormulas & vbCrLf & "Do you want to delete them?", vbYesNo)
+        If response = vbYes Then
+            For Each ws In ThisWorkbook.Worksheets
+                For Each rng In ws.UsedRange
+                    If rng.HasFormula Then
+                        Set f = rng.Formula
+                        If Application.CountIfs(ws.UsedRange, "=" & f) = 1 Then
+                            rng.ClearContents
+                        End If
+                    End If
+                Next rng
+            Next ws
+            MsgBox "Unused formulas deleted."
+        End If
+    Else
+        MsgBox "No unused formulas found."
+    End If
+    
+    Application.ScreenUpdating = True
+End Sub
+```
+
+*How to Use:*
+
+1. Open the Visual Basic Editor (VBE) by pressing Alt + F11 or navigating to Developer > Visual Basic.
+2. Create a new module by clicking Insert > Module.
+3. Paste the desired code into the module.
+4. Run the code by clicking Run > Run Sub/UserForm or pressing F5.
+
+*Note:*
+
+- These codes only check for unused formulas within the used range of each worksheet.
+- Be cautious when deleting formulas, as this action is irreversible.
+- Make sure to backup your workbook before running the delete code.
+
+Do you have any questions about this code or its implementation?
