@@ -1,3 +1,82 @@
+Sub HighlightUnusedFormulas_AllSheets()
+    Dim ws As Worksheet
+    Dim rng As Range
+    Dim cell As Range
+    Dim formulaCells As Range
+    Dim refCount As Integer
+
+    ' Loop through all worksheets in the active workbook
+    For Each ws In ThisWorkbook.Worksheets
+
+        ' Find all formula cells in the current worksheet
+        On Error Resume Next
+        Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
+        On Error GoTo 0
+
+        ' If no formula cells are found, move to the next sheet
+        If formulaCells Is Nothing Then
+            GoTo NextSheet
+        End If
+
+        ' Loop through each formula cell in the current sheet
+        For Each cell In formulaCells
+            refCount = 0
+
+            ' Check if the formula is referenced by any other cell in the worksheet
+            Set rng = ws.UsedRange
+            If Not rng Is Nothing Then
+                refCount = WorksheetFunction.CountIf(rng, "=" & cell.Address)
+            End If
+
+            ' If not referenced, highlight the cell
+            If refCount = 0 Then
+                cell.Interior.Color = RGB(255, 199, 206) ' Highlight in light red color
+            End If
+        Next cell
+
+NextSheet:
+        Set formulaCells = Nothing
+    Next ws
+
+    MsgBox "Unused formulas have been highlighted in red for all sheets.", vbInformation
+End Sub
+
+
+
+Sub DeleteUnusedFormulas_AllSheets()
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim formulaCells As Range
+
+    ' Loop through all worksheets in the active workbook
+    For Each ws In ThisWorkbook.Worksheets
+
+        ' Find all formula cells in the current worksheet
+        On Error Resume Next
+        Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
+        On Error GoTo 0
+
+        ' If no formula cells are found, move to the next sheet
+        If formulaCells Is Nothing Then
+            GoTo NextSheet
+        End If
+
+        ' Loop through each formula cell in the current sheet
+        For Each cell In formulaCells
+            ' If the cell is highlighted in light red, delete its content
+            If cell.Interior.Color = RGB(255, 199, 206) Then
+                cell.ClearContents  ' Delete the formula, keep other formatting intact
+            End If
+        Next cell
+
+NextSheet:
+        Set formulaCells = Nothing
+    Next ws
+
+    MsgBox "Highlighted (unused) formulas have been deleted from all sheets.", vbInformation
+End Sub
+
+
 Sub FindUnusedNamedRanges()
     Dim nm As Name
     Dim isUsed As Boolean
