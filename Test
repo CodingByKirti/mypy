@@ -1,118 +1,73 @@
-Here's the rewritten code with improvements and fixes:
-
-*Find Unused Formulas*
-```
-Sub FindUnusedFormulas()
+Sub HighlightUnusedFormulas()
     Dim ws As Worksheet
     Dim rng As Range
-    Dim formulaText As String
-    Dim unusedFormulas As String
-    
-    Application.ScreenUpdating = False
-    
-    For Each ws In ThisWorkbook.Worksheets
-        For Each rng In ws.UsedRange
-            If rng.HasFormula Then
-                formulaText = rng.Formula
-                If Application.CountIfs(ws.UsedRange, "=" & formulaText) = 1 Then
-                    unusedFormulas = unusedFormulas & ws.Name & "!" & rng.Address & vbCrLf
-                End If
-            End If
-        Next rng
-    Next ws
-    
-    If unusedFormulas <> "" Then
-        MsgBox "Unused formulas found:" & vbCrLf & unusedFormulas
-    Else
-        MsgBox "No unused formulas found."
-    End If
-    
-    Application.ScreenUpdating = True
-End Sub
-```
+    Dim cell As Range
+    Dim formulaCells As Range
+    Dim refCount As Integer
 
-*Delete Unused Formulas*
-```
+    ' Set the target worksheet (change the sheet name as needed)
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Replace "Sheet1" with your target sheet name
+
+    ' Find all formula cells in the worksheet
+    On Error Resume Next
+    Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+
+    ' If no formula cells are found, exit the subroutine
+    If formulaCells Is Nothing Then
+        MsgBox "No formulas found in the worksheet.", vbInformation
+        Exit Sub
+    End If
+
+    ' Loop through each formula cell to check if it's referenced
+    For Each cell In formulaCells
+        refCount = 0
+
+        ' Check if the formula is referenced by any other cell in the worksheet
+        Set rng = ws.UsedRange
+        If Not rng Is Nothing Then
+            refCount = WorksheetFunction.CountIf(rng, "=" & cell.Address)
+        End If
+
+        ' If not referenced, highlight the cell
+        If refCount = 0 Then
+            cell.Interior.Color = RGB(255, 199, 206) ' Highlight in light red color
+        End If
+    Next cell
+
+    MsgBox "Unused formulas have been highlighted in red.", vbInformation
+End Sub
+
+
+
+
+,....
+
 Sub DeleteUnusedFormulas()
     Dim ws As Worksheet
-    Dim rng As Range
-    Dim formulaText As String
-    
-    Application.ScreenUpdating = False
-    
-    For Each ws In ThisWorkbook.Worksheets
-        For Each rng In ws.UsedRange
-            If rng.HasFormula Then
-                formulaText = rng.Formula
-                If Application.CountIfs(ws.UsedRange, "=" & formulaText) = 1 Then
-                    rng.ClearContents
-                End If
-            End If
-        Next rng
-    Next ws
-    
-    MsgBox "Unused formulas deleted."
-    
-    Application.ScreenUpdating = True
-End Sub
-```
+    Dim cell As Range
+    Dim formulaCells As Range
 
-*Find and Delete Unused Formulas with Prompt*
-```
-Sub FindAndDeleteUnusedFormulas()
-    Dim ws As Worksheet
-    Dim rng As Range
-    Dim formulaText As String
-    Dim unusedFormulas As String
-    
-    Application.ScreenUpdating = False
-    
-    For Each ws In ThisWorkbook.Worksheets
-        For Each rng In ws.UsedRange
-            If rng.HasFormula Then
-                formulaText = rng.Formula
-                If Application.CountIfs(ws.UsedRange, "=" & formulaText) = 1 Then
-                    unusedFormulas = unusedFormulas & ws.Name & "!" & rng.Address & vbCrLf
-                End If
-            End If
-        Next rng
-    Next ws
-    
-    If unusedFormulas <> "" Then
-        response = MsgBox("Unused formulas found:" & vbCrLf & unusedFormulas & vbCrLf & "Do you want to delete them?", vbYesNo)
-        If response = vbYes Then
-            For Each ws In ThisWorkbook.Worksheets
-                For Each rng In ws.UsedRange
-                    If rng.HasFormula Then
-                        formulaText = rng.Formula
-                        If Application.CountIfs(ws.UsedRange, "=" & formulaText) = 1 Then
-                            rng.ClearContents
-                        End If
-                    End If
-                Next rng
-            Next ws
-            MsgBox "Unused formulas deleted."
-        End If
-    Else
-        MsgBox "No unused formulas found."
+    ' Set the target worksheet (change the sheet name as needed)
+    Set ws = ThisWorkbook.Sheets("Sheet1") ' Replace "Sheet1" with your target sheet name
+
+    ' Find all formula cells in the worksheet
+    On Error Resume Next
+    Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+
+    ' If no formula cells are found, exit the subroutine
+    If formulaCells Is Nothing Then
+        MsgBox "No formulas found in the worksheet.", vbInformation
+        Exit Sub
     End If
-    
-    Application.ScreenUpdating = True
+
+    ' Loop through each formula cell and delete the ones highlighted in light red
+    For Each cell In formulaCells
+        If cell.Interior.Color = RGB(255, 199, 206) Then
+            cell.ClearContents  ' Delete only the formula, keeping other formatting intact
+        End If
+    Next cell
+
+    MsgBox "Highlighted (unused) formulas have been deleted.", vbInformation
 End Sub
-```
-
-Changes made:
-
-- Renamed variables for clarity.
-- Added `Set` keyword for object assignments.
-- Improved error handling.
-- Simplified code structure.
-
-To use:
-
-1. Open Visual Basic Editor (VBE).
-2. Create a new module.
-3. Paste the desired code.
-4. Run the code.
-
-Please let me know if you have any further questions or issues!
