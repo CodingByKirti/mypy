@@ -99,3 +99,196 @@ Sub FindUnusedNamedRanges()
         End If
     Next nm
 End Sub
+
+----------------------------------------------------------------------------------
+## gpt
+Sub ListUnusedFormulae()
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim lastRow As Long, lastCol As Long
+    Dim formulaCell As Range
+    Dim countRefs As Long
+    Dim unusedFormulas As Collection
+    Dim msg As String
+    
+    ' Create a new collection to store unused formulas
+    Set unusedFormulas = New Collection
+    
+    ' Loop through each worksheet in the active workbook
+    For Each ws In ActiveWorkbook.Worksheets
+        ' Determine the used range of the worksheet
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        
+        ' Loop through each cell in the used range
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                ' Check if the formula is referenced in any other cell
+                On Error Resume Next
+                countRefs = Application.WorksheetFunction.CountIf(ws.UsedRange, "=" & cell.Address)
+                On Error GoTo 0
+                
+                ' If the formula is not used anywhere else, add to collection
+                If countRefs = 0 Then
+                    unusedFormulas.Add cell
+                End If
+            End If
+        Next cell
+    Next ws
+    
+    ' Display a message with the unused formulas
+    If unusedFormulas.Count > 0 Then
+        msg = "The following formulas are unused and can be deleted:" & vbCrLf
+        For Each formulaCell In unusedFormulas
+            msg = msg & formulaCell.Address & " in Sheet " & formulaCell.Worksheet.Name & ": " & formulaCell.Formula & vbCrLf
+        Next formulaCell
+        MsgBox msg, vbInformation, "Unused Formulas Found"
+    Else
+        MsgBox "No unused formulas found.", vbInformation, "Check Complete"
+    End If
+End Sub
+
+Sub DeleteUnusedFormulae()
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim lastRow As Long, lastCol As Long
+    Dim countRefs As Long
+    
+    ' Loop through each worksheet in the active workbook
+    For Each ws In ActiveWorkbook.Worksheets
+        ' Determine the used range of the worksheet
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+        
+        ' Loop through each cell in the used range
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                ' Check if the formula is referenced in any other cell
+                On Error Resume Next
+                countRefs = Application.WorksheetFunction.CountIf(ws.UsedRange, "=" & cell.Address)
+                On Error GoTo 0
+                
+                ' If the formula is not used anywhere else, delete it
+                If countRefs = 0 Then
+                    cell.ClearContents
+                End If
+            End If
+        Next cell
+    Next ws
+    
+    MsgBox "Unused formulas have been deleted.", vbInformation, "Cleanup Complete"
+End Sub
+
+
+## bb
+Sub ListUnusedFormulas()
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim formula As String
+    Dim unusedFormulas As String
+    
+    unusedFormulas = ""
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                formula = cell.Formula
+                If Not IsFormulaUsed(formula) Then
+                    unusedFormulas = unusedFormulas & ws.Name & "!" & cell.Address & ": " & formula & vbCrLf
+                End If
+            End If
+        Next cell
+    Next ws
+    
+    If unusedFormulas = "" Then
+        MsgBox "No unused formulas found."
+    Else
+        MsgBox "Unused formulas:" & vbCrLf & unusedFormulas
+    End If
+End Sub
+
+Function IsFormulaUsed(formula As String) As Boolean
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim found As Boolean
+    
+    found = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                If InStr(cell.Formula, formula) > 0 Then
+                    found = True
+                    Exit Function
+                End If
+            End If
+        Next cell
+    Next ws
+    
+    IsFormulaUsed = found
+End Function
+
+
+Sub DeleteUnusedFormulas()
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim formula As String
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                formula = cell.Formula
+                If Not IsFormulaUsed(formula) Then
+                    cell.ClearContents
+                End If
+            End If
+        Next cell
+    Next ws
+
+    MsgBox "Unused formulas deleted."
+End Sub
+
+
+Sub ListUnusedNamedRanges()
+    Dim nm As Name
+    Dim unusedRanges As String
+    
+    unusedRanges = ""
+    
+    For Each nm In ThisWorkbook.Names
+        If Not IsNamedRangeUsed(nm) Then
+            unusedRanges = unusedRanges & nm.Name & vbCrLf
+        End If
+    Next nm
+    
+    If unusedRanges = "" Then
+        MsgBox "No unused named ranges found."
+    Else
+        MsgBox "Unused named ranges:" & vbCrLf & unusedRanges
+    End If
+End Sub
+
+Function IsNamedRangeUsed(nm As Name) As Boolean
+    Dim ws As Worksheet
+    Dim cell As Range
+    Dim found As Boolean
+    
+    found = False
+    
+    For Each ws In ThisWorkbook.Worksheets
+        For Each cell In ws.UsedRange
+            If cell.HasFormula Then
+                If InStr(cell.Formula, nm.Name) > 0 Then
+                    found = True
+                    Exit Function
+                End If
+            End If
+        Next cell
+    Next ws
+    
+    IsNamedRangeUsed = found
+End Function
+
+
+
+
