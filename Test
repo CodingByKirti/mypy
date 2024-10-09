@@ -1,73 +1,19 @@
-Sub HighlightUnusedFormulas()
-    Dim ws As Worksheet
-    Dim rng As Range
-    Dim cell As Range
-    Dim formulaCells As Range
-    Dim refCount As Integer
-
-    ' Set the target worksheet (change the sheet name as needed)
-    Set ws = ThisWorkbook.Sheets("Sheet1") ' Replace "Sheet1" with your target sheet name
-
-    ' Find all formula cells in the worksheet
-    On Error Resume Next
-    Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
-    On Error GoTo 0
-
-    ' If no formula cells are found, exit the subroutine
-    If formulaCells Is Nothing Then
-        MsgBox "No formulas found in the worksheet.", vbInformation
-        Exit Sub
-    End If
-
-    ' Loop through each formula cell to check if it's referenced
-    For Each cell In formulaCells
-        refCount = 0
-
-        ' Check if the formula is referenced by any other cell in the worksheet
-        Set rng = ws.UsedRange
-        If Not rng Is Nothing Then
-            refCount = WorksheetFunction.CountIf(rng, "=" & cell.Address)
-        End If
-
-        ' If not referenced, highlight the cell
-        If refCount = 0 Then
-            cell.Interior.Color = RGB(255, 199, 206) ' Highlight in light red color
-        End If
-    Next cell
-
-    MsgBox "Unused formulas have been highlighted in red.", vbInformation
-End Sub
-
-
-
-
-,....
-
-Sub DeleteUnusedFormulas()
-    Dim ws As Worksheet
-    Dim cell As Range
-    Dim formulaCells As Range
-
-    ' Set the target worksheet (change the sheet name as needed)
-    Set ws = ThisWorkbook.Sheets("Sheet1") ' Replace "Sheet1" with your target sheet name
-
-    ' Find all formula cells in the worksheet
-    On Error Resume Next
-    Set formulaCells = ws.Cells.SpecialCells(xlCellTypeFormulas)
-    On Error GoTo 0
-
-    ' If no formula cells are found, exit the subroutine
-    If formulaCells Is Nothing Then
-        MsgBox "No formulas found in the worksheet.", vbInformation
-        Exit Sub
-    End If
-
-    ' Loop through each formula cell and delete the ones highlighted in light red
-    For Each cell In formulaCells
-        If cell.Interior.Color = RGB(255, 199, 206) Then
-            cell.ClearContents  ' Delete only the formula, keeping other formatting intact
-        End If
-    Next cell
-
-    MsgBox "Highlighted (unused) formulas have been deleted.", vbInformation
-End Sub
+Initialize Environment: Load the required libraries and input data files.
+Extract GHA Data: Filter and select the relevant columns from the GHA dataset to create the GHA base data.
+Standardize GHA Columns: Rename columns 'Position Number', 'Level 3', and 'Level 4' for uniformity.
+Add Source Metadata: Insert an additional column to record the source file name.
+Integrate Attrition Data: Match 'Employee ID' between the GHA base data and Attrition Report to extract 'Date of Leaving (DOL)' and update the GHA base data accordingly.
+Extract Open Position Data: Select the required columns from the Open Position Report to create the Open Position base data.
+Add Source Identifier: Create a new 'Source' column and populate it with the value 'Open Position'.
+Standardize Column Names: Rename the column 'Position Number' to 'Position ID' in the Open Position base data.
+Filter Taleo Data: Extract records from the Taleo Report where 'Requisition Source System' is 'Taleo'.
+Select Taleo Columns: Filter and retain only the necessary columns from the Taleo Report.
+Standardize Taleo Columns: Rename 'Requisition Number' to 'Taleo ID' and 'Position Number' to 'Position ID'.
+Merge Taleo and Open Position Data: Perform an inner join on 'Position ID' to merge Taleo data with the Open Position base data.
+Extract HR Input Data: Select the relevant columns from the HR Input file and standardize the 'Position Number' column to 'Position ID'.
+Merge HR Input Data: Merge the updated Open Position base data with the HR Input data on 'Position ID'.
+Identify Column Discrepancies: Identify additional columns required to align the GHA and Open Position datasets, ensuring a consistent schema.
+Create Missing Columns: Add the necessary columns to both the GHA and Open Position datasets to maintain uniformity.
+Set Column Order: Reorder columns as per the defined schema for both datasets.
+Concatenate Datasets: Append the Open Position dataset to the GHA base data to form the final consolidated dataset.
+Save Final Dataset: Export the combined data to a new file. Phase One Completed.
