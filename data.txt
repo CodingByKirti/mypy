@@ -5,7 +5,7 @@ import numpy as np
 df1 = pd.DataFrame({
     'A2': [101, 102, 103, 104],
     'C': ['new', 'old', 'new', 'old'],
-    'SC': [None, 'value2', None, 'value4']
+    'SC': [None, 'value2', None, 'value4']  # 'None' means blank
 })
 
 df2 = pd.DataFrame({
@@ -14,16 +14,17 @@ df2 = pd.DataFrame({
 })
 
 # Step 1: Create a mask for rows where 'C' is 'new' and 'SC' is blank (None or NaN)
-mask = (df1['C'] == 'new') & (df1['SC'].isna())
+mask = (df1['C'] == 'new') & (df1['SC'].isna())  # Only where 'C' is 'new' and 'SC' is blank
 
 # Step 2: Create a lookup dictionary from df2 for easy access
 lookup_dict = df2.set_index('AA2')['SC'].to_dict()
 
 # Step 3: Use np.where() to update 'SC' column conditionally
+# We only update where the mask is True, i.e., where 'C' is 'new' and 'SC' is blank
 df1['SC'] = np.where(
-    mask,  # Only update where the condition is True
-    df1['A2'].map(lookup_dict).fillna(df1['SC']),  # Map A2 to the lookup dict and fill NaN with existing SC
-    df1['SC']  # Retain the existing SC values
+    mask,
+    df1['A2'].map(lookup_dict),  # Map A2 to the lookup dictionary
+    df1['SC']  # Keep existing SC values where condition is not met
 )
 
 # Output the updated df1
