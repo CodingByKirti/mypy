@@ -1,79 +1,92 @@
-Sub TrackChangesInOpenedWorkbook()
+Dim ChangeLog As Worksheet
+Dim TrackedWorkbook As Workbook
+Dim ChangeCount As Long
 
-    ' Declare variables for the workbook and the change log
-    Dim targetWorkbook As Workbook
-    Dim logWorkbook As Workbook
-    Dim logSheet As Worksheet
-    Dim oldValue As String
-    Dim newValue As String
-    Dim changeRange As Range
-    Dim lastLogRow As Long
-    Dim userName As String
-    Dim changeTime As String
-    
-    ' Ask user to choose the workbook to track changes in
-    Set targetWorkbook = Application.Workbooks.Application.InputBox("Select the workbook to track changes in:", Type:=8)
-    If targetWorkbook Is Nothing Then
-        MsgBox "No workbook selected."
+Sub TrackChangesInOpenedWorkbook()
+    Dim wb As Workbook
+    Dim wbNames As String
+    Dim selectedWbName As String
+    Dim response As Variant
+    Dim r As Range
+
+    ' Create or clear the ChangeLog sheet
+    On Error Resume Next
+    Set ChangeLog = ThisWorkbook.Worksheets("ChangeLog")
+    If ChangeLog Is Nothing Then
+        Set ChangeLog = ThisWorkbook.Worksheets.Add
+        ChangeLog.Name = "ChangeLog"
+    Else
+        ChangeLog.Cells.Clear
+    End If
+    On Error GoTo 0
+
+    ' Set headers for ChangeLog
+    ChangeLog.Cells(1, 1).Value = "Date"
+    ChangeLog.Cells(1, 2).Value = "User"
+    ChangeLog.Cells(1, 3).Value = "Old Value"
+    ChangeLog.Cells(1, 4).Value = "New Value"
+    ChangeLog.Cells(1, 5).Value = "Cell Address"
+    ChangeLog.Cells(1, 6).Value = "Date & Time of Change"
+
+    ' Get the names of all open workbooks
+    For Each wb In Application.Workbooks
+        wbNames = wbNames & wb.Name & vbCrLf
+    Next wb
+
+    ' Prompt user to select a workbook
+    response = InputBox("Select the workbook to track changes in:" & vbCrLf & vbCrLf & wbNames, "Workbook Selection")
+
+    ' Validate the input
+    On Error Resume Next
+    Set TrackedWorkbook = Application.Workbooks(response)
+    On Error GoTo 0
+
+    If TrackedWorkbook Is Nothing Then
+        MsgBox "Invalid workbook selected. Please try again.", vbExclamation
         Exit Sub
     End If
-    
-    ' Create or open the log workbook
-    On Error Resume Next
-    Set logWorkbook = Workbooks("ChangeLogTool.xlsm") ' Ensure it doesn't conflict with the tool's workbook
-    If logWorkbook Is Nothing Then
-        ' Create a new workbook for logging if not found
-        Set logWorkbook = Workbooks.Add
-        logWorkbook.SaveAs "ChangeLog.xlsx"
-    End If
-    On Error GoTo 0
-    
-    ' Add a new worksheet in the log file if it doesn't exist
-    On Error Resume Next
-    Set logSheet = logWorkbook.Sheets("ChangeLog")
-    If logSheet Is Nothing Then
-        Set logSheet = logWorkbook.Sheets.Add
-        logSheet.Name = "ChangeLog"
-        logSheet.Cells(1, 1).Value = "Date/Time"
-        logSheet.Cells(1, 2).Value = "Workbook"
-        logSheet.Cells(1, 3).Value = "Sheet"
-        logSheet.Cells(1, 4).Value = "Cell Address"
-        logSheet.Cells(1, 5).Value = "Old Value"
-        logSheet.Cells(1, 6).Value = "New Value"
-        logSheet.Cells(1, 7).Value = "User"
-    End If
-    On Error GoTo 0
-    
-    ' Set up the Workbook_SheetChange event for the selected workbook
-    With targetWorkbook
-        Application.EnableEvents = True
-        ' Track changes in any sheet of the selected workbook
-        For Each ws In .Sheets
-            Set changeRange = ws.UsedRange ' UsedRange represents the range with content
-            userName = Environ("Username")
-            changeTime = Now
-            
-            ' Log changes when the target workbook's cells change
-            Application.OnSheetChange = "LogChanges"
-            
-            ' Store the old and new values
-            oldValue = changeRange.Value ' Get old value
-            Application.Undo ' Get back to the new value
-            newValue = changeRange.Value
-            
-            ' Log the change details into the log sheet
-            lastLogRow = logSheet.Cells(logSheet.Rows.Count, 1).End(xlUp).Row + 1
-            logSheet.Cells(lastLogRow, 1).Value = changeTime ' Date and time of change
-            logSheet.Cells(lastLogRow, 2).Value = targetWorkbook.Name ' Workbook name
-            logSheet.Cells(lastLogRow, 3).Value = ws.Name ' Sheet name
-            logSheet.Cells(lastLogRow, 4).Value = changeRange.Address ' Cell address
-            logSheet.Cells(lastLogRow, 5).Value = oldValue ' Old value
-            logSheet.Cells(lastLogRow, 6).Value = newValue ' New value
-            logSheet.Cells(lastLogRow, 7).Value = userName ' User who made the change
-        Next ws
+
+    ' Loop through each worksheet in the selected workbook
+    For Each ws In TrackedWorkbook.Worksheets
+        ws.Cells.Interior.ColorIndex = xlNone ' Clear previous highlighting
+    Next ws
+
+    ' Start tracking changes
+    ChangeCount = 1
+    Application.OnUndo "Undo Changes", "UndoChanges"
+    MsgBox "Tracking changes in " & TrackedWorkbook.Name, vbInformation
+End Sub
+
+Sub UndoChanges()
+    Dim cell As Range
+    Dim ws As Worksheet
+    Dim changeLogRow As Long
+
+    ' Loop through the ChangeLog to undo changes
+    For changeLogRow = 2 To ChangeLog.Cells(Rows.Count, 1).End(xlUp).Row
+        Set ws = ThisWorkbook.Worksheets(TrackedWorkbook.Name)
+        Set cell = ws.Range(ChangeLog.Cells(changeLogRow, 5).Value)
+        cell.Value = ChangeLog.Cells(changeLogRow, 3).Value ' Old Value
+        cell.Interior.ColorIndex = 0 ' Remove highlighting
+    Next changeLogRow
+
+    MsgBox "Changes undone.", vbInformation
+End Sub
+
+' Call this sub to log the changes
+Sub LogChange(ByVal Target As Range)
+    With ChangeLog
+        .Cells(ChangeCount + 1, 1).Value = Now
+        .Cells(ChangeCount + 1, 2).Value = Application.UserName
+        .Cells(ChangeCount + 1, 3).Value = Target.Value
+        .Cells(ChangeCount + 1, 4).Value = Target.Value
+        .Cells(ChangeCount + 1, 5).Value = Target.Address
+        .Cells(ChangeCount + 1, 6).Value = Now
+        ChangeCount = ChangeCount + 1
     End With
 End Sub
 
-Sub LogChanges(ByVal Sh As Object, ByVal Target As Range)
-    ' This subroutine will log changes detected by TrackChangesInOpenedWorkbook
+Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    ' Call LogChange for each changed cell
+    LogChange Target
 End Sub
