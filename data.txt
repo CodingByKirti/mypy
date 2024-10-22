@@ -1,16 +1,79 @@
-Certainly! You can use phrases like “we suggest” or “we believe” to convey that it’s a collective thought without implying a final conclusion. Here’s the revised email:
+Sub TrackChangesInOpenedWorkbook()
 
-Subject: Next Steps for Finance Forecast Central File
+    ' Declare variables for the workbook and the change log
+    Dim targetWorkbook As Workbook
+    Dim logWorkbook As Workbook
+    Dim logSheet As Worksheet
+    Dim oldValue As String
+    Dim newValue As String
+    Dim changeRange As Range
+    Dim lastLogRow As Long
+    Dim userName As String
+    Dim changeTime As String
+    
+    ' Ask user to choose the workbook to track changes in
+    Set targetWorkbook = Application.Workbooks.Application.InputBox("Select the workbook to track changes in:", Type:=8)
+    If targetWorkbook Is Nothing Then
+        MsgBox "No workbook selected."
+        Exit Sub
+    End If
+    
+    ' Create or open the log workbook
+    On Error Resume Next
+    Set logWorkbook = Workbooks("ChangeLogTool.xlsm") ' Ensure it doesn't conflict with the tool's workbook
+    If logWorkbook Is Nothing Then
+        ' Create a new workbook for logging if not found
+        Set logWorkbook = Workbooks.Add
+        logWorkbook.SaveAs "ChangeLog.xlsx"
+    End If
+    On Error GoTo 0
+    
+    ' Add a new worksheet in the log file if it doesn't exist
+    On Error Resume Next
+    Set logSheet = logWorkbook.Sheets("ChangeLog")
+    If logSheet Is Nothing Then
+        Set logSheet = logWorkbook.Sheets.Add
+        logSheet.Name = "ChangeLog"
+        logSheet.Cells(1, 1).Value = "Date/Time"
+        logSheet.Cells(1, 2).Value = "Workbook"
+        logSheet.Cells(1, 3).Value = "Sheet"
+        logSheet.Cells(1, 4).Value = "Cell Address"
+        logSheet.Cells(1, 5).Value = "Old Value"
+        logSheet.Cells(1, 6).Value = "New Value"
+        logSheet.Cells(1, 7).Value = "User"
+    End If
+    On Error GoTo 0
+    
+    ' Set up the Workbook_SheetChange event for the selected workbook
+    With targetWorkbook
+        Application.EnableEvents = True
+        ' Track changes in any sheet of the selected workbook
+        For Each ws In .Sheets
+            Set changeRange = ws.UsedRange ' UsedRange represents the range with content
+            userName = Environ("Username")
+            changeTime = Now
+            
+            ' Log changes when the target workbook's cells change
+            Application.OnSheetChange = "LogChanges"
+            
+            ' Store the old and new values
+            oldValue = changeRange.Value ' Get old value
+            Application.Undo ' Get back to the new value
+            newValue = changeRange.Value
+            
+            ' Log the change details into the log sheet
+            lastLogRow = logSheet.Cells(logSheet.Rows.Count, 1).End(xlUp).Row + 1
+            logSheet.Cells(lastLogRow, 1).Value = changeTime ' Date and time of change
+            logSheet.Cells(lastLogRow, 2).Value = targetWorkbook.Name ' Workbook name
+            logSheet.Cells(lastLogRow, 3).Value = ws.Name ' Sheet name
+            logSheet.Cells(lastLogRow, 4).Value = changeRange.Address ' Cell address
+            logSheet.Cells(lastLogRow, 5).Value = oldValue ' Old value
+            logSheet.Cells(lastLogRow, 6).Value = newValue ' New value
+            logSheet.Cells(lastLogRow, 7).Value = userName ' User who made the change
+        Next ws
+    End With
+End Sub
 
-Dear [Recipient's Name],
-
-Following my implementation of the VBA code, I found that the approach of downsizing the file by removing named ranges and unused formulas is not worthwhile for our needs.
-
-In today’s meeting with Sowmya and Sahil, we discussed that the next steps should involve bifurcating/slicing the new version of the Finance Forecast Central file by L4. After these changes, the concerned individuals will handle the consolidation of the file.
-
-We welcome any thoughts or inputs you may have on this approach by tomorrow.
-
-Thank you!
-
-Best regards,
-[Your Name]
+Sub LogChanges(ByVal Sh As Object, ByVal Target As Range)
+    ' This subroutine will log changes detected by TrackChangesInOpenedWorkbook
+End Sub
