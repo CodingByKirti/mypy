@@ -1,92 +1,30 @@
-Dim ChangeLog As Worksheet
-Dim TrackedWorkbook As Workbook
-Dim ChangeCount As Long
+import pandas as pd
+import numpy as np
 
-Sub TrackChangesInOpenedWorkbook()
-    Dim wb As Workbook
-    Dim wbNames As String
-    Dim selectedWbName As String
-    Dim response As Variant
-    Dim r As Range
+# Sample DataFrames
+df1 = pd.DataFrame({
+    'A2': [101, 102, 103, 104],
+    'C': ['new', 'old', 'new', 'old'],
+    'SC': [None, 'value2', None, 'value4']
+})
 
-    ' Create or clear the ChangeLog sheet
-    On Error Resume Next
-    Set ChangeLog = ThisWorkbook.Worksheets("ChangeLog")
-    If ChangeLog Is Nothing Then
-        Set ChangeLog = ThisWorkbook.Worksheets.Add
-        ChangeLog.Name = "ChangeLog"
-    Else
-        ChangeLog.Cells.Clear
-    End If
-    On Error GoTo 0
+df2 = pd.DataFrame({
+    'AA2': [101, 102, 103, 104],
+    'SC': ['lookup_value1', 'lookup_value2', 'lookup_value3', 'lookup_value4']
+})
 
-    ' Set headers for ChangeLog
-    ChangeLog.Cells(1, 1).Value = "Date"
-    ChangeLog.Cells(1, 2).Value = "User"
-    ChangeLog.Cells(1, 3).Value = "Old Value"
-    ChangeLog.Cells(1, 4).Value = "New Value"
-    ChangeLog.Cells(1, 5).Value = "Cell Address"
-    ChangeLog.Cells(1, 6).Value = "Date & Time of Change"
+# Step 1: Create a mask for rows where 'C' is 'new' and 'SC' is blank (None or NaN)
+mask = (df1['C'] == 'new') & (df1['SC'].isna())
 
-    ' Get the names of all open workbooks
-    For Each wb In Application.Workbooks
-        wbNames = wbNames & wb.Name & vbCrLf
-    Next wb
+# Step 2: Create a lookup dictionary from df2 for easy access
+lookup_dict = df2.set_index('AA2')['SC'].to_dict()
 
-    ' Prompt user to select a workbook
-    response = InputBox("Select the workbook to track changes in:" & vbCrLf & vbCrLf & wbNames, "Workbook Selection")
+# Step 3: Use np.where() to update 'SC' column conditionally
+df1['SC'] = np.where(
+    mask,  # Only update where the condition is True
+    df1['A2'].map(lookup_dict).fillna(df1['SC']),  # Map A2 to the lookup dict and fill NaN with existing SC
+    df1['SC']  # Retain the existing SC values
+)
 
-    ' Validate the input
-    On Error Resume Next
-    Set TrackedWorkbook = Application.Workbooks(response)
-    On Error GoTo 0
-
-    If TrackedWorkbook Is Nothing Then
-        MsgBox "Invalid workbook selected. Please try again.", vbExclamation
-        Exit Sub
-    End If
-
-    ' Loop through each worksheet in the selected workbook
-    For Each ws In TrackedWorkbook.Worksheets
-        ws.Cells.Interior.ColorIndex = xlNone ' Clear previous highlighting
-    Next ws
-
-    ' Start tracking changes
-    ChangeCount = 1
-    Application.OnUndo "Undo Changes", "UndoChanges"
-    MsgBox "Tracking changes in " & TrackedWorkbook.Name, vbInformation
-End Sub
-
-Sub UndoChanges()
-    Dim cell As Range
-    Dim ws As Worksheet
-    Dim changeLogRow As Long
-
-    ' Loop through the ChangeLog to undo changes
-    For changeLogRow = 2 To ChangeLog.Cells(Rows.Count, 1).End(xlUp).Row
-        Set ws = ThisWorkbook.Worksheets(TrackedWorkbook.Name)
-        Set cell = ws.Range(ChangeLog.Cells(changeLogRow, 5).Value)
-        cell.Value = ChangeLog.Cells(changeLogRow, 3).Value ' Old Value
-        cell.Interior.ColorIndex = 0 ' Remove highlighting
-    Next changeLogRow
-
-    MsgBox "Changes undone.", vbInformation
-End Sub
-
-' Call this sub to log the changes
-Sub LogChange(ByVal Target As Range)
-    With ChangeLog
-        .Cells(ChangeCount + 1, 1).Value = Now
-        .Cells(ChangeCount + 1, 2).Value = Application.UserName
-        .Cells(ChangeCount + 1, 3).Value = Target.Value
-        .Cells(ChangeCount + 1, 4).Value = Target.Value
-        .Cells(ChangeCount + 1, 5).Value = Target.Address
-        .Cells(ChangeCount + 1, 6).Value = Now
-        ChangeCount = ChangeCount + 1
-    End With
-End Sub
-
-Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
-    ' Call LogChange for each changed cell
-    LogChange Target
-End Sub
+# Output the updated df1
+print(df1)
