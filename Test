@@ -1,15 +1,35 @@
-Here's a refined version of your table to send as a status update to your boss. The wording is adjusted to sound more formal and concise, highlighting the key points:
+import pandas as pd
 
----
+# Assuming `master_df`, `mom_gha_df`, and `mom_open_pos_df` are already loaded as DataFrames
 
-| **Task**                                      | **Date of Delivery/Completion** | **Status**          | **Comment**                                                                                | **Next Steps**                                                                                            |
-|-----------------------------------------------|--------------------------------|--------------------|--------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
-| Target & Prior Forecast in Central Model      | 31-Oct-24                      | Not Started        |                                                                                            |                                                                                                            |
-| Master data file - All roles + Taleo + HC Location | 31-Oct-24                      | In Progress        | Phase 1 completed                                                                           | Testing of the output file by BMs.                                                                         |
-| Model Agility / Downsize                      | 11-Oct-24                      | Closed / Abandoned | VBA code was developed, but results did not meet requirements. Switching to Plan B.        | Plan B: Split the Central Model by L4 and consolidate it with new model constraints.                        |
-| Model - Track Changes                         | 11-Oct-24                      | Completed          | Will update BMs as of 11-Oct-2024.                                                          |                                                                                                            |
-| Cost Templates                                | TBD                            | On Hold            |                                                                                            |                                                                                                            |
+# Ensure IDs are strings for consistent comparison
+master_df['Position ID'] = master_df['Position ID'].astype(str)
+master_df['Employee ID'] = master_df['Employee ID'].astype(str)
+mom_gha_df['Position ID'] = mom_gha_df['Position ID'].astype(str)
+mom_gha_df['Employee ID'] = mom_gha_df['Employee ID'].astype(str)
+mom_open_pos_df['Position ID'] = mom_open_pos_df['Position ID'].astype(str)
 
----
+# Step 1: Identify new records in `mom_gha_df` that are not in `master_df`
+new_gha_records = mom_gha_df[~mom_gha_df.set_index(['Position ID', 'Employee ID']).index.isin(
+    master_df.set_index(['Position ID', 'Employee ID']).index
+)]
 
-Feel free to let me know if you'd like to adjust the content further or reformat the structure in any specific way!
+# Step 2: Identify new records in `mom_open_pos_df` that are not in `master_df` (considering only Position ID)
+new_open_pos_records = mom_open_pos_df[~mom_open_pos_df['Position ID'].isin(master_df['Position ID'])]
+
+# Combine new records
+new_records_df = pd.concat([new_gha_records, new_open_pos_records], ignore_index=True)
+
+# Step 3: Append new records to master_df
+master_df = pd.concat([master_df, new_records_df], ignore_index=True)
+
+# Step 4: Write master and new records to Excel
+output_file = "updated_master_with_new_records.xlsx"
+with pd.ExcelWriter(output_file) as writer:
+    master_df.to_excel(writer, sheet_name="Master Updated", index=False)
+    new_records_df.to_excel(writer, sheet_name="New Records", index=False)
+
+print("Updated master file and new records saved in:", output_file)
+
+# MoM tracking will be performed here for the updated master_df after each month's data is added.
+# Additional processing would be required to track and mark changes month-over-month.
