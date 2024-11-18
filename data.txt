@@ -1,4 +1,40 @@
 import pandas as pd
+
+# Sample data
+basedf = pd.DataFrame({
+    'empsid': [101, 102, 103, 104],
+    'spocmacro': [None, None, None, None],
+    'spoc': [None, None, None, None]
+})
+
+lookupdf = pd.DataFrame({
+    'PSID': [101, 102, 105],
+    'spocmacro': ['Macro1', 'Macro2', 'Macro3'],
+    'spoc': ['Spoc1', 'Spoc2', 'Spoc3']
+})
+
+# Convert lookupdf to a dictionary
+lookup_dict = lookupdf.set_index('PSID')[['spocmacro', 'spoc']].to_dict(orient='index')
+
+# Define a function to fetch values from the dictionary
+def fetch_spoc(row):
+    psid = row['empsid']
+    if psid in lookup_dict:
+        row['spocmacro'] = lookup_dict[psid]['spocmacro']
+        row['spoc'] = lookup_dict[psid]['spoc']
+    return row
+
+# Apply the function to basedf
+basedf = basedf.apply(fetch_spoc, axis=1)
+
+print(basedf)
+
+
+
+
+
+
+import pandas as pd
 import numpy as np
 
 # Sample DataFrames
