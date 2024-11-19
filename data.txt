@@ -1,5 +1,34 @@
 import pandas as pd
 
+# Sample data for basedf
+basedf = pd.DataFrame({
+    'empsid': [101, 102, 103, 104],
+    'category': ['new', 'existing', 'new', 'new']
+})
+
+# Sample data for spocdf
+spocdf = pd.DataFrame({
+    'PSID': [101, 105]  # Only PSID 101 is in spocdf, 102 and 104 are missing
+})
+
+# Filter basedf for records where category is 'new'
+new_category_df = basedf[basedf['category'] == 'new']
+
+# Find missing PSIDs
+missing_psid_df = new_category_df[~new_category_df['empsid'].isin(spocdf['PSID'])]
+
+# If there are missing PSIDs, write them to an Excel sheet
+if not missing_psid_df.empty:
+    with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
+        missing_psid_df.to_excel(writer, sheet_name='missing PSID', index=False)
+
+print("Missing PSID DataFrame:")
+print(missing_psid_df)
+
+
+
+import pandas as pd
+
 # Sample data
 basedf = pd.DataFrame({
     'empsid': [101, 102, 103, 104],
