@@ -1,96 +1,68 @@
 import pandas as pd
 
-# Sample data for basedf
-basedf = pd.DataFrame({
-    'empsid': [101, 102, 103, 104],
-    'category': ['new', 'existing', 'new', 'new']
-})
+def track_changes(master_df, monthly_files, gha_change_cols, open_pos_change_cols):
+    # Create DataFrames for new and changed records
+    new_records_df = pd.DataFrame(columns=master_df.columns)
+    changes_df = pd.DataFrame(columns=master_df.columns)
 
-# Sample data for spocdf
-spocdf = pd.DataFrame({
-    'PSID': [101, 105]  # Only PSID 101 is in spocdf, 102 and 104 are missing
-})
+    # Iterate through monthly files
+    for i in range(len(monthly_files) - 1):
+        # Read current and next month's files
+        curr_month_file = pd.read_excel(monthly_files[i])
+        next_month_file = pd.read_excel(monthly_files[i + 1])
 
-# Filter basedf for records where category is 'new'
-new_category_df = basedf[basedf['category'] == 'new']
+        # Split GHA and Open Position files
+        curr_gha = curr_month_file[curr_month_file['Source Type'] == 'GHA']
+        curr_open_pos = curr_month_file[curr_month_file['Source Type'] == 'Open Position']
 
-# Find missing PSIDs
-missing_psid_df = new_category_df[~new_category_df['empsid'].isin(spocdf['PSID'])]
+        next_gha = next_month_file[next_month_file['Source Type'] == 'GHA']
+        next_open_pos = next_month_file[next_month_file['Source Type'] == 'Open Position']
 
-# If there are missing PSIDs, write them to an Excel sheet
-if not missing_psid_df.empty:
-    with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
-        missing_psid_df.to_excel(writer, sheet_name='missing PSID', index=False)
+        # **Process GHA**
+        # Find new records
+        new_gha = next_gha[~next_gha[['Position ID', 'Employee ID']].apply(tuple, axis=1)
+                           .isin(curr_gha[['Position ID', 'Employee ID']].apply(tuple, axis=1))]
+        new_records_df = pd.concat([new_records_df, new_gha])
 
-print("Missing PSID DataFrame:")
-print(missing_psid_df)
+        # Find changed records
+        merged_gha = pd.merge(curr_gha, next_gha, on=['Position ID', 'Employee ID'], suffixes=('_curr', '_next'))
+        for col in gha_change_cols:
+            changes_gha = merged_gha[merged_gha[f'{col}_curr'] != merged_gha[f'{col}_next']]
+            changes_df = pd.concat([changes_df, changes_gha])
 
+        # **Process Open Position**
+        # Find new records
+        new_open_pos = next_open_pos[~next_open_pos['Position ID'].isin(curr_open_pos['Position ID'])]
+        new_records_df = pd.concat([new_records_df, new_open_pos])
 
+        # Find changed records
+        merged_open_pos = pd.merge(curr_open_pos, next_open_pos, on=['Position ID'], suffixes=('_curr', '_next'))
+        for col in open_pos_change_cols:
+            changes_open_pos = merged_open_pos[merged_open_pos[f'{col}_curr'] != merged_open_pos[f'{col}_next']]
+            changes_df = pd.concat([changes_df, changes_open_pos])
 
-import pandas as pd
+    # Combine results back into the master DataFrame
+    master_df = pd.concat([master_df, new_records_df, changes_df]).drop_duplicates()
 
-# Sample data
-basedf = pd.DataFrame({
-    'empsid': [101, 102, 103, 104],
-    'spocmacro': [None, None, None, None],
-    'spoc': [None, None, None, None]
-})
-
-lookupdf = pd.DataFrame({
-    'PSID': [101, 102, 105],
-    'spocmacro': ['Macro1', 'Macro2', 'Macro3'],
-    'spoc': ['Spoc1', 'Spoc2', 'Spoc3']
-})
-
-# Convert lookupdf to a dictionary
-lookup_dict = lookupdf.set_index('PSID')[['spocmacro', 'spoc']].to_dict(orient='index')
-
-# Define a function to fetch values from the dictionary
-def fetch_spoc(row):
-    psid = row['empsid']
-    if psid in lookup_dict:
-        row['spocmacro'] = lookup_dict[psid]['spocmacro']
-        row['spoc'] = lookup_dict[psid]['spoc']
-    return row
-
-# Apply the function to basedf
-basedf = basedf.apply(fetch_spoc, axis=1)
-
-print(basedf)
+    return master_df, new_records_df, changes_df
 
 
+# **Example Usage**
+master_file_path = 'master_file.xlsx'
+monthly_files = ['Feb24_gha_open.xlsx', 'Mar24_gha_open.xlsx']
 
+# Define change columns for GHA and Open Position
+gha_change_cols = ['Column1', 'Column2', 'Column3']  # Columns to track changes for GHA
+open_pos_change_cols = ['Column1', 'Column2', 'Column3']  # Columns to track changes for Open Position
 
+# Load master DataFrame
+master_df = pd.read_excel(master_file_path)
 
+# Track changes and new records
+master_df, new_records_df, changes_df = track_changes(master_df, monthly_files, gha_change_cols, open_pos_change_cols)
 
-import pandas as pd
-import numpy as np
-
-# Sample DataFrames
-df1 = pd.DataFrame({
-    'A2': [101, 102, 103, 104],
-    'C': ['new', 'old', 'new', 'old'],
-    'SC': [None, 'value2', None, 'value4']  # 'None' means blank
-})
-
-df2 = pd.DataFrame({
-    'AA2': [101, 102, 103, 104],
-    'SC': ['lookup_value1', 'lookup_value2', 'lookup_value3', 'lookup_value4']
-})
-
-# Step 1: Create a mask for rows where 'C' is 'new' and 'SC' is blank (None or NaN)
-mask = (df1['C'] == 'new') & (df1['SC'].isna())  # Only where 'C' is 'new' and 'SC' is blank
-
-# Step 2: Create a lookup dictionary from df2 for easy access
-lookup_dict = df2.set_index('AA2')['SC'].to_dict()
-
-# Step 3: Use np.where() to update 'SC' column conditionally
-# We only update where the mask is True, i.e., where 'C' is 'new' and 'SC' is blank
-df1['SC'] = np.where(
-    mask,
-    df1['A2'].map(lookup_dict),  # Map A2 to the lookup dictionary
-    df1['SC']  # Keep existing SC values where condition is not met
-)
-
-# Output the updated df1
-print(df1)
+# Save results to Excel
+with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
+    master_df.to_excel(writer, sheet_name='Master', index=False)
+    new_records_df.to_excel(writer, sheet_name='New Records', index=False)
+    changes_df.to_excel(writer, sheet_name='Changed Records', index=False)
