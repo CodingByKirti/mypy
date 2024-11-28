@@ -1,68 +1,38 @@
-import pandas as pd
+def process_all_months(master_file_path, monthly_files, comparison_columns, output_file):
+    # Load master file
+    master_df = pd.read_excel(master_file_path)
 
-def track_changes(master_df, monthly_files, gha_change_cols, open_pos_change_cols):
-    # Create DataFrames for new and changed records
-    new_records_df = pd.DataFrame(columns=master_df.columns)
-    changes_df = pd.DataFrame(columns=master_df.columns)
+    # Initialize empty DataFrames for final output and previous month's data
+    final_gha_combined = pd.DataFrame()
+    final_open_combined = pd.DataFrame()
+    previous_open_df = pd.DataFrame()  # For tracking "Open Position" records from the previous month
 
-    # Iterate through monthly files
-    for i in range(len(monthly_files) - 1):
-        # Read current and next month's files
-        curr_month_file = pd.read_excel(monthly_files[i])
-        next_month_file = pd.read_excel(monthly_files[i + 1])
+    for month, (gha_file, open_pos_file) in monthly_files.items():
+        # Load GHA and Open Position files for the month
+        gha_df = pd.read_excel(gha_file)
+        open_pos_df = pd.read_excel(open_pos_file)
 
-        # Split GHA and Open Position files
-        curr_gha = curr_month_file[curr_month_file['Source Type'] == 'GHA']
-        curr_open_pos = curr_month_file[curr_month_file['Source Type'] == 'Open Position']
+        # Process GHA and Open Position files against the master
+        updated_gha, new_gha = find_updated_and_new_records(
+            gha_df, master_df, month, 'GHA', comparison_columns['GHA']
+        )
+        updated_open, new_open = find_updated_and_new_records(
+            open_pos_df, previous_open_df, month, 'Open Position', comparison_columns['Open Position']
+        )
 
-        next_gha = next_month_file[next_month_file['Source Type'] == 'GHA']
-        next_open_pos = next_month_file[next_month_file['Source Type'] == 'Open Position']
+        # Append processed data to the final DataFrames
+        final_gha_combined = pd.concat([final_gha_combined, updated_gha, new_gha], ignore_index=True)
+        final_open_combined = pd.concat([final_open_combined, updated_open, new_open], ignore_index=True)
 
-        # **Process GHA**
-        # Find new records
-        new_gha = next_gha[~next_gha[['Position ID', 'Employee ID']].apply(tuple, axis=1)
-                           .isin(curr_gha[['Position ID', 'Employee ID']].apply(tuple, axis=1))]
-        new_records_df = pd.concat([new_records_df, new_gha])
+        # Update master for the next iteration (assume GHA is the master dataset)
+        master_df = gha_df
 
-        # Find changed records
-        merged_gha = pd.merge(curr_gha, next_gha, on=['Position ID', 'Employee ID'], suffixes=('_curr', '_next'))
-        for col in gha_change_cols:
-            changes_gha = merged_gha[merged_gha[f'{col}_curr'] != merged_gha[f'{col}_next']]
-            changes_df = pd.concat([changes_df, changes_gha])
+        # Update previous_open_df for the next iteration
+        previous_open_df = open_pos_df
 
-        # **Process Open Position**
-        # Find new records
-        new_open_pos = next_open_pos[~next_open_pos['Position ID'].isin(curr_open_pos['Position ID'])]
-        new_records_df = pd.concat([new_records_df, new_open_pos])
+    # Combine GHA and Open Position into a single DataFrame
+    final_combined_df = combine_all_records(final_gha_combined, final_open_combined)
 
-        # Find changed records
-        merged_open_pos = pd.merge(curr_open_pos, next_open_pos, on=['Position ID'], suffixes=('_curr', '_next'))
-        for col in open_pos_change_cols:
-            changes_open_pos = merged_open_pos[merged_open_pos[f'{col}_curr'] != merged_open_pos[f'{col}_next']]
-            changes_df = pd.concat([changes_df, changes_open_pos])
-
-    # Combine results back into the master DataFrame
-    master_df = pd.concat([master_df, new_records_df, changes_df]).drop_duplicates()
-
-    return master_df, new_records_df, changes_df
-
-
-# **Example Usage**
-master_file_path = 'master_file.xlsx'
-monthly_files = ['Feb24_gha_open.xlsx', 'Mar24_gha_open.xlsx']
-
-# Define change columns for GHA and Open Position
-gha_change_cols = ['Column1', 'Column2', 'Column3']  # Columns to track changes for GHA
-open_pos_change_cols = ['Column1', 'Column2', 'Column3']  # Columns to track changes for Open Position
-
-# Load master DataFrame
-master_df = pd.read_excel(master_file_path)
-
-# Track changes and new records
-master_df, new_records_df, changes_df = track_changes(master_df, monthly_files, gha_change_cols, open_pos_change_cols)
-
-# Save results to Excel
-with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
-    master_df.to_excel(writer, sheet_name='Master', index=False)
-    new_records_df.to_excel(writer, sheet_name='New Records', index=False)
-    changes_df.to_excel(writer, sheet_name='Changed Records', index=False)
+    # Save to Excel
+    final_combined_df.to_excel(output_file, index=False)
+    print(f"Final combined data saved to {output_file}.")
