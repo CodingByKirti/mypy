@@ -1,38 +1,20 @@
-def process_all_months(master_file_path, monthly_files, comparison_columns, output_file):
-    # Load master file
-    master_df = pd.read_excel(master_file_path)
+Subject: MoM: GSC Recharges Automation Discussion
 
-    # Initialize empty DataFrames for final output and previous month's data
-    final_gha_combined = pd.DataFrame()
-    final_open_combined = pd.DataFrame()
-    previous_open_df = pd.DataFrame()  # For tracking "Open Position" records from the previous month
+Dear Team,
 
-    for month, (gha_file, open_pos_file) in monthly_files.items():
-        # Load GHA and Open Position files for the month
-        gha_df = pd.read_excel(gha_file)
-        open_pos_df = pd.read_excel(open_pos_file)
+Here are the key points from our recent discussion:
 
-        # Process GHA and Open Position files against the master
-        updated_gha, new_gha = find_updated_and_new_records(
-            gha_df, master_df, month, 'GHA', comparison_columns['GHA']
-        )
-        updated_open, new_open = find_updated_and_new_records(
-            open_pos_df, previous_open_df, month, 'Open Position', comparison_columns['Open Position']
-        )
+    SOP Clarity: The SOP document is unclear and frequently changes. Previous work is often abandoned due to modified requirements.
+    Adoption Uncertainty: Ms. R mentioned that the solution's adoption will be decided after it’s completed and delivered.
+    New Requirements:
+        Lookup PSID from the base input file (sent to Ops) with consolidated input from the SPOC file. Filter records where 'Billed/Not Billed' = 'Field to be updated'.
+        Replace the "Review Sheet" with 'Multiple Billing Inputs' for data with the same PSID but differing attributes.
+        Ensure Billing Contact PSID is 8 digits by adding preceding zeroes where necessary.
+        Add a Comments column to the original sheet:
+            "Not Validated": For Billing Contacts not present in last month's file.
+            "Duplicate Record": If PSID and all other column values are the same, and 'Remarks from SPOC' is blank. Remove from the original sheet and keep in a separate 'Deleted Data' sheet with the comment.
+            "FTE Count Mismatch": If PSID and other column values (except 'No. of FTE') are the same and the Sum of FTE ≠ 1.
 
-        # Append processed data to the final DataFrames
-        final_gha_combined = pd.concat([final_gha_combined, updated_gha, new_gha], ignore_index=True)
-        final_open_combined = pd.concat([final_open_combined, updated_open, new_open], ignore_index=True)
+Please let me know if further clarifications are needed.
 
-        # Update master for the next iteration (assume GHA is the master dataset)
-        master_df = gha_df
-
-        # Update previous_open_df for the next iteration
-        previous_open_df = open_pos_df
-
-    # Combine GHA and Open Position into a single DataFrame
-    final_combined_df = combine_all_records(final_gha_combined, final_open_combined)
-
-    # Save to Excel
-    final_combined_df.to_excel(output_file, index=False)
-    print(f"Final combined data saved to {output_file}.")
+Best regards,
