@@ -1,20 +1,13 @@
-Subject: MoM: GSC Recharges Automation Discussion
+Here are the 9 points formatted as a table:
 
-Dear Team,
-
-Here are the key points from our recent discussion:
-
-    SOP Clarity: The SOP document is unclear and frequently changes. Previous work is often abandoned due to modified requirements.
-    Adoption Uncertainty: Ms. R mentioned that the solution's adoption will be decided after it’s completed and delivered.
-    New Requirements:
-        Lookup PSID from the base input file (sent to Ops) with consolidated input from the SPOC file. Filter records where 'Billed/Not Billed' = 'Field to be updated'.
-        Replace the "Review Sheet" with 'Multiple Billing Inputs' for data with the same PSID but differing attributes.
-        Ensure Billing Contact PSID is 8 digits by adding preceding zeroes where necessary.
-        Add a Comments column to the original sheet:
-            "Not Validated": For Billing Contacts not present in last month's file.
-            "Duplicate Record": If PSID and all other column values are the same, and 'Remarks from SPOC' is blank. Remove from the original sheet and keep in a separate 'Deleted Data' sheet with the comment.
-            "FTE Count Mismatch": If PSID and other column values (except 'No. of FTE') are the same and the Sum of FTE ≠ 1.
-
-Please let me know if further clarifications are needed.
-
-Best regards,
+| *Point #* | *Description* |
+| --- | --- |
+| 1 | *Define Data Scope*: Will we need data for the current month only, or for the entire year for projection purposes? |
+| 2 | *COS Centre Mapping*: Will we need to remap COS centres after finalizing the data? |
+| 3 | *Month Identification*: How will we identify the month for the data? Is there a specific column we can reference? |
+| 4 | *Separate Tables for L3 Levels*: With 133 different L3 levels, do we need to create separate tables for each level? |
+| 5 | *Standardize L3 Level Names*: How will we standardize the names of L3 levels to ensure consistency? |
+| 6 | *Special Characters in L3 Values*: Will L3 values contain special characters, or only alphanumeric characters? How will this impact the code? |
+| 7 | *Frequency of Updates*: If we need data for the entire year, how frequently will we update the data? |
+| 8 | *Rate Effects and Updates*: Will the rate effects be fixed or change with every month? How will we update previous data? |
+| 9 | *Pivot Table Scope*: Are the pivot tables currently being plotted only for direct costs, or will we need to include indirect and other costs as well? |
