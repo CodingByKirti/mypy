@@ -1,93 +1,20 @@
-Here’s the final self-assessment text incorporating all the discussed changes:
-Self-Assessment for 2024
+ Seeking Your Input on Automation Opportunities
 
-This year has been a productive one, marked by significant contributions to process automation, system improvements, and personal growth. Below is a summary of my key achievements and ongoing projects:
-Key Achievements
+Dear All,
 
-    Process Automation: A central focus of my role has been automating key processes to improve efficiency and data accuracy. Notable projects include automation if:
-        Consolidation of Finance FRP data with Fx rate, Skills Discovery Management: Automated data processing for skill discovery, enhancing insights into talent and skills.
-        Hiring Role Review Data Extraction: Automated data extraction, segmentation, and organization for hiring reviews, creating a well-structured Excel file with formatted sheets for easy analysis.
-        Standardized Hiring Review Input File: Created a standardized template for input data, ensuring consistency and reducing errors.
-        Cost Model Value Update for Governance and Risk: Automated updates for governance-related cost models, streamlining accuracy.
-        Finance FRP File Splitter and Consolidation: Simplified the process of splitting and consolidating files for the central model.
-        Leavers Email Automation (Leaver Management): Developed Python code to automate leavers' email notifications for Ashish’s team, reducing dependency on Qlik and allowing the team to run the process independently.
-        Hiring Review Template Update: Enhanced existing code to support new templates for L3 and L4 levels, increasing flexibility for future requirements.
+I hope you’re doing well.
 
-    Ongoing Projects: Several critical automation projects are in progress, with the aim of further streamlining processes and enhancing data consistency:
-        Transaction Listing Process Automation: Transitioned from MS Access to a Python-based solution, completed for HGSU and HGMS. Work on HGHQ is ongoing and has been challenging due to the need for reverse-engineering in the absence of the original database developer.
-        Billing Process Automation: Developing a Python-based solution to streamline billing processes, reducing manual input and improving accuracy.
-        Central Master File Development: Building a unified master file by combining datasets (e.g., GHA open positions, attrition, HR input), enhancing headcount tracking and forecasting.
-        Automated TM1-Based Cost Reporting: Working on automating the generation of 40+ cost reports based on TM1 data extracts; awaiting inputs from other teams to move forward.
-        Rate Card Mapping Automation: Automating the mapping of rate cards against GHA data, ensuring correct alignment and efficient data handling.
+Following a discussion with Inish, I’d like to request your valuable input on areas where automation could help streamline processes within your team. The idea is to reduce repetitive, time-consuming tasks so your team can focus more on impactful and strategic work.
 
-    QlikSense Dashboard Management: Took over management of essential QlikSense dashboards, including COO Cost Reporting and Finance Forecast, ensuring data is accessible and reliable for stakeholders.
+It would be great if you could share your insights on:
 
-    Training & Development:
-        Completed the Appian Developer course, supporting my involvement in workflow automation projects.
-        Earned the Technical AI Ambassador badge, enhancing my knowledge of AI applications in business processes to drive future automation.
+    Manual and time-consuming tasks: Processes that could benefit from automation.
+    Improvements in accuracy or speed: Tasks where automation could enhance quality and reduce errors.
+    Challenges and pain points: Any roadblocks or inefficiencies that automation could help resolve.
+    Peak work periods and quieter times: So I can plan interactions with BMS accordingly to better understand your workflows.
 
-    Business as Usual (BAU) Tasks: Took over key processes like Contractor Accruals, TM1 Data Extraction, and Transaction Listing. Although these tasks were later reassigned, learning the detailed steps, especially without a business background, provided a valuable understanding of core operations.
+Your suggestions will play a key role in identifying opportunities that make a real difference for your team. Feel free to share your thoughts via email or reach out to me directly to discuss further.
 
-Lessons Learned
+Looking forward to hearing your ideas!
 
-This year, I learned the importance of clear communication and proactive risk management. By consistently updating stakeholders on project status and challenges, I aim to ensure better alignment and manage expectations effectively. Early flagging of potential risks or delays has proven invaluable in maintaining smooth project progress. Additionally, stepping outside of my IT role to understand BAU processes has strengthened my cross-functional collaboration skills and deepened my business knowledge.
-
-In summary, while there were challenges, I am proud of the progress made in automation and the positive impact these solutions have had on our team’s efficiency. I look forward to building on these foundations to deliver even greater value in the coming year.
-
-
-
-------------------------
-This year, I focused on key automation and data management projects that have significantly improved efficiency and data accuracy across various areas. Below is an overview of my contributions and current focus:
-Key Achievements:
-
-    Process Automation: This year, I automated several critical processes, including:
-        Finance FRP Consolidation
-        Skills Discovery Management
-        Hiring Role Review Data Extraction
-        Hiring Review Input Standardization
-        Cost Model Value Update for Governance and Risk
-        Finance FRP File Splitter and Consolidation
-        Leavers Email Automation (Leaver Management)
-        Hiring Review Template Update
-
-    Ongoing Projects: I am currently working on additional automation projects to further streamline processes, such as:
-        Transaction Listing Process Automation
-        Billing Process Automation
-        Central Master File Development
-        Automated TM1-Based Cost Reporting
-        Rate Card Mapping Automation
-
-    QlikSense Dashboard Management: Recently took over key dashboards, including COO Cost Reporting and Finance Forecast, to ensure data is reliable and accessible for stakeholders.
-
-    Training & Development: Completed the Appian Developer course and earned the Technical AI Ambassador badge, which have helped enhance my skills for future automation and data analysis efforts.
-
-    Business as Usual (BAU) Tasks: Took over processes like Contractor Accruals, TM1 Data Extraction, and Transaction Listing, providing me with a deeper understanding of BAU operations, despite not having a business background.
-
-Lessons Learned
-
-This year reinforced the importance of clear communication and proactive risk management. Regular updates to stakeholders on progress and challenges have helped align expectations and maintain project momentum. Additionally, my efforts to understand BAU processes have strengthened my cross-functional collaboration skills, helping me bridge the gap between IT and business needs.
-
-In summary, I’m proud of the progress made in automation and look forward to further building on these foundations in the coming year.
-
-
-
--------
-Key Achievements
-
-    Process Automation: One of my primary goals this year was automating essential processes to streamline workflows and improve data reliability. Notable projects include the automation of the following tasks using Python: Finance FRP Consolidation, Skills Discovery Management, Hiring Role Review Data Extraction, Hiring Review Input Standardization, Cost Model Value Update for Governance and Risk, Finance FRP File Splitter and Consolidation, Leavers Email Automation (Leaver Management), and Hiring Review Template Update.
-
-    Ongoing Projects: I am currently working on additional automation projects to further streamline processes, such as Transaction Listing Process Automation, Billing Process Automation, Central Master File Development, Automated TM1-Based Cost Reporting, and Rate Card Mapping Automation.
-
-    QlikSense Dashboard Management: Recently took over key dashboards, including COO Cost Reporting and Finance Forecast, to ensure data is reliable and accessible for stakeholders.
-
-    Training & Development: Completed the Appian Developer course and earned the Technical AI Ambassador badge, which have helped enhance my skills for future automation and data analysis efforts.
-
-    Business as Usual (BAU) Tasks: Took over processes like Contractor Accruals, TM1 Data Extraction, and Transaction Listing, providing me with a deeper understanding of BAU operations, despite not having a business background.
-
-Lessons Learned
-
-This year reinforced the importance of clear communication and proactive risk management. Regular updates to stakeholders on progress and challenges have helped align expectations and maintain project momentum. Additionally, my efforts to understand BAU processes have strengthened my cross-functional collaboration skills, helping me bridge the gap between IT and business needs.
-
-In summary, I’m proud of the progress made in automation and look forward to further building on these foundations in the coming year.
-
-This year taught me the value of keeping everyone in the loop and flagging any issues early. Moving forward, I’ll make it a priority to update stakeholders regularly to keep projects on track. I also realized that understanding our business processes makes my work more effective and aligned with team needs. I’m excited to apply these lessons to build stronger connections across teams and deliver solutions that make a real difference.
+Best regards,
