@@ -1,36 +1,43 @@
-Here’s a draft email for your update:
+Yes, you can add this logging configuration to your IPython notebook (IPynb file). Here's where you can add it:
 
-Subject: Weekly Update
+1. Create a new cell at the top of your notebook.
+2. Add the logging configuration code to this cell.
 
-Dear [Boss's Name],
+This cell should be executed before any other cells that use the logger. You can achieve this by:
 
-I hope this email finds you well. Below is the summary of my work for this week:
+1. Running all cells in order (Kernel > Restart & Run All).
+2. Ensuring that the logging cell is executed before any other cells that use the logger.
 
-    HDPI Financials:
-        Task completed and tested.
-        Encountered a glitch in the nominal mappings used; discussed this with Anshul.
-        Awaiting the standard nominal mapping file from Sahil to update and finalize the code.
+Alternatively, you can also add this logging configuration to a separate Python file (e.g., `logging_config.py`) and import it in your IPynb file. This way, you can keep your logging configuration separate from your notebook code.
 
-    Time-to-Hire Report:
-        Updated the Qlik dashboard as per new requirements.
-        The task is completed.
+Here's an example:
 
-    Transaction Listing Automation:
-        The file is ready for testing.
-        However, the nominal mappings issue also applies here. Hoping to receive the corrected mappings by the beginning of next week.
+logging_config.py:
 
-    Finance FRP Data Structuring for Anaplan:
-        Code for preparing and structuring the data is completed and delivered.
-        This was done on a priority basis.
+```
+import logging
 
-    Organization Structure for Direct Reportees:
-        Had a call with Kasturi regarding creating the structure for multiple countries as requested by Krystel.
-        Awaiting sample input from Sahil Goyal to proceed. This is marked as a priority for completion next week.
+Create a logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-    Automating Reminders for Special Days:
-        Assisted Himangi by writing Python code to automate scheduling reminders for special team events throughout the year.
+Create a file handler
+handler = logging.FileHandler('log_file.log')
+handler.setLevel(logging.DEBUG)
 
-Despite feeling unwell this week, I managed to complete most of the assigned tasks. Please let me know if there are any additional updates or priorities for next week.
+Create a formatter and set it for the handler
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
 
-Thank you,
-[Your Name]
+Add the handler to the logger
+logger.addHandler(handler)
+```
+
+IPynb file:
+
+```
+import logging
+from logging_config import logger
+
+Rest of your code...
+```
