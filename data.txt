@@ -1,3 +1,8 @@
+=SUMPRODUCT((SourceData!$B$2:$B$1000="Finance Operations") * (SourceData!$C$2:$C$1000=$B3) * (TEXT(SourceData!$A$2:$A$1000,"MMM YY")=TEXT(C$2,"MMM YY")))
+Filters Recipient L3 to "Finance Operations".
+Matches BF Level 3 with the value in column B ($B3).
+Compares the Onboarding Month (formatted as "MMM YY") with the summary table header month (C$2).
+
 Yes, you can add this logging configuration to your IPython notebook (IPynb file). Here's where you can add it:
 
 1. Create a new cell at the top of your notebook.
