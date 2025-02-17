@@ -1,35 +1,76 @@
-import pandas as pd
+Sub ProcessReportFiles()
+    Dim srcWB As Workbook, tgtWB As Workbook, copyWB As Workbook
+    Dim srcWS As Worksheet, tgtWS As Worksheet, ws As Worksheet
+    Dim inputRow As Integer, lastRow As Integer
+    Dim RTN As String, ReportName As String, FileName As String
+    Dim tgtFilePath As String, inputFilePath As String, outputFolder As String
+    Dim tgtWBPath As String
 
-# Assuming `master_df`, `mom_gha_df`, and `mom_open_pos_df` are already loaded as DataFrames
+    ' Set input and output paths
+    inputFilePath = "C:\Path\To\Reportnames.xlsx" ' Update with actual path
+    tgtWBPath = "C:\Path\To\TargetWorkbook.xlsx"  ' Update with actual path
+    outputFolder = "C:\Path\To\OutputFolder\"      ' Ensure this folder exists
 
-# Ensure IDs are strings for consistent comparison
-master_df['Position ID'] = master_df['Position ID'].astype(str)
-master_df['Employee ID'] = master_df['Employee ID'].astype(str)
-mom_gha_df['Position ID'] = mom_gha_df['Position ID'].astype(str)
-mom_gha_df['Employee ID'] = mom_gha_df['Employee ID'].astype(str)
-mom_open_pos_df['Position ID'] = mom_open_pos_df['Position ID'].astype(str)
+    ' Open source workbook (Reportnames.xlsx)
+    Set srcWB = Workbooks.Open(inputFilePath)
+    Set srcWS = srcWB.Sheets(1) ' Assuming data is in the first sheet
 
-# Step 1: Identify new records in `mom_gha_df` that are not in `master_df`
-new_gha_records = mom_gha_df[~mom_gha_df.set_index(['Position ID', 'Employee ID']).index.isin(
-    master_df.set_index(['Position ID', 'Employee ID']).index
-)]
+    ' Find last row in column A (RTN CODE CHILD)
+    lastRow = srcWS.Cells(srcWS.Rows.Count, 1).End(xlUp).Row
 
-# Step 2: Identify new records in `mom_open_pos_df` that are not in `master_df` (considering only Position ID)
-new_open_pos_records = mom_open_pos_df[~mom_open_pos_df['Position ID'].isin(master_df['Position ID'])]
+    ' Loop through each row
+    For inputRow = 2 To lastRow
+        RTN = srcWS.Cells(inputRow, 1).Value
+        ReportName = srcWS.Cells(inputRow, 2).Value
+        
+        ' Skip empty values
+        If RTN = "" Or ReportName = "" Then GoTo NextIteration
 
-# Combine new records
-new_records_df = pd.concat([new_gha_records, new_open_pos_records], ignore_index=True)
+        ' Open target workbook
+        Set tgtWB = Workbooks.Open(tgtWBPath)
+        Set tgtWS = tgtWB.Sheets("Setup")
 
-# Step 3: Append new records to master_df
-master_df = pd.concat([master_df, new_records_df], ignore_index=True)
+        ' Paste values
+        tgtWS.Range("D3").Value = RTN
+        tgtWS.Range("D4").Value = ReportName
 
-# Step 4: Write master and new records to Excel
-output_file = "updated_master_with_new_records.xlsx"
-with pd.ExcelWriter(output_file) as writer:
-    master_df.to_excel(writer, sheet_name="Master Updated", index=False)
-    new_records_df.to_excel(writer, sheet_name="New Records", index=False)
+        ' Refresh workbook (F9 equivalent)
+        Application.CalculateFull
 
-print("Updated master file and new records saved in:", output_file)
+        ' Create a copy of the entire workbook
+        tgtWB.SaveCopyAs outputFolder & "Temp_Copy.xlsx"
+        Set copyWB = Workbooks.Open(outputFolder & "Temp_Copy.xlsx")
 
-# MoM tracking will be performed here for the updated master_df after each month's data is added.
-# Additional processing would be required to track and mark changes month-over-month.
+        ' Paste all sheets as values
+        For Each ws In copyWB.Sheets
+            ws.Cells.Copy
+            ws.Cells.PasteSpecial Paste:=xlPasteValues
+            Application.CutCopyMode = False
+        Next ws
+
+        ' Get filename from D4
+        FileName = tgtWS.Range("D4").Value & ".xlsx"
+        tgtFilePath = outputFolder & FileName
+
+        ' Save the copied workbook with new name
+        copyWB.SaveAs Filename:=tgtFilePath, FileFormat:=xlOpenXMLWorkbook
+        copyWB.Close SaveChanges:=False ' Close copied workbook
+
+        ' Close target workbook without saving
+        tgtWB.Close SaveChanges:=False
+
+NextIteration:
+    Next inputRow
+
+    ' Close source workbook
+    srcWB.Close SaveChanges:=False
+
+    ' Cleanup
+    Set srcWS = Nothing
+    Set srcWB = Nothing
+    Set tgtWS = Nothing
+    Set tgtWB = Nothing
+    Set copyWB = Nothing
+
+    MsgBox "Process Completed!", vbInformation
+End Sub
