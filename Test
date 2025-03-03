@@ -1,3 +1,90 @@
+One-Pager Overview – My Role & Contributions
+1. Activities & Time Commitment
+Technology Exploration: Researching new tools (Alteryx, Anaplan Model Builder) to enhance team efficiency.
+Solution Development for Recharges Team: Saving ~26 hrs/month (7 hrs already implemented).
+HDPI GL Extract Automation: Saves ~4 hrs/month.
+Ad-hoc Automation Support: Addressing process inefficiencies (e.g., Cost Template Automation).
+Qlik Dashboards Management: Maintaining & updating views for:
+Time to Hire
+Cost Reporting
+Forecast Dashboard
+Forecast into Journal
+Anaplan Support: Preparing & validating data for Global Role Exercise.
+Time Investment Factors: SOP availability, task complexity, and stakeholder responsiveness significantly impact delivery timelines.
+2. Key Stakeholders & Engagement Channels
+Finance COE Team: Primary point of interaction for automation requests, clarifications, and process understanding.
+Business Managers (BMs): Engaged on a need basis for project details, but their availability is a challenge.
+Engagement Methods:
+Regular check-ins with Finance COE for alignment
+Ad-hoc discussions with BMs for project inputs
+Email/slack-based communication for automation requests
+3. Key Challenges & Roadblocks
+Limited Stakeholder Availability: Many projects stall due to delays in responses from BMs.
+Lack of Process Documentation: SOPs are often missing, making automation difficult.
+Resistance to Automation: Some stakeholders perceive automation as a threat to manual roles.
+Scope Creep & Abandoned Projects: Stakeholders often change requirements midway or drop projects without communication.
+✅ Past Attempts to Address Challenges:
+
+Follow-ups to ensure clarity → Often leads to long delays.
+Self-driven documentation → Requires additional effort without formal approvals.
+Proactive automation suggestions → Met with hesitation or resistance.
+4. Opportunities for Improvement & Next Steps
+📌 Streamlining Engagement & Visibility:
+
+Formalizing a structured automation request & approval process to avoid abandoned projects.
+Setting clear timelines & checkpoints for stakeholder inputs to avoid indefinite waiting periods.
+📌 Enhancing Documentation & SOPs:
+
+Encouraging teams to maintain standardized process documents for smoother automation.
+Proposing a central repository for business processes & automation requests.
+📌 Driving a Proactive Automation Culture:
+
+Showcasing successful automation use cases to demonstrate impact & encourage adoption.
+Creating automation training sessions for stakeholders to ease resistance.
+-----------------------
+One-Pager Overview – My Role & Contributions
+1. Key Activities & Time Commitment
+Technology Exploration: Evaluating tools like Alteryx and Anaplan Model Builder to enhance efficiency.
+Process Automation & Efficiency Gains:
+Recharges Team Solution: Projected to save ~26 hrs/month (7 hrs already implemented).
+HDPI GL Extract Automation: Saves ~4 hrs/month.
+Ad-hoc Automation: Addressing process inefficiencies (e.g., Cost Template Automation).
+Qlik Dashboard Management: Maintaining & updating dashboards for Time to Hire, Cost Reporting, and Forecasting.
+Anaplan Support: Preparing & validating input data for key exercises.
+Time Investment Factors: Task complexity, documentation availability, and stakeholder engagement impact timelines.
+2. Stakeholders & Engagement
+Finance COE Team: Regular collaboration for process improvements and automation initiatives.
+Business Managers (BMs): Engaged for process insights and project alignment.
+Engagement Channels:
+Day-to-day collaboration with Finance COE.
+Project-based discussions with BMs.
+Ad-hoc troubleshooting and automation requests.
+3. Key Challenges & Considerations
+Stakeholder Availability: Timely inputs are essential for project completion.
+Process Documentation: Clear SOPs would streamline automation efforts.
+Evolving Requirements: Aligning automation with dynamic business needs requires flexibility.
+4. Opportunities for Improvement
+✅ Enhancing Collaboration & Efficiency:
+
+Establishing a structured automation request & feedback loop to ensure alignment.
+Encouraging process documentation to improve clarity and scalability.
+Showcasing successful automation use cases to drive adoption and awareness.
+--------------------
+Key Challenges & Considerations
+Stakeholder Availability: Timely inputs are essential for project completion.
+Process Documentation: Clear SOPs would streamline automation efforts.
+Evolving Requirements: Aligning automation with dynamic business needs requires flexibility.
+Perception of Automation: Some stakeholders are cautious about automation, either due to concerns about its impact on their roles or the belief that manual processes offer more control and accuracy. Encouraging a shift in perspective—seeing automation as a tool to enhance efficiency while allowing teams to focus on higher-value tasks—can help drive adoption.
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------
 Sub ProcessReportFiles()
     Dim srcWB As Workbook, tgtWB As Workbook, copyWB As Workbook
     Dim srcWS As Worksheet, tgtWS As Worksheet, ws As Worksheet
