@@ -1,12 +1,13 @@
-Successfully implemented some tasks using Alteryx.
-Partially achieved results for certain Excel-based operations.
-Some tasks could not be fully replicated and need further exploration.
-Identified areas where Alteryx can enhance or automate workflows.
-Recognized limitations and the need for additional learning.
-Compiled potential use cases for partial or full transformation.
-After exploring and testing basic processes in Alteryx using self-created sample data, some Excel-based operations commonly performed by our team have been gradually implemented. While not all tasks were fully successful, basic processes can eventually be handled through Alteryx. A list of these potential use cases will be added later.
+Alteryx simplifies and automates data tasks that Excel handles manually, reducing effort, saving time, and enhancing efficiency—especially for repetitive and complex workflows. While it excels in data preparation, transformation, and automation, tasks like real-time collaboration and report formatting may still require Excel.
 
-
+Capabilities of Alteryx
+Automates repetitive Excel tasks like data cleaning, merging, and filtering.
+Handles large datasets efficiently without performance slowdowns.
+Performs complex calculations and transformations with minimal effort.
+Integrates data from multiple sources (Excel, databases, APIs, etc.).
+Reduces manual errors through standardized workflows.
+Enables advanced analytics such as forecasting, variance analysis, and trends.
+Exports clean, processed data back into Excel or other formats for reporting.
 
 Tested basic processes in Alteryx using self-created sample data.
 Applied common Excel-based operations to understand feasibility.
