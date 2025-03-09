@@ -1,20 +1,19 @@
-Sub UpdateFilteredFiles()
-    Dim wb As Workbook, baseWb As Workbook
-    Dim wsOptions As Worksheet, wsData As Worksheet
-    Dim filePath As String, folderPath As String
+Sub ProcessFilteredFiles()
+    Dim baseWb As Workbook, wb As Workbook
+    Dim wsData As Worksheet, wsOptions As Worksheet
+    Dim wsL3Summary As Worksheet, wsL4Summary As Worksheet
+    Dim folderPath As String, filePath As String
+    Dim fso As Object, file As Object
     Dim L3Name As String
-    Dim dictL4 As Object
-    Dim fso As Object, file As Object, fileList As Object
-    Dim cell As Range
-    Dim newRow As Long, countL4 As Long, countDeletedRows As Long
     Dim lastRowOptions As Long, lastRowData As Long
-    Dim rowNum As Long
+    Dim dictL4 As Object, cell As Range
+    Dim newRow As Long
 
-    ' Set base workbook (MAIN SOURCE FILE)
-    Set baseWb = ThisWorkbook  ' The main file running this macro
+    ' Set base workbook (SOURCE FILE containing complete Options data)
+    Set baseWb = ThisWorkbook
 
     ' Set folder path where filtered files are saved
-    folderPath = baseWb.Path & "\Filtered_Files\" ' Adjust if needed
+    folderPath = baseWb.Path & "\Filtered_Files\" ' Adjust path if needed
 
     ' Create File System Object
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -25,11 +24,8 @@ Sub UpdateFilteredFiles()
         Exit Sub
     End If
 
-    ' Get the list of files once to avoid infinite loops
-    Set fileList = fso.GetFolder(folderPath).Files
-
     ' Loop through each file in the folder
-    For Each file In fileList
+    For Each file In fso.GetFolder(folderPath).Files
         ' Process only Excel files
         If LCase(Right(file.Name, 5)) = ".xlsx" Then
             ' Open the filtered file
@@ -39,73 +35,73 @@ Sub UpdateFilteredFiles()
             ' Debug: Show which file is being processed
             Debug.Print "Processing File: " & wb.Name
 
-            ' Set sheet references (only in the FILTERED FILE)
+            ' Set sheet references
             On Error Resume Next
-            Set wsOptions = wb.Sheets("Options")
             Set wsData = wb.Sheets("Data")
+            Set wsOptions = wb.Sheets("Options")
+            Set wsL3Summary = wb.Sheets("L3 Summary")
+            Set wsL4Summary = wb.Sheets("L4 Summary")
             On Error GoTo 0
 
-            ' Skip files if missing sheets
-            If wsOptions Is Nothing Or wsData Is Nothing Then
-                MsgBox "Missing Options or Data sheet in: " & wb.Name, vbExclamation, "Skipping"
+            ' Skip files if missing required sheets
+            If wsData Is Nothing Or wsOptions Is Nothing Or wsL3Summary Is Nothing Or wsL4Summary Is Nothing Then
+                MsgBox "Missing required sheets in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
             End If
 
+            ' ---- FILTER DATA SHEET ----
+            lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+
+            ' Loop through data in reverse order to delete non-matching rows
+            Dim rowNum As Long
+            For rowNum = lastRowData To 2 Step -1
+                If wsData.Cells(rowNum, 1).Value <> L3Name Then
+                    wsData.Rows(rowNum).Delete
+                End If
+            Next rowNum
+
             ' ---- UPDATE OPTIONS SHEET ----
-            ' Clear only columns A & B (not the whole sheet)
-            wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
+            ' Clear only Column A2 and B3 onwards (not the entire sheet)
+            wsOptions.Range("A2").ClearContents
+            wsOptions.Range("B3:B" & wsOptions.Rows.Count).ClearContents
+
+            ' Paste L3 Name in A2
+            wsOptions.Range("A2").Value = L3Name
 
             ' Create dictionary to store unique L4 values
             Set dictL4 = CreateObject("Scripting.Dictionary")
 
             ' Identify last row in Options (Col D = L3, Col E = L4s)
             lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-            newRow = 2 ' Start from row 2 (keep headers intact)
-            countL4 = 0
+            newRow = 3 ' Start from row 3 (B1 is header, B2 is "*")
 
             ' Loop through Options sheet to filter L3 & L4 values
             For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
                 If cell.Value = L3Name Then
-                    ' Add L3 to Column A
-                    wsOptions.Cells(newRow, 1).Value = L3Name
-
                     ' Add unique L4s to Column B
                     If Not dictL4.Exists(wsOptions.Cells(cell.Row, "E").Value) Then
                         dictL4.Add wsOptions.Cells(cell.Row, "E").Value, Nothing
                         wsOptions.Cells(newRow, 2).Value = wsOptions.Cells(cell.Row, "E").Value
                         newRow = newRow + 1
-                        countL4 = countL4 + 1
                     End If
                 End If
             Next cell
 
-            ' Add "*" as first entry in L4 dropdown
-            If countL4 > 0 Then
-                wsOptions.Rows("2:2").Insert Shift:=xlDown
-                wsOptions.Cells(2, 2).Value = "*"
-            End If
+            ' ---- UPDATE SUMMARY SHEETS ----
+            ' Update L3 Summary B1 with L3 Name
+            wsL3Summary.Range("B1").Value = L3Name
 
-            ' Debugging - Show count of L4s added
-            Debug.Print "L4s updated in " & wb.Name & ": " & countL4
-
-            ' ---- FILTER DATA SHEET ----
-            lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
-            countDeletedRows = 0
-
-            ' Only delete rows in the filtered files, NOT the source file
-            If wb.Name <> baseWb.Name Then
-                ' Loop through data in reverse order to delete non-matching rows
-                For rowNum = lastRowData To 2 Step -1
-                    If wsData.Cells(rowNum, 1).Value <> L3Name Then
-                        wsData.Rows(rowNum).Delete
-                        countDeletedRows = countDeletedRows + 1
-                    End If
-                Next rowNum
-            End If
-
-            ' Debugging - Show count of deleted rows
-            Debug.Print "Rows deleted in Data sheet of " & wb.Name & ": " & countDeletedRows
+            ' Update L4 Summary B1 with dropdown from updated Options list
+            With wsL4Summary.Range("B1").Validation
+                .Delete
+                .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+                    xlBetween, Formula1:="=Options!B3:B" & newRow - 1
+                .IgnoreBlank = True
+                .InCellDropdown = True
+                .ShowInput = True
+                .ShowError = True
+            End With
 
             ' Save and close the filtered file
             wb.Save
@@ -120,6 +116,6 @@ NextFile:
     Set dictL4 = Nothing
 
     ' Completion message
-    MsgBox "Filtering & dropdown update completed for all filtered files.", vbInformation, "Done"
+    MsgBox "Processing completed for all filtered files.", vbInformation, "Done"
 
 End Sub
