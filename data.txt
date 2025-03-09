@@ -1,76 +1,86 @@
 Sub CreateFilteredFiles()
     Dim wsOptions As Worksheet, wsData As Worksheet
     Dim lastRowOptions As Long, rngL3 As Range, cell As Range
-    Dim L3Dict As Object, FilePath As String, L3 As String
+    Dim L3Dict As Object, FilePath As String, L3 As Variant
     Dim NewWorkbook As Workbook, wsNewData As Worksheet
     Dim lastRowData As Long
-
+    Dim MainFilePath As String, NewFilePath As String
+    
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-
+    
     ' Set reference to Options sheet
     Set wsOptions = ThisWorkbook.Sheets("Options")
-
+    
     ' Get last row in column D (L3 values)
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-
+    
     ' Create dictionary to store unique L3 values
     Set L3Dict = CreateObject("Scripting.Dictionary")
-
+    
     ' Loop through L3 values and store unique ones
     For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
         If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
             L3Dict.Add cell.Value, Nothing
         End If
     Next cell
-
+    
+    ' Store the main file path
+    MainFilePath = ThisWorkbook.FullName
+    
     ' Loop through unique L3 values and create file copies
     For Each L3 In L3Dict.Keys
+        ' Define the new file path
+        NewFilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        
         ' Save a new copy with the L3 name
-        FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
-        ThisWorkbook.SaveCopyAs FilePath  ' Creates a copy
+        ThisWorkbook.SaveCopyAs NewFilePath  ' Creates a valid copy
     Next L3
-
+    
     ' Process each newly created file
     For Each L3 In L3Dict.Keys
         ' Open the copied file
-        FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
-        Set NewWorkbook = Workbooks.Open(FilePath)
-
-        ' Set sheet reference
-        Set wsNewData = NewWorkbook.Sheets("Data")
-
-        ' Get last row of data
-        lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
-
-        ' Apply AutoFilter on row 2 (Column G = Business Framework Group)
-        wsNewData.Rows("2:" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
-
-        ' Delete all non-matching rows
-        On Error Resume Next
-        wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
-        On Error GoTo 0
-
-        ' Remove filter
-        wsNewData.AutoFilterMode = False
-
-        ' Refresh data
-        wsNewData.Calculate
-
-        ' Delete "Reg Summary" sheet if it exists
-        On Error Resume Next
-        NewWorkbook.Sheets("Reg Summary").Delete
-        On Error GoTo 0
-
-        ' Save and close the modified file
-        NewWorkbook.Save
-        NewWorkbook.Close False
+        NewFilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        
+        ' Check if file exists before opening
+        If Dir(NewFilePath) <> "" Then
+            Set NewWorkbook = Workbooks.Open(NewFilePath)
+            
+            ' Set sheet reference
+            Set wsNewData = NewWorkbook.Sheets("Data")
+            
+            ' Get last row of data
+            lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
+            
+            ' Apply AutoFilter on row 2 (Column G = Business Framework Group)
+            wsNewData.Rows("2:" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
+            
+            ' Delete all non-matching rows
+            On Error Resume Next
+            wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
+            On Error GoTo 0
+            
+            ' Remove filter
+            wsNewData.AutoFilterMode = False
+            
+            ' Refresh data
+            wsNewData.Calculate
+            
+            ' Delete "Reg Summary" sheet if it exists
+            On Error Resume Next
+            NewWorkbook.Sheets("Reg Summary").Delete
+            On Error GoTo 0
+            
+            ' Save and close the modified file
+            NewWorkbook.Save
+            NewWorkbook.Close False
+        End If
     Next L3
-
+    
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-
+    
     MsgBox "Files created and filtered successfully!", vbInformation, "Done"
 End Sub
