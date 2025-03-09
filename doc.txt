@@ -9,6 +9,11 @@ Sub ProcessFilteredFiles()
     Dim dictL4 As Object, cell As Range
     Dim newRow As Long
 
+    ' Disable events & screen updates to prevent infinite refresh
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
     ' Set base workbook (SOURCE FILE containing complete Options data)
     Set baseWb = ThisWorkbook
 
@@ -103,6 +108,9 @@ Sub ProcessFilteredFiles()
                 .ShowError = True
             End With
 
+            ' Refresh data in file
+            wb.RefreshAll
+
             ' Save and close the filtered file
             wb.Save
             wb.Close False
@@ -110,6 +118,11 @@ Sub ProcessFilteredFiles()
 NextFile:
         End If
     Next file
+
+    ' Restore settings after execution
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
 
     ' Cleanup
     Set fso = Nothing
