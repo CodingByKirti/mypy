@@ -6,6 +6,7 @@ Sub CreateFilteredFiles()
     Dim lastRowData As Long
     Dim MainWorkbook As Workbook, NewFilePath As String
     Dim SaveFolder As String
+    Dim ws As Worksheet
     
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
@@ -44,10 +45,17 @@ Sub CreateFilteredFiles()
         MainWorkbook.Sheets.Copy Before:=NewWorkbook.Sheets(1)
         
         ' Delete any default blank sheets
-        Dim ws As Worksheet
         For Each ws In NewWorkbook.Sheets
             If ws.Name Like "Sheet*" Then ws.Delete
         Next ws
+        
+        ' Delete "Reg Summary" sheet if it exists
+        On Error Resume Next ' Prevents error if the sheet doesn't exist
+        Set ws = NewWorkbook.Sheets("Reg Summary")
+        If Not ws Is Nothing Then
+            ws.Delete
+        End If
+        On Error GoTo 0 ' Re-enable error handling
         
         ' Save the workbook in .xlsx format
         NewWorkbook.SaveAs NewFilePath, FileFormat:=xlOpenXMLWorkbook
@@ -58,5 +66,5 @@ Sub CreateFilteredFiles()
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
     
-    MsgBox "Files created successfully!", vbInformation, "Done"
+    MsgBox "Files created and 'Reg Summary' deleted successfully!", vbInformation, "Done"
 End Sub
