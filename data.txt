@@ -1,3 +1,121 @@
+------------------------
+
+
+Sub SplitWorkbook()
+    Dim wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet, wsReg As Worksheet, wsOptions As Worksheet
+    Dim wbNew As Workbook
+    Dim rngL3 As Range, rngReg As Range
+    Dim cell As Range
+    Dim L3Value As String, RegionValue As String
+    Dim filePath As String
+    
+    ' Set references to sheets
+    Set wsData = ThisWorkbook.Sheets("Data")
+    Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
+    Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
+    Set wsReg = ThisWorkbook.Sheets("Reg Summary")
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    
+    ' Set range of L3 and Region values from Options sheet
+    Set rngL3 = wsOptions.Range("A2:A" & wsOptions.Cells(Rows.Count, 1).End(xlUp).Row)
+    Set rngReg = wsOptions.Range("G2:G" & wsOptions.Cells(Rows.Count, 7).End(xlUp).Row)
+    
+    ' Loop through each L3 value and create a new workbook
+    For Each cell In rngL3.Cells
+        L3Value = cell.Value
+        
+        ' Set L3 Summary filter
+        wsL3.Range("B1").Value = L3Value
+        
+        ' Refresh data for L3 selection
+        Application.Calculate
+        
+        ' Create new workbook
+        Set wbNew = Workbooks.Add
+        
+        ' Copy necessary sheets with formulas intact
+        wsL3.Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        wsL4.Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        wsData.Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        ThisWorkbook.Sheets("Readme").Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        
+        ' Filter Data sheet for L3 but keep formulas
+        Call FilterDataSheet(wbNew.Sheets("Data"), L3Value, "L3")
+        
+        ' Save new workbook
+        filePath = ThisWorkbook.Path & "\Split_L3_" & L3Value & ".xlsx"
+        wbNew.SaveAs filePath, FileFormat:=xlOpenXMLWorkbook
+        wbNew.Close False
+    Next cell
+    
+    ' Loop through each Region value and create a new workbook
+    For Each cell In rngReg.Cells
+        RegionValue = cell.Value
+        
+        ' Set Region filter
+        wsReg.Range("B1").Value = RegionValue
+        
+        ' Refresh data
+        Application.Calculate
+        
+        ' Create new workbook
+        Set wbNew = Workbooks.Add
+        
+        ' Copy necessary sheets with formulas intact
+        wsReg.Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        wsData.Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        ThisWorkbook.Sheets("Readme").Copy After:=wbNew.Sheets(wbNew.Sheets.Count)
+        
+        ' Filter Data sheet for Region but keep formulas
+        Call FilterDataSheet(wbNew.Sheets("Data"), RegionValue, "Region")
+        
+        ' Save new workbook
+        filePath = ThisWorkbook.Path & "\Split_Region_" & RegionValue & ".xlsx"
+        wbNew.SaveAs filePath, FileFormat:=xlOpenXMLWorkbook
+        wbNew.Close False
+    Next cell
+    
+    MsgBox "Splitting process completed!", vbInformation
+End Sub
+
+Sub FilterDataSheet(ws As Worksheet, filterValue As String, filterType As String)
+    Dim lastRow As Long
+    Dim filterColumn As Integer
+    
+    ' Identify filter column
+    If filterType = "L3" Then
+        filterColumn = 4 ' Assuming L3 data is in column D
+    ElseIf filterType = "Region" Then
+        filterColumn = 7 ' Assuming Region data is in column G
+    End If
+    
+    ' Find last row
+    lastRow = ws.Cells(Rows.Count, 1).End(xlUp).Row
+    
+    ' Apply filter but keep formulas
+    ws.Range("A1").CurrentRegion.AutoFilter Field:=filterColumn, Criteria1:=filterValue
+    
+    ' Delete unnecessary rows but retain headers and formulas
+    Dim r As Range
+    On Error Resume Next
+    Set r = ws.Rows("2:" & lastRow).SpecialCells(xlCellTypeVisible)
+    On Error GoTo 0
+    If Not r Is Nothing Then r.Delete Shift:=xlUp
+    
+    ws.ShowAllData
+End Sub
+
+---------------------------
+
+
+
+
+
+
+
+
+
+
 Subject: Follow-up: Alteryx Implementation Use Cases
 
 Dear [Leads' Names],
