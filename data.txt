@@ -1,72 +1,63 @@
-Sub CreateFilteredFiles()
-    Dim wsOptions As Worksheet, ws As Worksheet
-    Dim lastRowOptions As Long, rngL3 As Range, cell As Range
-    Dim L3Dict As Object, NewFilePath As String, SaveFolder As String
-    Dim MainWorkbook As Workbook, NewWorkbook As Workbook
-    Dim L3 As Variant
+Sub FilterAndCleanFiles()
+    Dim SaveFolder As String, FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long
+    Dim rng As Range, colG As Range
+    Dim L3 As String
 
-    ' Disable alerts, screen updating, and sensitivity prompts
+    ' Disable alerts, screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-    Application.AutomationSecurity = msoAutomationSecurityForceDisable ' Suppress security prompts
-    
-    ' Set reference to Options sheet
-    Set wsOptions = ThisWorkbook.Sheets("Options")
-    
-    ' Get last row in column D (L3 values)
-    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    
-    ' Create dictionary to store unique L3 values
-    Set L3Dict = CreateObject("Scripting.Dictionary")
-    
-    ' Loop through L3 values and store unique ones
-    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
-        If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
-            L3Dict.Add cell.Value, Nothing
-        End If
-    Next cell
-    
-    ' Set folder to save new files
+
+    ' Set the folder where files were saved
     SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
-    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder ' Create folder if not exists
+
+    ' Loop through each file in the folder
+    FileName = Dir(SaveFolder & "*.xlsx")
     
-    ' Reference the main workbook
-    Set MainWorkbook = ThisWorkbook
-    
-    ' Loop through unique L3 values and create file copies
-    For Each L3 In L3Dict.Keys
-        ' Define the new file path
-        NewFilePath = SaveFolder & L3 & ".xlsx"
+    Do While FileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(SaveFolder & FileName)
         
-        ' Create a new workbook and copy sheets
-        Set NewWorkbook = Workbooks.Add
-        MainWorkbook.Sheets.Copy Before:=NewWorkbook.Sheets(1)
+        ' Get L3 name from filename (remove ".xlsx")
+        L3 = Replace(FileName, ".xlsx", "")
         
-        ' Delete any default blank sheets
-        For Each ws In NewWorkbook.Sheets
-            If ws.Name Like "Sheet*" Then ws.Delete
-        Next ws
-        
-        ' Delete "Reg Summary" sheet if it exists
+        ' Set reference to Data sheet
         On Error Resume Next
-        Set ws = NewWorkbook.Sheets("Reg Summary")
-        If Not ws Is Nothing Then ws.Delete
+        Set ws = wb.Sheets("Data")
         On Error GoTo 0
         
-        ' Suppress sensitivity label prompt (if applicable)
-        On Error Resume Next
-        NewWorkbook.SensitivityLabelPolicy.SetLabel "Internal"
-        On Error GoTo 0
+        If Not ws Is Nothing Then
+            ' Get last row in column G
+            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+            
+            ' Apply AutoFilter on row 2
+            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>" & L3
+            
+            ' Delete visible rows (except header)
+            If lastRow > 2 Then
+                Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
+                rng.Delete
+            End If
+            
+            ' Turn off AutoFilter
+            ws.AutoFilterMode = False
+            
+            ' Refresh all data connections
+            wb.RefreshAll
+        End If
         
-        ' Save the workbook in .xlsx format
-        NewWorkbook.SaveAs NewFilePath, FileFormat:=xlOpenXMLWorkbook
-        NewWorkbook.Close False
-    Next L3
-    
-    ' Re-enable alerts, screen updating, and sensitivity prompts
+        ' Save and close the workbook
+        wb.Save
+        wb.Close False
+        
+        ' Move to next file
+        FileName = Dir
+    Loop
+
+    ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    Application.AutomationSecurity = msoAutomationSecurityByUI ' Restore default security
-    
-    MsgBox "Files created and 'Reg Summary' deleted successfully!", vbInformation, "Done"
+
+    MsgBox "Filtering completed successfully!", vbInformation, "Done"
 End Sub
