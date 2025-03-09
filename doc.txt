@@ -5,12 +5,12 @@ Sub UpdateFilteredFiles()
     Dim L3Name As String
     Dim dictL4 As Object
     Dim fso As Object, file As Object
-    Dim cell As Range, deleteRows As Range
+    Dim cell As Range
     Dim newRow As Long, countL4 As Long, countDeletedRows As Long
     Dim lastRowOptions As Long, lastRowData As Long
     Dim rowNum As Long
 
-    ' Set base workbook
+    ' Set base workbook (MAIN SOURCE FILE)
     Set baseWb = ThisWorkbook  ' The main file running this macro
 
     ' Set folder path where filtered files are saved
@@ -36,19 +36,21 @@ Sub UpdateFilteredFiles()
             ' Debug: Show which file is being processed
             Debug.Print "Processing File: " & wb.Name
 
-            ' Set sheet references
+            ' Set sheet references (only in the FILTERED FILE)
             On Error Resume Next
             Set wsOptions = wb.Sheets("Options")
             Set wsData = wb.Sheets("Data")
             On Error GoTo 0
 
+            ' Skip files if missing sheets
             If wsOptions Is Nothing Or wsData Is Nothing Then
                 MsgBox "Missing Options or Data sheet in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
             End If
 
-            ' Clear previous L3 & L4 entries
+            ' ---- UPDATE OPTIONS SHEET ----
+            ' Clear only columns A & B (not the whole sheet)
             wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
 
             ' Create dictionary to store unique L4 values
@@ -88,13 +90,16 @@ Sub UpdateFilteredFiles()
             lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
             countDeletedRows = 0
 
-            ' Loop through data in reverse order to delete
-            For rowNum = lastRowData To 2 Step -1
-                If wsData.Cells(rowNum, 1).Value <> L3Name Then
-                    wsData.Rows(rowNum).Delete
-                    countDeletedRows = countDeletedRows + 1
-                End If
-            Next rowNum
+            ' Only delete rows in the filtered files, NOT the source file
+            If wb.Name <> baseWb.Name Then
+                ' Loop through data in reverse order to delete non-matching rows
+                For rowNum = lastRowData To 2 Step -1
+                    If wsData.Cells(rowNum, 1).Value <> L3Name Then
+                        wsData.Rows(rowNum).Delete
+                        countDeletedRows = countDeletedRows + 1
+                    End If
+                Next rowNum
+            End If
 
             ' Debugging - Show count of deleted rows
             Debug.Print "Rows deleted in Data sheet of " & wb.Name & ": " & countDeletedRows
