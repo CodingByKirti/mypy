@@ -1,90 +1,96 @@
-Sub SplitWorkbookByL3()
-    Dim wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet, wsOptions As Worksheet
-    Dim wbNew As Workbook, wbCurrent As Workbook
-    Dim rngL3 As Range, rngL4 As Range
-    Dim dict As Object
+Sub SplitDataByL3()
+    Dim wsOptions As Worksheet, wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
+    Dim ws As Worksheet
     Dim L3 As String, L4List As String
-    Dim cell As Range, lastRow As Long, lastRowData As Long
-    Dim savePath As String
+    Dim lastRowData As Long, lastRowOptions As Long
+    Dim rngL3 As Range, cell As Range
+    Dim FilePath As String, NewWorkbook As Workbook
+    Dim Sht As Worksheet
     
-    ' Set references
-    Set wbCurrent = ThisWorkbook
-    Set wsData = wbCurrent.Sheets("Data")
-    Set wsL3 = wbCurrent.Sheets("L3 Summary")
-    Set wsL4 = wbCurrent.Sheets("L4 Summary")
-    Set wsOptions = wbCurrent.Sheets("Options")
+    ' Disable alerts to prevent interruptions
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
     
-    ' Define save path (CHANGE THIS)
-    savePath = wbCurrent.Path & "\Split Files\"
-    If Dir(savePath, vbDirectory) = "" Then MkDir savePath ' Create folder if not exists
-    
-    ' Get last row of L3 options
-    lastRow = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    Set dict = CreateObject("Scripting.Dictionary")
-    
-    ' Store L3 & corresponding L4 values in dictionary
-    For Each cell In wsOptions.Range("D2:D" & lastRow)
+    ' Set worksheet references
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    Set wsData = ThisWorkbook.Sheets("Data")
+    Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
+    Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
+
+    ' Get last row of Options tab (L3 & L4 values)
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+
+    ' Get unique L3 values from Options sheet (Column D)
+    Set rngL3 = wsOptions.Range("D2:D" & lastRowOptions)
+
+    ' Loop through each unique L3 value
+    For Each cell In rngL3.Cells
         L3 = cell.Value
-        If Not dict.exists(L3) Then
-            dict.Add L3, ""
-        End If
-        dict(L3) = dict(L3) & cell.Offset(0, 1).Value & "," ' Store L4 values
-    Next cell
-    
-    ' Loop through unique L3 values
-    For Each L3 In dict.keys
-        ' Skip "*"
-        If L3 = "*" Then GoTo NextL3
         
-        ' Create a new workbook
-        wbCurrent.Sheets(Array("Readme", "L3 Summary", "L4 Summary", "Data", "Mapping")).Copy
-        Set wbNew = ActiveWorkbook
-        
-        ' Remove "Reg Summary" sheet
-        On Error Resume Next
-        Application.DisplayAlerts = False
-        wbNew.Sheets("Reg Summary").Delete
-        Application.DisplayAlerts = True
-        On Error GoTo 0
-        
-        ' Filter Data Sheet & Delete Unnecessary Rows
-        With wbNew.Sheets("Data")
-            .AutoFilterMode = False
-            lastRowData = .Cells(.Rows.Count, "G").End(xlUp).Row
+        ' Skip empty values
+        If L3 <> "" Then
             
-            ' Apply filter on Business Framework Group (Column G)
-            .Range("A2:A" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
+            ' Create a new workbook for this L3
+            ThisWorkbook.SaveCopyAs ThisWorkbook.Path & "\" & L3 & ".xlsx"
+            Set NewWorkbook = Workbooks.Open(ThisWorkbook.Path & "\" & L3 & ".xlsx")
             
-            ' Delete rows that do not match L3
+            ' Set worksheet references in the new file
+            Set wsData = NewWorkbook.Sheets("Data")
+            Set wsL3 = NewWorkbook.Sheets("L3 Summary")
+            Set wsL4 = NewWorkbook.Sheets("L4 Summary")
+
+            ' Delete "Reg Summary" sheet
             On Error Resume Next
-            .Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
+            Set Sht = NewWorkbook.Sheets("Reg Summary")
+            If Not Sht Is Nothing Then
+                Application.DisplayAlerts = False
+                Sht.Delete
+                Application.DisplayAlerts = True
+            End If
             On Error GoTo 0
-            .AutoFilterMode = False
-        End With
-        
-        ' Update L3 Summary sheet's B1 cell
-        With wbNew.Sheets("L3 Summary")
-            .Range("B1").Value = L3
-        End With
-        
-        ' Update L4 Summary sheet's B1 cell with only relevant L4s
-        With wbNew.Sheets("L4 Summary")
-            .Range("B1").Value = Left(dict(L3), Len(dict(L3)) - 1) ' Remove last comma
-        End With
-        
-        ' Set Sensitivity Label to Internal
-        On Error Resume Next
-        wbNew.SensitivityLabelPolicy = "Internal"
-        On Error GoTo 0
-        
-        ' Save the new workbook
-        wbNew.SaveAs savePath & L3 & ".xlsx", FileFormat:=xlOpenXMLWorkbook
-        wbNew.Close False ' Close new workbook
-        
-NextL3:
-    Next L3
+            
+            ' Get last row of Data sheet
+            lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+            
+            ' Apply filter in Data sheet (Header is in row 2, Data starts from row 3)
+            wsData.Range("A2:Z" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
+            
+            ' Delete rows that do not match L3 (keeping only filtered data)
+            wsData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
+            wsData.AutoFilterMode = False  ' Remove filter after deleting
+            
+            ' Update L3 Summary B1 cell
+            wsL3.Range("B1").Value = L3
+            
+            ' Collect L4 values corresponding to this L3
+            L4List = ""
+            For Each c In wsOptions.Range("D2:D" & lastRowOptions).Cells
+                If c.Value = L3 Then
+                    If L4List = "" Then
+                        L4List = c.Offset(0, 1).Value
+                    Else
+                        L4List = L4List & ", " & c.Offset(0, 1).Value
+                    End If
+                End If
+            Next c
+            
+            ' Update L4 Summary B1 with corresponding L4 values
+            wsL4.Range("B1").Value = L4List
+            
+            ' Set sensitivity label to Internal
+            On Error Resume Next
+            NewWorkbook.SensitivityLabelPolicy = "Internal"
+            On Error GoTo 0
+            
+            ' Save and Close
+            NewWorkbook.Save
+            NewWorkbook.Close False
+        End If
+    Next cell
+
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
     
-    ' Cleanup
-    Set dict = Nothing
-    MsgBox "Splitting completed!", vbInformation
+    MsgBox "Process completed successfully!", vbInformation, "Done"
 End Sub
