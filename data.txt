@@ -1,104 +1,76 @@
-Sub SplitDataByL3()
-    Dim wsOptions As Worksheet, wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
-    Dim L3 As String, L4List As String
-    Dim lastRowData As Long, lastRowOptions As Long
-    Dim rngL3 As Range, cell As Range
-    Dim FilePath As String, NewWorkbook As Workbook, wsNewData As Worksheet, wsNewL3 As Worksheet, wsNewL4 As Worksheet
-    
-    ' Disable alerts to prevent interruptions
+Sub CreateFilteredFiles()
+    Dim wsOptions As Worksheet, wsData As Worksheet
+    Dim lastRowOptions As Long, rngL3 As Range, cell As Range
+    Dim L3Dict As Object, FilePath As String, L3 As String
+    Dim NewWorkbook As Workbook, wsNewData As Worksheet
+    Dim lastRowData As Long
+
+    ' Disable alerts and screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-    
-    ' Set worksheet references
-    Set wsOptions = ThisWorkbook.Sheets("Options")
-    Set wsData = ThisWorkbook.Sheets("Data")
-    Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
-    Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
 
-    ' Get last row of Options tab (L3 & L4 values)
+    ' Set reference to Options sheet
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+
+    ' Get last row in column D (L3 values)
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
 
-    ' Get unique L3 values from Options sheet (Column D)
-    Set rngL3 = wsOptions.Range("D2:D" & lastRowOptions)
+    ' Create dictionary to store unique L3 values
+    Set L3Dict = CreateObject("Scripting.Dictionary")
 
-    ' Loop through each unique L3 value
-    For Each cell In rngL3.Cells
-        L3 = cell.Value
-        
-        ' Skip empty values
-        If L3 <> "" Then
-            ' Create a new workbook
-            Set NewWorkbook = Workbooks.Add
-            
-            ' Copy required sheets
-            wsData.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            Set wsNewData = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            wsNewData.Name = "Data"
-            
-            wsL3.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            Set wsNewL3 = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            wsNewL3.Name = "L3 Summary"
-            
-            wsL4.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            Set wsNewL4 = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
-            wsNewL4.Name = "L4 Summary"
-            
-            ' Delete default empty sheets in the new workbook
-            Application.DisplayAlerts = False
-            Dim ws As Worksheet
-            For Each ws In NewWorkbook.Sheets
-                If ws.Name <> "Data" And ws.Name <> "L3 Summary" And ws.Name <> "L4 Summary" Then
-                    ws.Delete
-                End If
-            Next ws
-            Application.DisplayAlerts = True
-            
-            ' Get last row of Data sheet
-            lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
-            
-            ' Apply filter in Data sheet (Header is in row 2, Data starts from row 3)
-            wsNewData.Range("A2:Z" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
-            
-            ' Delete rows that do not match L3 (keeping only filtered data)
-            wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
-            wsNewData.AutoFilterMode = False  ' Remove filter after deleting
-            
-            ' Update L3 Summary B1 cell
-            wsNewL3.Range("B1").Value = L3
-            
-            ' Collect L4 values corresponding to this L3
-            L4List = ""
-            For Each c In wsOptions.Range("D2:D" & lastRowOptions).Cells
-                If c.Value = L3 Then
-                    If L4List = "" Then
-                        L4List = c.Offset(0, 1).Value
-                    Else
-                        L4List = L4List & ", " & c.Offset(0, 1).Value
-                    End If
-                End If
-            Next c
-            
-            ' Update L4 Summary B1 with corresponding L4 values
-            wsNewL4.Range("B1").Value = L4List
-            
-            ' Set file path
-            FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
-            
-            ' Save the new workbook
-            NewWorkbook.SaveAs FileName:=FilePath, FileFormat:=xlOpenXMLWorkbook ' (xlsx format)
-            
-            ' Set Sensitivity Label (Workaround using SendKeys)
-            NewWorkbook.Activate
-            Application.SendKeys "%Y1~", True ' Simulates Alt+Y, 1 (Sensitivity menu, selects "Internal"), Enter (~)
-            
-            ' Close the new workbook
-            NewWorkbook.Close False
+    ' Loop through L3 values and store unique ones
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
+            L3Dict.Add cell.Value, Nothing
         End If
     Next cell
+
+    ' Loop through unique L3 values and create file copies
+    For Each L3 In L3Dict.Keys
+        ' Save a new copy with the L3 name
+        FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        ThisWorkbook.SaveCopyAs FilePath  ' Creates a copy
+    Next L3
+
+    ' Process each newly created file
+    For Each L3 In L3Dict.Keys
+        ' Open the copied file
+        FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        Set NewWorkbook = Workbooks.Open(FilePath)
+
+        ' Set sheet reference
+        Set wsNewData = NewWorkbook.Sheets("Data")
+
+        ' Get last row of data
+        lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
+
+        ' Apply AutoFilter on row 2 (Column G = Business Framework Group)
+        wsNewData.Rows("2:" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
+
+        ' Delete all non-matching rows
+        On Error Resume Next
+        wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
+        On Error GoTo 0
+
+        ' Remove filter
+        wsNewData.AutoFilterMode = False
+
+        ' Refresh data
+        wsNewData.Calculate
+
+        ' Delete "Reg Summary" sheet if it exists
+        On Error Resume Next
+        NewWorkbook.Sheets("Reg Summary").Delete
+        On Error GoTo 0
+
+        ' Save and close the modified file
+        NewWorkbook.Save
+        NewWorkbook.Close False
+    Next L3
 
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    
-    MsgBox "Process completed successfully!", vbInformation, "Done"
+
+    MsgBox "Files created and filtered successfully!", vbInformation, "Done"
 End Sub
