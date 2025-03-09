@@ -1,47 +1,76 @@
-Sub UpdateL3AndL4Dropdowns()
-    Dim wsL3Summary As Worksheet, wsL4Summary As Worksheet, wsOptions As Worksheet
-    Dim lastRowOptions As Long, rngL4 As Range, cell As Range
-    Dim L4Dict As Object, L4Values As String
-    Dim L3FileName As String
-    Dim currentL3 As String
+Sub FilterAndCleanFiles()
+    Dim wsData As Worksheet, wsOptions As Worksheet
+    Dim lastRowData As Long, lastRowOptions As Long
+    Dim rng As Range, cell As Range
+    Dim L3 As String, L4Dict As Object
+    Dim NewWorkbook As Workbook, wsNewOptions As Worksheet
+    Dim FilePath As String, SaveFolder As String
+    Dim ws As Worksheet
     
-    ' Set references
-    Set wsL3Summary = ThisWorkbook.Sheets("L3 Summary")
-    Set wsL4Summary = ThisWorkbook.Sheets("L4 Summary")
-    Set wsOptions = ThisWorkbook.Sheets("Options")
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
     
-    ' Get current file name as L3 value (assuming L3 name is used in the file name)
-    L3FileName = ThisWorkbook.Name
-    L3FileName = Replace(L3FileName, ".xlsx", "") ' Remove file extension
-    wsL3Summary.Range("B1").Value = L3FileName ' Set B1 in L3 Summary to the file name
+    ' Set save folder path
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
     
-    ' Find matching L3 in Options sheet to get corresponding L4s
-    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    Set L4Dict = CreateObject("Scripting.Dictionary")
-    
-    ' Loop through Options sheet to collect matching L4s
-    For Each cell In wsOptions.Range("D2:D" & lastRowOptions) ' L3 column
-        If cell.Value = L3FileName Then ' Match L3 value
-            If Not L4Dict.Exists(cell.Offset(0, 1).Value) And cell.Offset(0, 1).Value <> "" Then
-                L4Dict.Add cell.Offset(0, 1).Value, Nothing ' Collect L4 values
+    ' Loop through filtered files
+    FilePath = Dir(SaveFolder & "*.xlsx")
+    Do While FilePath <> ""
+        ' Open the newly created file
+        Set NewWorkbook = Workbooks.Open(SaveFolder & FilePath)
+        Set wsData = NewWorkbook.Sheets("Data")
+        Set wsOptions = NewWorkbook.Sheets("Options")
+        
+        ' Extract L3 from file name
+        L3 = Left(FilePath, Len(FilePath) - 5) ' Remove .xlsx extension
+        
+        ' Get last row in Options sheet
+        lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "A").End(xlUp).Row
+        
+        ' Create dictionary to store unique L4 values
+        Set L4Dict = CreateObject("Scripting.Dictionary")
+        
+        ' Loop through Options sheet to get L4s corresponding to L3
+        For Each cell In wsOptions.Range("A2:A" & lastRowOptions)
+            If cell.Value = L3 Then
+                If Not L4Dict.Exists(cell.Offset(0, 1).Value) And cell.Offset(0, 1).Value <> "" Then
+                    L4Dict.Add cell.Offset(0, 1).Value, Nothing
+                End If
             End If
+        Next cell
+        
+        ' Clear existing Options sheet and update it
+        wsOptions.Cells.Clear
+        wsOptions.Range("A1").Value = "L3"
+        wsOptions.Range("B1").Value = "L4"
+        wsOptions.Range("A2").Value = L3 ' Only the relevant L3
+        
+        ' Populate L4 values
+        wsOptions.Range("B2").Value = "*" ' First entry as *
+        If L4Dict.Count > 0 Then
+            wsOptions.Range("B3").Resize(L4Dict.Count, 1).Value = Application.Transpose(L4Dict.Keys)
         End If
-    Next cell
+        
+        ' Refresh data & delete "Reg Summary"
+        wsData.Activate
+        ActiveWorkbook.RefreshAll
+        On Error Resume Next
+        Set ws = NewWorkbook.Sheets("Reg Summary")
+        If Not ws Is Nothing Then ws.Delete
+        On Error GoTo 0
+        
+        ' Save & close workbook
+        NewWorkbook.Save
+        NewWorkbook.Close False
+        
+        ' Get next file
+        FilePath = Dir
+    Loop
     
-    ' Create the dropdown list with "*" as the first value
-    L4Values = "*"
-    For Each currentL3 In L4Dict.Keys
-        L4Values = L4Values & "," & currentL3
-    Next currentL3
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
     
-    ' Apply validation in B1 of L4 Summary
-    With wsL4Summary.Range("B1").Validation
-        .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:=L4Values
-    End With
-    
-    ' Cleanup
-    Set L4Dict = Nothing
-    
-    MsgBox "Dropdown in L4 Summary updated with available L4 values.", vbInformation, "Update Complete"
+    MsgBox "Filtering, cleanup, and dropdown preparation completed successfully!", vbInformation, "Done"
 End Sub
