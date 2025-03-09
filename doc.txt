@@ -5,19 +5,20 @@ Sub UpdateFilteredFiles()
     Dim L3Name As String
     Dim dictL4 As Object
     Dim fso As Object, file As Object
-    Dim cell As Range, rngToDelete As Range
+    Dim cell As Range, deleteRows As Range
     Dim newRow As Long, countL4 As Long, countDeletedRows As Long
     Dim lastRowOptions As Long, lastRowData As Long
-    
+    Dim rowNum As Long
+
     ' Set base workbook
     Set baseWb = ThisWorkbook  ' The main file running this macro
-    
+
     ' Set folder path where filtered files are saved
     folderPath = baseWb.Path & "\Filtered_Files\" ' Adjust if needed
-    
+
     ' Create File System Object
     Set fso = CreateObject("Scripting.FileSystemObject")
-    
+
     ' Ensure the folder exists
     If Not fso.FolderExists(folderPath) Then
         MsgBox "Filtered_Files folder not found!", vbExclamation, "Error"
@@ -31,22 +32,22 @@ Sub UpdateFilteredFiles()
             ' Open the filtered file
             Set wb = Workbooks.Open(file.Path)
             L3Name = Replace(wb.Name, ".xlsx", "")
-            
+
             ' Debug: Show which file is being processed
-            MsgBox "Processing File: " & wb.Name, vbInformation, "Debug"
+            Debug.Print "Processing File: " & wb.Name
 
             ' Set sheet references
             On Error Resume Next
             Set wsOptions = wb.Sheets("Options")
             Set wsData = wb.Sheets("Data")
             On Error GoTo 0
-            
+
             If wsOptions Is Nothing Or wsData Is Nothing Then
                 MsgBox "Missing Options or Data sheet in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
             End If
-            
+
             ' Clear previous L3 & L4 entries
             wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
 
@@ -81,29 +82,22 @@ Sub UpdateFilteredFiles()
             End If
 
             ' Debugging - Show count of L4s added
-            MsgBox "L4s updated in " & wb.Name & ": " & countL4, vbInformation, "Debug"
+            Debug.Print "L4s updated in " & wb.Name & ": " & countL4
 
             ' ---- FILTER DATA SHEET ----
             lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
             countDeletedRows = 0
 
-            ' Find and delete rows where Column A does NOT match L3
-            For Each cell In wsData.Range("A2:A" & lastRowData)
-                If cell.Value <> L3Name Then
-                    If rngToDelete Is Nothing Then
-                        Set rngToDelete = cell
-                    Else
-                        Set rngToDelete = Union(rngToDelete, cell)
-                    End If
+            ' Loop through data in reverse order to delete
+            For rowNum = lastRowData To 2 Step -1
+                If wsData.Cells(rowNum, 1).Value <> L3Name Then
+                    wsData.Rows(rowNum).Delete
                     countDeletedRows = countDeletedRows + 1
                 End If
-            Next cell
-
-            ' Delete rows that don’t match the L3Name
-            If Not rngToDelete Is Nothing Then rngToDelete.EntireRow.Delete
+            Next rowNum
 
             ' Debugging - Show count of deleted rows
-            MsgBox "Rows deleted in Data sheet of " & wb.Name & ": " & countDeletedRows, vbInformation, "Debug"
+            Debug.Print "Rows deleted in Data sheet of " & wb.Name & ": " & countDeletedRows
 
             ' Save and close the filtered file
             wb.Save
@@ -119,7 +113,5 @@ NextFile:
 
     ' Completion message
     MsgBox "Filtering & dropdown update completed for all filtered files.", vbInformation, "Done"
-    
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
+
 End Sub
