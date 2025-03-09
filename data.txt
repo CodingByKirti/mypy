@@ -1,11 +1,9 @@
 Sub SplitDataByL3()
     Dim wsOptions As Worksheet, wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
-    Dim ws As Worksheet
     Dim L3 As String, L4List As String
     Dim lastRowData As Long, lastRowOptions As Long
     Dim rngL3 As Range, cell As Range
-    Dim FilePath As String, NewWorkbook As Workbook
-    Dim Sht As Worksheet
+    Dim FilePath As String, NewWorkbook As Workbook, wsNewData As Worksheet, wsNewL3 As Worksheet, wsNewL4 As Worksheet
     
     ' Disable alerts to prevent interruptions
     Application.DisplayAlerts = False
@@ -29,38 +27,44 @@ Sub SplitDataByL3()
         
         ' Skip empty values
         If L3 <> "" Then
+            ' Create a new workbook
+            Set NewWorkbook = Workbooks.Add
             
-            ' Create a new workbook for this L3
-            ThisWorkbook.SaveCopyAs ThisWorkbook.Path & "\" & L3 & ".xlsx"
-            Set NewWorkbook = Workbooks.Open(ThisWorkbook.Path & "\" & L3 & ".xlsx")
+            ' Copy required sheets
+            wsData.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            Set wsNewData = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            wsNewData.Name = "Data"
             
-            ' Set worksheet references in the new file
-            Set wsData = NewWorkbook.Sheets("Data")
-            Set wsL3 = NewWorkbook.Sheets("L3 Summary")
-            Set wsL4 = NewWorkbook.Sheets("L4 Summary")
-
-            ' Delete "Reg Summary" sheet
-            On Error Resume Next
-            Set Sht = NewWorkbook.Sheets("Reg Summary")
-            If Not Sht Is Nothing Then
-                Application.DisplayAlerts = False
-                Sht.Delete
-                Application.DisplayAlerts = True
-            End If
-            On Error GoTo 0
+            wsL3.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            Set wsNewL3 = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            wsNewL3.Name = "L3 Summary"
+            
+            wsL4.Copy After:=NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            Set wsNewL4 = NewWorkbook.Sheets(NewWorkbook.Sheets.Count)
+            wsNewL4.Name = "L4 Summary"
+            
+            ' Delete default empty sheets in the new workbook
+            Application.DisplayAlerts = False
+            Dim ws As Worksheet
+            For Each ws In NewWorkbook.Sheets
+                If ws.Name <> "Data" And ws.Name <> "L3 Summary" And ws.Name <> "L4 Summary" Then
+                    ws.Delete
+                End If
+            Next ws
+            Application.DisplayAlerts = True
             
             ' Get last row of Data sheet
-            lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+            lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
             
             ' Apply filter in Data sheet (Header is in row 2, Data starts from row 3)
-            wsData.Range("A2:Z" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
+            wsNewData.Range("A2:Z" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
             
             ' Delete rows that do not match L3 (keeping only filtered data)
-            wsData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
-            wsData.AutoFilterMode = False  ' Remove filter after deleting
+            wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
+            wsNewData.AutoFilterMode = False  ' Remove filter after deleting
             
             ' Update L3 Summary B1 cell
-            wsL3.Range("B1").Value = L3
+            wsNewL3.Range("B1").Value = L3
             
             ' Collect L4 values corresponding to this L3
             L4List = ""
@@ -75,15 +79,19 @@ Sub SplitDataByL3()
             Next c
             
             ' Update L4 Summary B1 with corresponding L4 values
-            wsL4.Range("B1").Value = L4List
+            wsNewL4.Range("B1").Value = L4List
             
-            ' Set sensitivity label to Internal
-            On Error Resume Next
-            NewWorkbook.SensitivityLabelPolicy = "Internal"
-            On Error GoTo 0
+            ' Set file path
+            FilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
             
-            ' Save and Close
-            NewWorkbook.Save
+            ' Save the new workbook
+            NewWorkbook.SaveAs FileName:=FilePath, FileFormat:=xlOpenXMLWorkbook ' (xlsx format)
+            
+            ' Set Sensitivity Label (Workaround using SendKeys)
+            NewWorkbook.Activate
+            Application.SendKeys "%Y1~", True ' Simulates Alt+Y, 1 (Sensitivity menu, selects "Internal"), Enter (~)
+            
+            ' Close the new workbook
             NewWorkbook.Close False
         End If
     Next cell
