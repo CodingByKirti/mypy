@@ -4,7 +4,8 @@ Sub CreateFilteredFiles()
     Dim L3Dict As Object, FilePath As String, L3 As Variant
     Dim NewWorkbook As Workbook, wsNewData As Worksheet
     Dim lastRowData As Long
-    Dim MainFilePath As String, NewFilePath As String
+    Dim MainWorkbook As Workbook, NewFilePath As String
+    Dim SaveFolder As String
     
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
@@ -26,61 +27,36 @@ Sub CreateFilteredFiles()
         End If
     Next cell
     
-    ' Store the main file path
-    MainFilePath = ThisWorkbook.FullName
+    ' Set folder to save new files
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder ' Create folder if not exists
+    
+    ' Reference the main workbook
+    Set MainWorkbook = ThisWorkbook
     
     ' Loop through unique L3 values and create file copies
     For Each L3 In L3Dict.Keys
         ' Define the new file path
-        NewFilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        NewFilePath = SaveFolder & L3 & ".xlsx"
         
-        ' Save a new copy with the L3 name
-        ThisWorkbook.SaveCopyAs NewFilePath  ' Creates a valid copy
-    Next L3
-    
-    ' Process each newly created file
-    For Each L3 In L3Dict.Keys
-        ' Open the copied file
-        NewFilePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
+        ' Create a new workbook and copy sheets
+        Set NewWorkbook = Workbooks.Add
+        MainWorkbook.Sheets.Copy Before:=NewWorkbook.Sheets(1)
         
-        ' Check if file exists before opening
-        If Dir(NewFilePath) <> "" Then
-            Set NewWorkbook = Workbooks.Open(NewFilePath)
-            
-            ' Set sheet reference
-            Set wsNewData = NewWorkbook.Sheets("Data")
-            
-            ' Get last row of data
-            lastRowData = wsNewData.Cells(wsNewData.Rows.Count, "A").End(xlUp).Row
-            
-            ' Apply AutoFilter on row 2 (Column G = Business Framework Group)
-            wsNewData.Rows("2:" & lastRowData).AutoFilter Field:=7, Criteria1:=L3
-            
-            ' Delete all non-matching rows
-            On Error Resume Next
-            wsNewData.Rows("3:" & lastRowData).SpecialCells(xlCellTypeVisible).Delete
-            On Error GoTo 0
-            
-            ' Remove filter
-            wsNewData.AutoFilterMode = False
-            
-            ' Refresh data
-            wsNewData.Calculate
-            
-            ' Delete "Reg Summary" sheet if it exists
-            On Error Resume Next
-            NewWorkbook.Sheets("Reg Summary").Delete
-            On Error GoTo 0
-            
-            ' Save and close the modified file
-            NewWorkbook.Save
-            NewWorkbook.Close False
-        End If
+        ' Delete any default blank sheets
+        Dim ws As Worksheet
+        For Each ws In NewWorkbook.Sheets
+            If ws.Name Like "Sheet*" Then ws.Delete
+        Next ws
+        
+        ' Save the workbook in .xlsx format
+        NewWorkbook.SaveAs NewFilePath, FileFormat:=xlOpenXMLWorkbook
+        NewWorkbook.Close False
     Next L3
     
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
     
-    MsgBox "Files created and filtered successfully!", vbInformation, "Done"
+    MsgBox "Files created successfully!", vbInformation, "Done"
 End Sub
