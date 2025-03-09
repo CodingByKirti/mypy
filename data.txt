@@ -1,47 +1,47 @@
-Sub UpdateL3AndL4Summaries()
-    Dim wsOptions As Worksheet, wsL3Summary As Worksheet, wsL4Summary As Worksheet
-    Dim lastRowOptions As Long, rngL3 As Range, rngL4 As Range, cell As Range
-    Dim L3 As String, L4Values As String, NewFileName As String
-    Dim dvRange As Range, wsData As Worksheet
-    Dim L4Dict As Object
+Sub UpdateL3AndL4Dropdowns()
+    Dim wsL3Summary As Worksheet, wsL4Summary As Worksheet, wsOptions As Worksheet
+    Dim lastRowOptions As Long, rngL4 As Range, cell As Range
+    Dim L4Dict As Object, L4Values As String
+    Dim L3FileName As String
+    Dim currentL3 As String
     
-    ' Set references to sheets
-    Set wsOptions = ThisWorkbook.Sheets("Options")
+    ' Set references
     Set wsL3Summary = ThisWorkbook.Sheets("L3 Summary")
     Set wsL4Summary = ThisWorkbook.Sheets("L4 Summary")
+    Set wsOptions = ThisWorkbook.Sheets("Options")
     
-    ' Extract L3 name from the filename (current workbook name)
-    NewFileName = ThisWorkbook.Name
-    L3 = Left(NewFileName, InStrRev(NewFileName, ".") - 1) ' Remove ".xlsx"
+    ' Get current file name as L3 value (assuming L3 name is used in the file name)
+    L3FileName = ThisWorkbook.Name
+    L3FileName = Replace(L3FileName, ".xlsx", "") ' Remove file extension
+    wsL3Summary.Range("B1").Value = L3FileName ' Set B1 in L3 Summary to the file name
     
-    ' Update B1 in "L3 Summary" sheet
-    wsL3Summary.Range("B1").Value = L3
-    
-    ' Find all corresponding L4 values for this L3
+    ' Find matching L3 in Options sheet to get corresponding L4s
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
     Set L4Dict = CreateObject("Scripting.Dictionary")
     
-    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
-        If cell.Value = L3 Then
-            If Not L4Dict.Exists(cell.Offset(0, 1).Value) Then
-                L4Dict.Add cell.Offset(0, 1).Value, Nothing
+    ' Loop through Options sheet to collect matching L4s
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions) ' L3 column
+        If cell.Value = L3FileName Then ' Match L3 value
+            If Not L4Dict.Exists(cell.Offset(0, 1).Value) And cell.Offset(0, 1).Value <> "" Then
+                L4Dict.Add cell.Offset(0, 1).Value, Nothing ' Collect L4 values
             End If
         End If
     Next cell
     
-    ' Create a comma-separated list of L4 values
-    L4Values = Join(L4Dict.Keys, ",")
+    ' Create the dropdown list with "*" as the first value
+    L4Values = "*"
+    For Each currentL3 In L4Dict.Keys
+        L4Values = L4Values & "," & currentL3
+    Next currentL3
     
-    ' Set dropdown in B1 of "L4 Summary"
+    ' Apply validation in B1 of L4 Summary
     With wsL4Summary.Range("B1").Validation
         .Delete
-        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
-            xlBetween, Formula1:=L4Values
-        .IgnoreBlank = True
-        .InCellDropdown = True
-        .ShowInput = True
-        .ShowError = True
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:=L4Values
     End With
-
-    MsgBox "Updated L3 Summary and L4 Summary dropdown!", vbInformation, "Done"
+    
+    ' Cleanup
+    Set L4Dict = Nothing
+    
+    MsgBox "Dropdown in L4 Summary updated with available L4 values.", vbInformation, "Update Complete"
 End Sub
