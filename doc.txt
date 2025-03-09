@@ -1,58 +1,69 @@
 Sub UpdateOptionsSheetForFilteredFiles()
-    Dim wsOptions As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
-    Dim lastRowOptions As Long, cell As Range
-    Dim L3Name As String, L4Dict As Object
-    Dim lastRowL4 As Long, newRow As Long
+    Dim wsOptions As Worksheet, wsData As Worksheet
+    Dim lastRowOptions As Long, lastRowData As Long
+    Dim cell As Range, rngToDelete As Range
+    Dim L3Name As String
+    Dim dictL4 As Object
+    Dim newRow As Long
 
-    ' Disable alerts and screen updating
-    Application.DisplayAlerts = False
+    ' Disable alerts and screen updating for performance
     Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
 
-    ' Set references to sheets
+    ' Set references
     Set wsOptions = ThisWorkbook.Sheets("Options")
-    Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
-    Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
+    Set wsData = ThisWorkbook.Sheets("Data") ' Assuming "Data" sheet needs filtering
 
-    ' Get L3 name from the file name
+    ' Extract L3 from file name
     L3Name = Replace(ThisWorkbook.Name, ".xlsx", "")
 
-    ' Clear existing data in Options Sheet (except headers)
+    ' Clear only Columns A & B (not entire sheet)
     wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
 
     ' Initialize dictionary to store unique L4s
-    Set L4Dict = CreateObject("Scripting.Dictionary")
+    Set dictL4 = CreateObject("Scripting.Dictionary")
 
-    ' Find all L4 values under the current L3 in the original Options sheet
+    ' Identify last row in Options (Column D & E contain full list of L3-L4 mappings)
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    newRow = 2 ' Start writing from row 2
+    newRow = 2 ' Start writing from second row
 
+    ' Loop through Options sheet to extract matching L3 and L4 values
     For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
         If cell.Value = L3Name Then
             ' Add L3 to Column A
             wsOptions.Cells(newRow, 1).Value = L3Name
-
-            ' Add L4 to Column B (only if unique)
-            If Not L4Dict.Exists(wsOptions.Cells(cell.Row, "E").Value) Then
-                L4Dict.Add wsOptions.Cells(cell.Row, "E").Value, Nothing
+            
+            ' Add L4 to Column B (avoid duplicates)
+            If Not dictL4.Exists(wsOptions.Cells(cell.Row, "E").Value) Then
+                dictL4.Add wsOptions.Cells(cell.Row, "E").Value, Nothing
                 wsOptions.Cells(newRow, 2).Value = wsOptions.Cells(cell.Row, "E").Value
                 newRow = newRow + 1
             End If
         End If
     Next cell
 
-    ' Set L3 Summary B1 to L3 name (dropdown auto-updates)
-    wsL3.Range("B1").Value = L3Name
-
-    ' Set L4 Summary B1 to first available L4 or *
+    ' Add "*" as the first value in L4 dropdown (if there are L4s)
     If newRow > 2 Then
-        wsL4.Range("B1").Value = "*"
-    Else
-        wsL4.Range("B1").Value = "No L4 Found"
+        wsOptions.Rows("2:2").Insert Shift:=xlDown
+        wsOptions.Cells(2, 2).Value = "*"
     End If
 
+    ' Delete data in "Data" sheet where column A matches L3Name
+    lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+    For Each cell In wsData.Range("A2:A" & lastRowData)
+        If cell.Value = L3Name Then
+            If rngToDelete Is Nothing Then
+                Set rngToDelete = cell
+            Else
+                Set rngToDelete = Union(rngToDelete, cell)
+            End If
+        End If
+    Next cell
+    If Not rngToDelete Is Nothing Then rngToDelete.EntireRow.Delete
+
     ' Re-enable alerts and screen updating
-    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
 
     MsgBox "Options Sheet updated! Dropdowns will now show correct values.", vbInformation, "Done"
 End Sub
