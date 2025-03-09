@@ -1,70 +1,87 @@
-Sub CreateFilteredFiles()
+Sub GenerateL3Files()
     Dim wsOptions As Worksheet, wsData As Worksheet
-    Dim lastRowOptions As Long, rngL3 As Range, cell As Range
-    Dim L3Dict As Object, FilePath As String, L3 As Variant
-    Dim NewWorkbook As Workbook, wsNewData As Worksheet
-    Dim lastRowData As Long
-    Dim MainWorkbook As Workbook, NewFilePath As String
-    Dim SaveFolder As String
-    Dim ws As Worksheet
+    Dim wbMain As Workbook, wbCopy As Workbook
+    Dim L3 As Range, L3Cell As Range
+    Dim lastRow As Long, lastRowData As Long
+    Dim L3List As Object
+    Dim NewFilePath As String
+    Dim folderPath As String
+    Dim fileName As String
+    Dim mainFilePath As String
     
     ' Disable alerts and screen updating
-    Application.DisplayAlerts = False
     Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
     
-    ' Set reference to Options sheet
-    Set wsOptions = ThisWorkbook.Sheets("Options")
+    ' Set references
+    Set wbMain = ThisWorkbook
+    Set wsOptions = wbMain.Sheets("Options")
+    Set wsData = wbMain.Sheets("Data")
+
+    ' Find last row in Options sheet Column D
+    lastRow = wsOptions.Cells(wsOptions.Rows.Count, 4).End(xlUp).Row
     
-    ' Get last row in column D (L3 values)
-    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    
-    ' Create dictionary to store unique L3 values
-    Set L3Dict = CreateObject("Scripting.Dictionary")
-    
-    ' Loop through L3 values and store unique ones
-    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
-        If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
-            L3Dict.Add cell.Value, Nothing
+    ' Create a dictionary to store unique L3 values
+    Set L3List = CreateObject("Scripting.Dictionary")
+
+    ' Loop through column D and collect unique L3 values
+    For Each L3Cell In wsOptions.Range("D2:D" & lastRow)
+        If Not L3List.exists(L3Cell.Value) And L3Cell.Value <> "" Then
+            L3List.Add L3Cell.Value, Nothing
         End If
-    Next cell
-    
-    ' Set folder to save new files
-    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
-    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder ' Create folder if not exists
-    
-    ' Reference the main workbook
-    Set MainWorkbook = ThisWorkbook
-    
-    ' Loop through unique L3 values and create file copies
-    For Each L3 In L3Dict.Keys
-        ' Define the new file path
-        NewFilePath = SaveFolder & L3 & ".xlsx"
+    Next L3Cell
+
+    ' Create output folder if not exists
+    folderPath = wbMain.Path & "\L3_Files\"
+    If Dir(folderPath, vbDirectory) = "" Then MkDir folderPath
+
+    ' Get the main file path
+    mainFilePath = wbMain.FullName
+
+    ' Loop through unique L3 values and create copies
+    For Each L3 In L3List.keys()
+        ' Define new file name
+        fileName = L3 & ".xlsx"
+        NewFilePath = folderPath & fileName
+
+        ' Save a copy of the main file
+        wbMain.SaveCopyAs NewFilePath
         
-        ' Create a new workbook and copy sheets
-        Set NewWorkbook = Workbooks.Add
-        MainWorkbook.Sheets.Copy Before:=NewWorkbook.Sheets(1)
-        
-        ' Delete any default blank sheets
-        For Each ws In NewWorkbook.Sheets
-            If ws.Name Like "Sheet*" Then ws.Delete
-        Next ws
-        
+        ' Open the new copy
+        Set wbCopy = Workbooks.Open(NewFilePath)
+
         ' Delete "Reg Summary" sheet if it exists
-        On Error Resume Next ' Prevents error if the sheet doesn't exist
-        Set ws = NewWorkbook.Sheets("Reg Summary")
-        If Not ws Is Nothing Then
-            ws.Delete
-        End If
-        On Error GoTo 0 ' Re-enable error handling
+        On Error Resume Next
+        wbCopy.Sheets("Reg Summary").Delete
+        On Error GoTo 0
+
+        ' Set reference to Data sheet
+        Set wsData = wbCopy.Sheets("Data")
+
+        ' Find last row of data in column G
+        lastRowData = wsData.Cells(wsData.Rows.Count, 7).End(xlUp).Row
+
+        ' Apply filter in Data sheet and delete rows not matching L3
+        wsData.Rows(2).AutoFilter Field:=7, Criteria1:=L3
+        wsData.Range("A3:A" & lastRowData).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+        wsData.AutoFilterMode = False
+
+        ' Refresh formulas
+        wbCopy.RefreshAll
         
-        ' Save the workbook in .xlsx format
-        NewWorkbook.SaveAs NewFilePath, FileFormat:=xlOpenXMLWorkbook
-        NewWorkbook.Close False
+        ' Set sensitivity label (try to bypass prompt)
+        On Error Resume Next
+        wbCopy.SensitivityLabelPolicy.SetLabel "Internal"
+        On Error GoTo 0
+
+        ' Save and close
+        wbCopy.Save
+        wbCopy.Close False
     Next L3
-    
+
     ' Re-enable alerts and screen updating
-    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    
-    MsgBox "Files created and 'Reg Summary' deleted successfully!", vbInformation, "Done"
+    Application.DisplayAlerts = True
+
+    MsgBox "All L3 files created successfully!", vbInformation
 End Sub
