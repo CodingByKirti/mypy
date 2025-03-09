@@ -1,95 +1,91 @@
-------------------------
-Sub SplitByL3()
-    Dim wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet, wsOptions As Worksheet
-    Dim lastRow As Long, lastL3 As Long, lastL4 As Long
-    Dim L3 As String, L4List As String, L4 As Variant
+Sub SplitWorkbookByL3()
+    Dim wsOptions As Worksheet, wsData As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
+    Dim rngL3 As Range, rngL4 As Range, cell As Range
     Dim dictL4 As Object
-    Dim savePath As String, newWB As Workbook
-    Dim rng As Range, cell As Range
-
-    ' Set worksheet references
+    Dim wbNew As Workbook
+    Dim lastRow As Long, lastRowData As Long
+    Dim L3Value As String, fileName As String
+    Dim delRow As Range
+    Dim rng As Range
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    ' Set sheet references
+    Set wsOptions = ThisWorkbook.Sheets("Options")
     Set wsData = ThisWorkbook.Sheets("Data")
     Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
     Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
-    Set wsOptions = ThisWorkbook.Sheets("Options")
-
-    ' Find the last row in Options tab for L3 & L4
-    lastL3 = wsOptions.Cells(wsOptions.Rows.Count, 4).End(xlUp).Row ' Column D
-    lastL4 = wsOptions.Cells(wsOptions.Rows.Count, 5).End(xlUp).Row ' Column E
     
-    ' Loop through each unique L3 value in Options tab (Column D)
-    For Each cell In wsOptions.Range("D2:D" & lastL3).SpecialCells(xlCellTypeConstants)
-        L3 = cell.Value
-        
-        ' Store corresponding L4 values in a dictionary
-        Set dictL4 = CreateObject("Scripting.Dictionary")
-        For Each rng In wsOptions.Range("D2:D" & lastL4)
-            If rng.Value = L3 Then
-                dictL4(rng.Offset(0, 1).Value) = 1 ' Add L4 value from Column E
-            End If
-        Next rng
-        
-        ' Filter Data sheet where "Business Framework Group" (Col G) = L3
-        wsData.Range("A2").AutoFilter Field:=7, Criteria1:=L3
-        
-        ' Update L3 Summary sheet (Cell B1) with selected L3 value
-        wsL3.Range("B1").Value = L3
-        
-        ' Update L4 Summary sheet (Cell B1) with only the L4s from dictionary
-        L4List = ""
-        For Each L4 In dictL4.keys
-            L4List = L4List & "," & L4
-        Next L4
-        If Len(L4List) > 0 Then
-            wsL4.Range("B1").Validation.Delete ' Remove existing dropdown
-            wsL4.Range("B1").Validation.Add Type:=xlValidateList, _
-                AlertStyle:=xlValidAlertStop, _
-                Formula1:=Mid(L4List, 2) ' Remove leading comma
+    ' Find last row in Options tab for L3 values
+    lastRow = wsOptions.Cells(wsOptions.Rows.Count, 4).End(xlUp).Row ' Column D
+    
+    ' Loop through unique L3 values in Options (Column D)
+    For Each cell In wsOptions.Range("D2:D" & lastRow).SpecialCells(xlCellTypeConstants)
+        L3Value = cell.Value
+        If L3Value <> "*" Then ' Ignore the "*" (All Data)
+            
+            ' Create a dictionary to store unique L4 values for this L3
+            Set dictL4 = CreateObject("Scripting.Dictionary")
+            For Each rngL4 In wsOptions.Range("D2:D" & lastRow)
+                If rngL4.Value = L3Value Then
+                    dictL4(rngL4.Offset(0, 1).Value) = 1 ' Column E (L4)
+                End If
+            Next rngL4
+            
+            ' Filter Data sheet to keep only rows where Column G = L3Value
+            wsData.Range("A2").AutoFilter Field:=7, Criteria1:=L3Value
+            
+            ' Delete rows that do not match the selected L3
+            lastRowData = wsData.Cells(wsData.Rows.Count, 1).End(xlUp).Row
+            For Each rng In wsData.Range("G3:G" & lastRowData)
+                If rng.Value <> L3Value Then
+                    If delRow Is Nothing Then
+                        Set delRow = rng.EntireRow
+                    Else
+                        Set delRow = Union(delRow, rng.EntireRow)
+                    End If
+                End If
+            Next rng
+            If Not delRow Is Nothing Then delRow.Delete
+            wsData.ShowAllData
+            
+            ' Update L3 Summary B1 with the selected L3
+            wsL3.Range("B1").Value = L3Value
+            
+            ' Update L4 Summary B1 with only relevant L4 values
+            wsL4.Range("B1").Validation.Delete ' Remove old dropdown
+            wsL4.Range("B1").Validation.Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+                Operator:=xlBetween, Formula1:=Join(dictL4.Keys, ",")
+            
+            ' Create a new workbook
+            Set wbNew = Workbooks.Add
+            wsL3.Copy Before:=wbNew.Sheets(1)
+            wsL4.Copy Before:=wbNew.Sheets(1)
+            wsData.Copy Before:=wbNew.Sheets(1)
+            ThisWorkbook.Sheets("Readme").Copy Before:=wbNew.Sheets(1)
+            ThisWorkbook.Sheets("Mapping").Copy Before:=wbNew.Sheets(1)
+            
+            ' Delete Reg Summary (not needed for L3 split)
+            On Error Resume Next
+            wbNew.Sheets("Reg Summary").Delete
+            On Error GoTo 0
+            
+            ' Save the new file
+            fileName = ThisWorkbook.Path & "\" & L3Value & ".xlsx"
+            wbNew.SaveAs fileName, FileFormat:=xlOpenXMLWorkbook
+            wbNew.Close False
+            
+            ' Cleanup
+            Set dictL4 = Nothing
+            Set delRow = Nothing
+            
         End If
-
-        ' Create a new workbook & copy required sheets (excluding Reg Summary)
-        Set newWB = Workbooks.Add
-        wsL3.Copy After:=newWB.Sheets(newWB.Sheets.Count)
-        wsL4.Copy After:=newWB.Sheets(newWB.Sheets.Count)
-        wsData.Copy After:=newWB.Sheets(newWB.Sheets.Count)
-        ThisWorkbook.Sheets("Readme").Copy After:=newWB.Sheets(newWB.Sheets.Count)
-        ThisWorkbook.Sheets("Mapping").Copy After:=newWB.Sheets(newWB.Sheets.Count) ' Retain Mapping
-        
-        ' Save the new workbook
-        savePath = ThisWorkbook.Path & "\" & L3 & ".xlsx"
-        newWB.SaveAs savePath, FileFormat:=xlOpenXMLWorkbook
-        newWB.Close False
-        
-        ' Reset filter in Data sheet
-        wsData.AutoFilterMode = False
-        
-        ' Release memory
-        Set dictL4 = Nothing
     Next cell
     
-    MsgBox "Files have been successfully created.", vbInformation
+    ' Reset screen updates
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Splitting complete!", vbInformation, "Done"
 End Sub
-
----------------------------
-
-
-
-
-
-
-
-
-
-
-Subject: Follow-up: Alteryx Implementation Use Cases
-
-Dear [Leads' Names],
-
-Following up on the trailing discussion regarding Alteryx implementation, we need to identify specific use cases within your teams where Alteryx can add value. I have not received any inputs yet, so please consider this a gentle reminder to review and share your insights.
-
-To ensure alignment, kindly fill in the attached template and send it by the end of this week. This will help us move forward efficiently.
-
-Your inputs are important in making this implementation successful. Appreciate your cooperation.
-
-Best regards,
-[Your Name]
