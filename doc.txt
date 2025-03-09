@@ -1,9 +1,9 @@
 Sub FilterAndCleanFiles()
     Dim wsData As Worksheet, wsOptions As Worksheet
-    Dim lastRowData As Long, lastRowOptions As Long
-    Dim rng As Range, cell As Range
+    Dim lastRowOptions As Long
+    Dim cell As Range
     Dim L3 As String, L4Dict As Object
-    Dim NewWorkbook As Workbook, wsNewOptions As Worksheet
+    Dim NewWorkbook As Workbook
     Dim FilePath As String, SaveFolder As String
     Dim ws As Worksheet
     
@@ -19,11 +19,23 @@ Sub FilterAndCleanFiles()
     Do While FilePath <> ""
         ' Open the newly created file
         Set NewWorkbook = Workbooks.Open(SaveFolder & FilePath)
-        Set wsData = NewWorkbook.Sheets("Data")
-        Set wsOptions = NewWorkbook.Sheets("Options")
         
         ' Extract L3 from file name
         L3 = Left(FilePath, Len(FilePath) - 5) ' Remove .xlsx extension
+        
+        ' Set references to sheets
+        On Error Resume Next
+        Set wsData = NewWorkbook.Sheets("Data")
+        Set wsOptions = NewWorkbook.Sheets("Options")
+        On Error GoTo 0
+        
+        ' Ensure Options sheet exists
+        If wsOptions Is Nothing Then
+            MsgBox "Options sheet missing in " & FilePath, vbExclamation, "Error"
+            NewWorkbook.Close False
+            FilePath = Dir
+            GoTo NextFile
+        End If
         
         ' Get last row in Options sheet
         lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "A").End(xlUp).Row
@@ -53,8 +65,6 @@ Sub FilterAndCleanFiles()
         End If
         
         ' Refresh data & delete "Reg Summary"
-        wsData.Activate
-        ActiveWorkbook.RefreshAll
         On Error Resume Next
         Set ws = NewWorkbook.Sheets("Reg Summary")
         If Not ws Is Nothing Then ws.Delete
@@ -64,6 +74,7 @@ Sub FilterAndCleanFiles()
         NewWorkbook.Save
         NewWorkbook.Close False
         
+NextFile:
         ' Get next file
         FilePath = Dir
     Loop
