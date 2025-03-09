@@ -1,12 +1,15 @@
-Sub ProcessFilteredFiles_Simple()
+Sub UpdateFilteredFiles()
     Dim wb As Workbook
     Dim wsData As Worksheet, wsOptions As Worksheet
-    Dim wsL3Summary As Worksheet, wsL4Summary As Worksheet
     Dim folderPath As String, filePath As String
     Dim fso As Object, file As Object
     Dim L3Name As String
     Dim lastRow As Long, rowNum As Long
-
+    Dim wsOptionsLastRow As Long
+    Dim L4List As Object
+    Dim rng As Range, cell As Range
+    Dim i As Integer
+    
     ' Disable updates for better performance
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -29,18 +32,16 @@ Sub ProcessFilteredFiles_Simple()
         If LCase(Right(file.Name, 5)) = ".xlsx" Then
             ' Open the workbook
             Set wb = Workbooks.Open(file.Path)
-            L3Name = Replace(wb.Name, ".xlsx", "")
+            L3Name = Replace(file.Name, ".xlsx", "") ' Store L3 name (filename without extension)
 
             ' Set worksheet references
             On Error Resume Next
             Set wsData = wb.Sheets("Data")
             Set wsOptions = wb.Sheets("Options")
-            Set wsL3Summary = wb.Sheets("L3 Summary")
-            Set wsL4Summary = wb.Sheets("L4 Summary")
             On Error GoTo 0
 
             ' Skip if any sheet is missing
-            If wsData Is Nothing Or wsOptions Is Nothing Or wsL3Summary Is Nothing Or wsL4Summary Is Nothing Then
+            If wsData Is Nothing Or wsOptions Is Nothing Then
                 MsgBox "Missing required sheets in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
@@ -49,16 +50,41 @@ Sub ProcessFilteredFiles_Simple()
             ' ---- FILTER "DATA" SHEET ----
             lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
 
-            ' Delete rows where Col A does not match file name (L3Name)
+            ' Delete rows where Column A (Business Framework Group) does not match L3Name
             For rowNum = lastRow To 2 Step -1
                 If wsData.Cells(rowNum, 1).Value <> L3Name Then
                     wsData.Rows(rowNum).Delete
                 End If
             Next rowNum
 
-            ' ---- UPDATE "L3 Summary" & "L4 Summary" ----
-            wsL3Summary.Range("B1").Value = L3Name
-            wsL4Summary.Range("B1").Value = L3Name
+            ' ---- GET L4 VALUES FROM OPTIONS SHEET ----
+            Set L4List = CreateObject("Scripting.Dictionary") ' Store unique L4 values
+
+            wsOptionsLastRow = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+            Set rng = wsOptions.Range("D2:D" & wsOptionsLastRow)
+
+            For Each cell In rng
+                If cell.Value = L3Name Then
+                    If Not L4List.exists(cell.Offset(0, 1).Value) Then
+                        L4List.Add cell.Offset(0, 1).Value, Nothing
+                    End If
+                End If
+            Next cell
+
+            ' ---- UPDATE "OPTIONS" SHEET ----
+            ' Update Col A
+            wsOptions.Range("A2").Value = L3Name
+            wsOptions.Range("A3:A" & wsOptions.Rows.Count).ClearContents ' Delete remaining Col A values
+
+            ' Update Col B (Drop-down values)
+            wsOptions.Range("B3:B" & wsOptions.Rows.Count).ClearContents ' Clear previous L4 values
+            wsOptions.Range("B2").Value = "*" ' Keep * at B2
+            i = 3 ' Start filling L4 values from B3
+
+            For Each key In L4List.keys
+                wsOptions.Cells(i, 2).Value = key
+                i = i + 1
+            Next key
 
             ' Save & close
             wb.Save
