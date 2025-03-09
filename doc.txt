@@ -1,12 +1,76 @@
-    Automation of Anaplan Data Preparation for Global Role Exercise – 60% complete; awaiting inputs from Himanshu.
-    GSC JML File Automation – Created and delivered for Himangi; process handed over.
-    Anaplan Support for Himanshu:
-        Identified missing records/discrepancies between initial Finance Change/FSM data and uploaded Anaplan data.
-        Mapped Legal Entities with Countries in Anaplan based on naming differences from TM1.
-        Prepared Anaplan Target upload files using TM1 data.
-        Providing ongoing support for day-to-day Anaplan activities.
-    Billing File Automation – Handed over to Tamil and Rajni. The new process now generates the required file in under a minute, saving 7–8 hours of manual effort per instance.
-    Interviews – Conducted interviews for four CA new joiners.
-    Automation Opportunities – Drafted an email to the leaders regarding automation opportunities, but unfortunately, no responses were received. Would like to discuss possible next steps on how to proceed further.
-
-Let me know if you need any further details.
+Sub FilterAndCleanFiles()
+    Dim wsData As Worksheet, wsOptions As Worksheet
+    Dim lastRowData As Long, lastRowOptions As Long
+    Dim rng As Range, cell As Range
+    Dim L3 As String, L4Dict As Object
+    Dim NewWorkbook As Workbook, wsNewOptions As Worksheet
+    Dim FilePath As String, SaveFolder As String
+    Dim ws As Worksheet
+    
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+    
+    ' Set save folder path
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+    
+    ' Loop through filtered files
+    FilePath = Dir(SaveFolder & "*.xlsx")
+    Do While FilePath <> ""
+        ' Open the newly created file
+        Set NewWorkbook = Workbooks.Open(SaveFolder & FilePath)
+        Set wsData = NewWorkbook.Sheets("Data")
+        Set wsOptions = NewWorkbook.Sheets("Options")
+        
+        ' Extract L3 from file name
+        L3 = Left(FilePath, Len(FilePath) - 5) ' Remove .xlsx extension
+        
+        ' Get last row in Options sheet
+        lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "A").End(xlUp).Row
+        
+        ' Create dictionary to store unique L4 values
+        Set L4Dict = CreateObject("Scripting.Dictionary")
+        
+        ' Loop through Options sheet to get L4s corresponding to L3
+        For Each cell In wsOptions.Range("A2:A" & lastRowOptions)
+            If cell.Value = L3 Then
+                If Not L4Dict.Exists(cell.Offset(0, 1).Value) And cell.Offset(0, 1).Value <> "" Then
+                    L4Dict.Add cell.Offset(0, 1).Value, Nothing
+                End If
+            End If
+        Next cell
+        
+        ' Clear existing Options sheet and update it
+        wsOptions.Cells.Clear
+        wsOptions.Range("A1").Value = "L3"
+        wsOptions.Range("B1").Value = "L4"
+        wsOptions.Range("A2").Value = L3 ' Only the relevant L3
+        
+        ' Populate L4 values
+        wsOptions.Range("B2").Value = "*" ' First entry as *
+        If L4Dict.Count > 0 Then
+            wsOptions.Range("B3").Resize(L4Dict.Count, 1).Value = Application.Transpose(L4Dict.Keys)
+        End If
+        
+        ' Refresh data & delete "Reg Summary"
+        wsData.Activate
+        ActiveWorkbook.RefreshAll
+        On Error Resume Next
+        Set ws = NewWorkbook.Sheets("Reg Summary")
+        If Not ws Is Nothing Then ws.Delete
+        On Error GoTo 0
+        
+        ' Save & close workbook
+        NewWorkbook.Save
+        NewWorkbook.Close False
+        
+        ' Get next file
+        FilePath = Dir
+    Loop
+    
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    
+    MsgBox "Filtering, cleanup, and dropdown preparation completed successfully!", vbInformation, "Done"
+End Sub
