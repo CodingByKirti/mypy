@@ -1,63 +1,47 @@
-Sub FilterAndCleanFiles()
-    Dim SaveFolder As String, FileName As String
-    Dim wb As Workbook, ws As Worksheet
-    Dim lastRow As Long
-    Dim rng As Range, colG As Range
-    Dim L3 As String
-
-    ' Disable alerts, screen updating
-    Application.DisplayAlerts = False
-    Application.ScreenUpdating = False
-
-    ' Set the folder where files were saved
-    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
-
-    ' Loop through each file in the folder
-    FileName = Dir(SaveFolder & "*.xlsx")
+Sub UpdateL3AndL4Summaries()
+    Dim wsOptions As Worksheet, wsL3Summary As Worksheet, wsL4Summary As Worksheet
+    Dim lastRowOptions As Long, rngL3 As Range, rngL4 As Range, cell As Range
+    Dim L3 As String, L4Values As String, NewFileName As String
+    Dim dvRange As Range, wsData As Worksheet
+    Dim L4Dict As Object
     
-    Do While FileName <> ""
-        ' Open the workbook
-        Set wb = Workbooks.Open(SaveFolder & FileName)
-        
-        ' Get L3 name from filename (remove ".xlsx")
-        L3 = Replace(FileName, ".xlsx", "")
-        
-        ' Set reference to Data sheet
-        On Error Resume Next
-        Set ws = wb.Sheets("Data")
-        On Error GoTo 0
-        
-        If Not ws Is Nothing Then
-            ' Get last row in column G
-            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
-            
-            ' Apply AutoFilter on row 2
-            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>" & L3
-            
-            ' Delete visible rows (except header)
-            If lastRow > 2 Then
-                Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
-                rng.Delete
+    ' Set references to sheets
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    Set wsL3Summary = ThisWorkbook.Sheets("L3 Summary")
+    Set wsL4Summary = ThisWorkbook.Sheets("L4 Summary")
+    
+    ' Extract L3 name from the filename (current workbook name)
+    NewFileName = ThisWorkbook.Name
+    L3 = Left(NewFileName, InStrRev(NewFileName, ".") - 1) ' Remove ".xlsx"
+    
+    ' Update B1 in "L3 Summary" sheet
+    wsL3Summary.Range("B1").Value = L3
+    
+    ' Find all corresponding L4 values for this L3
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+    Set L4Dict = CreateObject("Scripting.Dictionary")
+    
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If cell.Value = L3 Then
+            If Not L4Dict.Exists(cell.Offset(0, 1).Value) Then
+                L4Dict.Add cell.Offset(0, 1).Value, Nothing
             End If
-            
-            ' Turn off AutoFilter
-            ws.AutoFilterMode = False
-            
-            ' Refresh all data connections
-            wb.RefreshAll
         End If
-        
-        ' Save and close the workbook
-        wb.Save
-        wb.Close False
-        
-        ' Move to next file
-        FileName = Dir
-    Loop
+    Next cell
+    
+    ' Create a comma-separated list of L4 values
+    L4Values = Join(L4Dict.Keys, ",")
+    
+    ' Set dropdown in B1 of "L4 Summary"
+    With wsL4Summary.Range("B1").Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:= _
+            xlBetween, Formula1:=L4Values
+        .IgnoreBlank = True
+        .InCellDropdown = True
+        .ShowInput = True
+        .ShowError = True
+    End With
 
-    ' Re-enable alerts and screen updating
-    Application.DisplayAlerts = True
-    Application.ScreenUpdating = True
-
-    MsgBox "Filtering completed successfully!", vbInformation, "Done"
+    MsgBox "Updated L3 Summary and L4 Summary dropdown!", vbInformation, "Done"
 End Sub
