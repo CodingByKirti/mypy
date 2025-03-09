@@ -1,4 +1,4 @@
-Sub UpdateOptionsSheetForFilteredFiles()
+Sub FilterAndUpdateSheets()
     Dim wsOptions As Worksheet, wsData As Worksheet
     Dim lastRowOptions As Long, lastRowData As Long
     Dim cell As Range, rngToDelete As Range
@@ -6,34 +6,34 @@ Sub UpdateOptionsSheetForFilteredFiles()
     Dim dictL4 As Object
     Dim newRow As Long
 
-    ' Disable alerts and screen updating for performance
+    ' Disable screen updating for performance
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
-    ' Set references
+    ' Set sheet references
     Set wsOptions = ThisWorkbook.Sheets("Options")
-    Set wsData = ThisWorkbook.Sheets("Data") ' Assuming "Data" sheet needs filtering
+    Set wsData = ThisWorkbook.Sheets("Data") ' Assuming "Data" needs filtering
 
-    ' Extract L3 from file name
+    ' Extract L3 from file name (removing .xlsx extension)
     L3Name = Replace(ThisWorkbook.Name, ".xlsx", "")
 
-    ' Clear only Columns A & B (not entire sheet)
+    ' Clear Columns A & B in Options sheet (not entire sheet)
     wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
 
-    ' Initialize dictionary to store unique L4s
+    ' Create dictionary to store unique L4 values
     Set dictL4 = CreateObject("Scripting.Dictionary")
 
-    ' Identify last row in Options (Column D & E contain full list of L3-L4 mappings)
+    ' Identify last row in Options (Col D = L3, Col E = L4s)
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-    newRow = 2 ' Start writing from second row
+    newRow = 2 ' Start from row 2 (keep headers intact)
 
-    ' Loop through Options sheet to extract matching L3 and L4 values
+    ' Loop through Options sheet to filter L3 & L4 values
     For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
         If cell.Value = L3Name Then
             ' Add L3 to Column A
             wsOptions.Cells(newRow, 1).Value = L3Name
             
-            ' Add L4 to Column B (avoid duplicates)
+            ' Add unique L4s to Column B
             If Not dictL4.Exists(wsOptions.Cells(cell.Row, "E").Value) Then
                 dictL4.Add wsOptions.Cells(cell.Row, "E").Value, Nothing
                 wsOptions.Cells(newRow, 2).Value = wsOptions.Cells(cell.Row, "E").Value
@@ -42,16 +42,18 @@ Sub UpdateOptionsSheetForFilteredFiles()
         End If
     Next cell
 
-    ' Add "*" as the first value in L4 dropdown (if there are L4s)
+    ' Add "*" as first entry in L4 dropdown
     If newRow > 2 Then
         wsOptions.Rows("2:2").Insert Shift:=xlDown
         wsOptions.Cells(2, 2).Value = "*"
     End If
 
-    ' Delete data in "Data" sheet where column A matches L3Name
+    ' ---- FILTER DATA SHEET ----
     lastRowData = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
+
+    ' Find and delete rows where Column A does NOT match L3
     For Each cell In wsData.Range("A2:A" & lastRowData)
-        If cell.Value = L3Name Then
+        If cell.Value <> L3Name Then
             If rngToDelete Is Nothing Then
                 Set rngToDelete = cell
             Else
@@ -59,11 +61,13 @@ Sub UpdateOptionsSheetForFilteredFiles()
             End If
         End If
     Next cell
+
+    ' Delete rows that don’t match the L3Name
     If Not rngToDelete Is Nothing Then rngToDelete.EntireRow.Delete
 
-    ' Re-enable alerts and screen updating
+    ' Enable screen updating
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    MsgBox "Options Sheet updated! Dropdowns will now show correct values.", vbInformation, "Done"
+    MsgBox "Filtering completed! Options and Data sheets updated.", vbInformation, "Done"
 End Sub
