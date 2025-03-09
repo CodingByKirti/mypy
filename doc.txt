@@ -1,107 +1,63 @@
-Sub UpdateFilteredFiles()
-    Dim wb As Workbook
-    Dim wsData As Worksheet, wsOptions As Worksheet
-    Dim folderPath As String, filePath As String
-    Dim fso As Object, file As Object
-    Dim L3Name As String
-    Dim lastRow As Long, rowNum As Long
-    Dim wsOptionsLastRow As Long
-    Dim L4List As Object
-    Dim rng As Range, cell As Range
-    Dim i As Integer
-    
-    ' Disable updates for better performance
+Sub FilterAndCleanFiles()
+    Dim SaveFolder As String, FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long
+    Dim rng As Range, colG As Range
+    Dim L3 As String
+
+    ' Disable alerts, screen updating
+    Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    Application.EnableEvents = False
 
-    ' Set folder path
-    folderPath = ThisWorkbook.Path & "\Filtered_Files\"
-
-    ' Create File System Object
-    Set fso = CreateObject("Scripting.FileSystemObject")
-
-    ' Ensure folder exists
-    If Not fso.FolderExists(folderPath) Then
-        MsgBox "Filtered_Files folder not found!", vbExclamation, "Error"
-        Exit Sub
-    End If
+    ' Set the folder where files were saved
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
 
     ' Loop through each file in the folder
-    For Each file In fso.GetFolder(folderPath).Files
-        If LCase(Right(file.Name, 5)) = ".xlsx" Then
-            ' Open the workbook
-            Set wb = Workbooks.Open(file.Path)
-            L3Name = Replace(file.Name, ".xlsx", "") ' Store L3 name (filename without extension)
-
-            ' Set worksheet references
-            On Error Resume Next
-            Set wsData = wb.Sheets("Data")
-            Set wsOptions = wb.Sheets("Options")
-            On Error GoTo 0
-
-            ' Skip if any sheet is missing
-            If wsData Is Nothing Or wsOptions Is Nothing Then
-                MsgBox "Missing required sheets in: " & wb.Name, vbExclamation, "Skipping"
-                wb.Close False
-                GoTo NextFile
+    FileName = Dir(SaveFolder & "*.xlsx")
+    
+    Do While FileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(SaveFolder & FileName)
+        
+        ' Get L3 name from filename (remove ".xlsx")
+        L3 = Replace(FileName, ".xlsx", "")
+        
+        ' Set reference to Data sheet
+        On Error Resume Next
+        Set ws = wb.Sheets("Data")
+        On Error GoTo 0
+        
+        If Not ws Is Nothing Then
+            ' Get last row in column G
+            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+            
+            ' Apply AutoFilter on row 2
+            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>" & L3
+            
+            ' Delete visible rows (except header)
+            If lastRow > 2 Then
+                Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
+                rng.Delete
             End If
-
-            ' ---- FILTER "DATA" SHEET ----
-            lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
-
-            ' Delete rows where Column A (Business Framework Group) does not match L3Name
-            For rowNum = lastRow To 2 Step -1
-                If wsData.Cells(rowNum, 1).Value <> L3Name Then
-                    wsData.Rows(rowNum).Delete
-                End If
-            Next rowNum
-
-            ' ---- GET L4 VALUES FROM OPTIONS SHEET ----
-            Set L4List = CreateObject("Scripting.Dictionary") ' Store unique L4 values
-
-            wsOptionsLastRow = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-            Set rng = wsOptions.Range("D2:D" & wsOptionsLastRow)
-
-            For Each cell In rng
-                If cell.Value = L3Name Then
-                    If Not L4List.exists(cell.Offset(0, 1).Value) Then
-                        L4List.Add cell.Offset(0, 1).Value, Nothing
-                    End If
-                End If
-            Next cell
-
-            ' ---- UPDATE "OPTIONS" SHEET ----
-            ' Update Col A
-            wsOptions.Range("A2").Value = L3Name
-            wsOptions.Range("A3:A" & wsOptions.Rows.Count).ClearContents ' Delete remaining Col A values
-
-            ' Update Col B (Drop-down values)
-            wsOptions.Range("B3:B" & wsOptions.Rows.Count).ClearContents ' Clear previous L4 values
-            wsOptions.Range("B2").Value = "*" ' Keep * at B2
-            i = 3 ' Start filling L4 values from B3
-
-            For Each key In L4List.keys
-                wsOptions.Cells(i, 2).Value = key
-                i = i + 1
-            Next key
-
-            ' Save & close
-            wb.Save
-            wb.Close False
-
-NextFile:
+            
+            ' Turn off AutoFilter
+            ws.AutoFilterMode = False
+            
+            ' Refresh all data connections
+            wb.RefreshAll
         End If
-    Next file
+        
+        ' Save and close the workbook
+        wb.Save
+        wb.Close False
+        
+        ' Move to next file
+        FileName = Dir
+    Loop
 
-    ' Restore application settings
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    Application.Calculation = xlCalculationAutomatic
-    Application.EnableEvents = True
 
-    ' Cleanup
-    Set fso = Nothing
-
-    MsgBox "Processing completed!", vbInformation, "Done"
-
+    MsgBox "Filtering completed successfully!", vbInformation, "Done"
 End Sub
