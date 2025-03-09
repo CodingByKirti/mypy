@@ -4,7 +4,7 @@ Sub UpdateFilteredFiles()
     Dim filePath As String, folderPath As String
     Dim L3Name As String
     Dim dictL4 As Object
-    Dim fso As Object, file As Object
+    Dim fso As Object, file As Object, fileList As Object
     Dim cell As Range
     Dim newRow As Long, countL4 As Long, countDeletedRows As Long
     Dim lastRowOptions As Long, lastRowData As Long
@@ -25,8 +25,11 @@ Sub UpdateFilteredFiles()
         Exit Sub
     End If
 
+    ' Get the list of files once to avoid infinite loops
+    Set fileList = fso.GetFolder(folderPath).Files
+
     ' Loop through each file in the folder
-    For Each file In fso.GetFolder(folderPath).Files
+    For Each file In fileList
         ' Process only Excel files
         If LCase(Right(file.Name, 5)) = ".xlsx" Then
             ' Open the filtered file
