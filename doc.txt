@@ -1,87 +1,58 @@
-Sub FilterAndCleanFiles()
-    Dim wsData As Worksheet, wsOptions As Worksheet
-    Dim lastRowOptions As Long
-    Dim cell As Range
-    Dim L3 As String, L4Dict As Object
-    Dim NewWorkbook As Workbook
-    Dim FilePath As String, SaveFolder As String
-    Dim ws As Worksheet
-    
+Sub UpdateOptionsSheetForFilteredFiles()
+    Dim wsOptions As Worksheet, wsL3 As Worksheet, wsL4 As Worksheet
+    Dim lastRowOptions As Long, cell As Range
+    Dim L3Name As String, L4Dict As Object
+    Dim lastRowL4 As Long, newRow As Long
+
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-    
-    ' Set save folder path
-    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
-    
-    ' Loop through filtered files
-    FilePath = Dir(SaveFolder & "*.xlsx")
-    Do While FilePath <> ""
-        ' Open the newly created file
-        Set NewWorkbook = Workbooks.Open(SaveFolder & FilePath)
-        
-        ' Extract L3 from file name
-        L3 = Left(FilePath, Len(FilePath) - 5) ' Remove .xlsx extension
-        
-        ' Set references to sheets
-        On Error Resume Next
-        Set wsData = NewWorkbook.Sheets("Data")
-        Set wsOptions = NewWorkbook.Sheets("Options")
-        On Error GoTo 0
-        
-        ' Ensure Options sheet exists
-        If wsOptions Is Nothing Then
-            MsgBox "Options sheet missing in " & FilePath, vbExclamation, "Error"
-            NewWorkbook.Close False
-            FilePath = Dir
-            GoTo NextFile
-        End If
-        
-        ' Get last row in Options sheet
-        lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "A").End(xlUp).Row
-        
-        ' Create dictionary to store unique L4 values
-        Set L4Dict = CreateObject("Scripting.Dictionary")
-        
-        ' Loop through Options sheet to get L4s corresponding to L3
-        For Each cell In wsOptions.Range("A2:A" & lastRowOptions)
-            If cell.Value = L3 Then
-                If Not L4Dict.Exists(cell.Offset(0, 1).Value) And cell.Offset(0, 1).Value <> "" Then
-                    L4Dict.Add cell.Offset(0, 1).Value, Nothing
-                End If
+
+    ' Set references to sheets
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    Set wsL3 = ThisWorkbook.Sheets("L3 Summary")
+    Set wsL4 = ThisWorkbook.Sheets("L4 Summary")
+
+    ' Get L3 name from the file name
+    L3Name = Replace(ThisWorkbook.Name, ".xlsx", "")
+
+    ' Clear existing data in Options Sheet (except headers)
+    wsOptions.Range("A2:B" & wsOptions.Rows.Count).ClearContents
+
+    ' Initialize dictionary to store unique L4s
+    Set L4Dict = CreateObject("Scripting.Dictionary")
+
+    ' Find all L4 values under the current L3 in the original Options sheet
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+    newRow = 2 ' Start writing from row 2
+
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If cell.Value = L3Name Then
+            ' Add L3 to Column A
+            wsOptions.Cells(newRow, 1).Value = L3Name
+
+            ' Add L4 to Column B (only if unique)
+            If Not L4Dict.Exists(wsOptions.Cells(cell.Row, "E").Value) Then
+                L4Dict.Add wsOptions.Cells(cell.Row, "E").Value, Nothing
+                wsOptions.Cells(newRow, 2).Value = wsOptions.Cells(cell.Row, "E").Value
+                newRow = newRow + 1
             End If
-        Next cell
-        
-        ' Clear existing Options sheet and update it
-        wsOptions.Cells.Clear
-        wsOptions.Range("A1").Value = "L3"
-        wsOptions.Range("B1").Value = "L4"
-        wsOptions.Range("A2").Value = L3 ' Only the relevant L3
-        
-        ' Populate L4 values
-        wsOptions.Range("B2").Value = "*" ' First entry as *
-        If L4Dict.Count > 0 Then
-            wsOptions.Range("B3").Resize(L4Dict.Count, 1).Value = Application.Transpose(L4Dict.Keys)
         End If
-        
-        ' Refresh data & delete "Reg Summary"
-        On Error Resume Next
-        Set ws = NewWorkbook.Sheets("Reg Summary")
-        If Not ws Is Nothing Then ws.Delete
-        On Error GoTo 0
-        
-        ' Save & close workbook
-        NewWorkbook.Save
-        NewWorkbook.Close False
-        
-NextFile:
-        ' Get next file
-        FilePath = Dir
-    Loop
-    
+    Next cell
+
+    ' Set L3 Summary B1 to L3 name (dropdown auto-updates)
+    wsL3.Range("B1").Value = L3Name
+
+    ' Set L4 Summary B1 to first available L4 or *
+    If newRow > 2 Then
+        wsL4.Range("B1").Value = "*"
+    Else
+        wsL4.Range("B1").Value = "No L4 Found"
+    End If
+
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-    
-    MsgBox "Filtering, cleanup, and dropdown preparation completed successfully!", vbInformation, "Done"
+
+    MsgBox "Options Sheet updated! Dropdowns will now show correct values.", vbInformation, "Done"
 End Sub
