@@ -1,3 +1,92 @@
+Sub RegSummarySplit()
+    Dim wbSource As Workbook, wbNew As Workbook
+    Dim wsOptions As Worksheet, wsData As Worksheet, wsRegSummary As Worksheet
+    Dim folderPath As String, newFilePath As String
+    Dim region As String
+    Dim lastRow As Long, i As Long
+    Dim regionList As Object
+
+    ' Disable screen updating for better performance
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    ' Set source workbook
+    Set wbSource = ThisWorkbook
+    Set wsOptions = wbSource.Sheets("Options")
+
+    ' Create folder for filtered files if not exists
+    folderPath = wbSource.Path & "\Filtered_Regions\"
+    If Dir(folderPath, vbDirectory) = "" Then MkDir folderPath
+
+    ' Get the list of unique regions from column K (starting from K2, skipping "*")
+    lastRow = wsOptions.Cells(wsOptions.Rows.Count, "K").End(xlUp).Row
+    Set regionList = CreateObject("Scripting.Dictionary")
+
+    For i = 2 To lastRow
+        region = Trim(wsOptions.Cells(i, "K").Value)
+        If region <> "" And region <> "*" Then
+            regionList(region) = True ' Store unique regions
+        End If
+    Next i
+
+    ' Loop through each unique region
+    For Each region In regionList.keys
+        ' Create a new copy of the source file
+        wbSource.SaveCopyAs folderPath & "RegSummary_" & region & ".xlsx"
+        Set wbNew = Workbooks.Open(folderPath & "RegSummary_" & region & ".xlsx")
+
+        ' Delete L3 Summary & L4 Summary sheets if they exist
+        On Error Resume Next
+        Application.DisplayAlerts = False
+        wbNew.Sheets("L3 Summary").Delete
+        wbNew.Sheets("L4 Summary").Delete
+        Application.DisplayAlerts = True
+        On Error GoTo 0
+
+        ' Set worksheet references
+        Set wsData = wbNew.Sheets("Data")
+        Set wsRegSummary = wbNew.Sheets("Reg Summary")
+
+        ' ---- FILTER & DELETE UNWANTED DATA ----
+        With wsData
+            .AutoFilterMode = False
+            lastRow = .Cells(.Rows.Count, "A").End(xlUp).Row ' Find last row
+
+            ' Apply filter on column LR (assumed column 12) and delete unmatched rows
+            .Range("A1").AutoFilter Field:=12, Criteria1:="<>" & region
+            On Error Resume Next
+            .Range("A2:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+            On Error GoTo 0
+            .AutoFilterMode = False
+        End With
+
+        ' ---- UPDATE REG SUMMARY B1 ----
+        wsRegSummary.Range("B1").Value = region
+
+        ' Save & Close the file
+        wbNew.Save
+        wbNew.Close False
+    Next region
+
+    ' Restore application settings
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+
+    ' Cleanup
+    Set regionList = Nothing
+
+    MsgBox "Reg Summary split completed!", vbInformation, "Done"
+End Sub
+
+
+
+
+
+
+
+
 Sub FilterAndCleanFiles()
     Dim wsData As Worksheet, wsOptions As Worksheet
     Dim lastRowData As Long, lastRowOptions As Long
