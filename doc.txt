@@ -1,3 +1,95 @@
+
+Sub UpdateL4SummaryDropdown()
+    Dim wb As Workbook
+    Dim wsOptions As Worksheet, wsL4Summary As Worksheet
+    Dim folderPath As String, filePath As String
+    Dim fso As Object, file As Object
+    Dim lastRow As Long
+    Dim rng As Range
+    Dim dvRange As Range
+    
+    ' Disable screen updating for better performance
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    ' Set folder path
+    folderPath = ThisWorkbook.Path & "\Filtered_Files\"
+
+    ' Create File System Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' Ensure folder exists
+    If Not fso.FolderExists(folderPath) Then
+        MsgBox "Filtered_Files folder not found!", vbExclamation, "Error"
+        Exit Sub
+    End If
+
+    ' Loop through each file in the folder
+    For Each file In fso.GetFolder(folderPath).Files
+        If LCase(Right(file.Name, 5)) = ".xlsx" Then
+            ' Open the workbook
+            Set wb = Workbooks.Open(file.Path)
+
+            ' Set worksheet references
+            On Error Resume Next
+            Set wsOptions = wb.Sheets("Options")
+            Set wsL4Summary = wb.Sheets("L4 Summary")
+            On Error GoTo 0
+
+            ' Skip if any sheet is missing
+            If wsOptions Is Nothing Or wsL4Summary Is Nothing Then
+                MsgBox "Missing required sheets in: " & wb.Name, vbExclamation, "Skipping"
+                wb.Close False
+                GoTo NextFile
+            End If
+
+            ' ---- GET L4 VALUES FROM OPTIONS SHEET ----
+            lastRow = wsOptions.Cells(wsOptions.Rows.Count, "B").End(xlUp).Row
+
+            ' If no values exist, clear the dropdown and continue
+            If lastRow < 3 Then
+                wsL4Summary.Range("B1").Validation.Delete
+                wb.Save
+                wb.Close False
+                GoTo NextFile
+            End If
+
+            ' Define range for dropdown values (B3 to last value in B)
+            Set rng = wsOptions.Range("B3:B" & lastRow)
+
+            ' ---- UPDATE DROPDOWN IN L4 SUMMARY ----
+            With wsL4Summary.Range("B1").Validation
+                .Delete ' Remove old dropdown
+                .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+                     Operator:=xlBetween, Formula1:="=" & wsOptions.Name & "!" & rng.Address
+                .IgnoreBlank = True
+                .InCellDropdown = True
+                .ShowInput = False
+                .ShowError = False
+            End With
+
+            ' Save & close
+            wb.Save
+            wb.Close False
+
+NextFile:
+        End If
+    Next file
+
+    ' Restore application settings
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+
+    ' Cleanup
+    Set fso = Nothing
+
+    MsgBox "L4 Summary dropdown updated in all files!", vbInformation, "Done"
+
+End Sub
+
+
 Sub FilterAndCleanFiles()
     Dim SaveFolder As String, FileName As String
     Dim wb As Workbook, ws As Worksheet
