@@ -1,3 +1,68 @@
+Sub FilterDataByFileName()
+    Dim folderPath As String, fileName As String, filePath As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long
+    Dim fileNameWithoutExt As String
+
+    ' Disable screen updating for better performance
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    ' Folder where region-split files are stored
+    folderPath = ThisWorkbook.Path & "\Filtered_Regions\"
+
+    ' Loop through all files in the folder
+    fileName = Dir(folderPath & "*.xlsx")
+
+    Do While fileName <> ""
+        ' Build full file path
+        filePath = folderPath & fileName
+
+        ' Open the workbook
+        Set wb = Workbooks.Open(filePath)
+        Set ws = wb.Sheets("Data")
+
+        ' Extract the file name without extension
+        fileNameWithoutExt = Left(fileName, InStrRev(fileName, ".") - 1)
+
+        ' Find the last row in Data sheet (column BT)
+        lastRow = ws.Cells(ws.Rows.Count, "BT").End(xlUp).Row
+
+        ' ---- FILTER & DELETE UNMATCHED ROWS ----
+        With ws
+            .AutoFilterMode = False
+            ' Apply filter on column BT (assumed to be column 72)
+            .Range("A2").AutoFilter Field:=72, Criteria1:="<>" & fileNameWithoutExt
+
+            ' Delete visible rows (excluding header in row 2)
+            On Error Resume Next
+            .Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+            On Error GoTo 0
+
+            ' Clear filter
+            .AutoFilterMode = False
+        End With
+
+        ' Save & Close the file
+        wb.Save
+        wb.Close False
+
+        ' Move to the next file
+        fileName = Dir
+    Loop
+
+    ' Restore application settings
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+
+    MsgBox "Data filtering by file name completed!", vbInformation, "Done"
+End Sub
+
+
+
+
 Sub RegSummarySplit()
     Dim wbSource As Workbook, wbNew As Workbook
     Dim wsOptions As Worksheet, wsData As Worksheet, wsRegSummary As Worksheet
