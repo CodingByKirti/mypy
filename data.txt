@@ -1,3 +1,26 @@
+Sub MasterFilterMacro()
+    ' Disable screen updating for speed
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    ' Call multiple macros in sequence
+    Call FilterRegionData
+    Call FilterCategoryData
+    Call UpdateL4Summary
+    Call RefreshAndSave
+    
+    ' Restore settings
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    
+    MsgBox "All filters applied successfully!", vbInformation, "Completed"
+End Sub
+
+
+
+
 
 Sub FilterAndDeleteRowsByRegion()
     Dim folderPath As String, fileName As String, filePath As String
