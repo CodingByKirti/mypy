@@ -1,4 +1,77 @@
+Sub FilterAndDeleteRowsByFileName()
+    Dim folderPath As String, fileName As String, filePath As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, btCol As Long
+    Dim fileNameWithoutExt As String
+    Dim headerRow As Range
+    
+    ' Disable screen updating for better performance
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
 
+    ' Folder containing the region-split files
+    folderPath = ThisWorkbook.Path & "\Filtered_Regions\"
+
+    ' Get the first file in the folder
+    fileName = Dir(folderPath & "*.xlsx")
+
+    ' Process each file
+    Do While fileName <> ""
+        ' Build full file path
+        filePath = folderPath & fileName
+
+        ' Open the workbook
+        Set wb = Workbooks.Open(filePath)
+        Set ws = wb.Sheets("Data") ' Ensure sheet exists
+
+        ' Extract file name without extension
+        fileNameWithoutExt = Left(fileName, InStrRev(fileName, ".") - 1)
+
+        ' Find last row in "Data" sheet
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        
+        ' Find "BT" column dynamically in header row (row 2)
+        Set headerRow = ws.Rows(2).Find("BT", LookAt:=xlWhole)
+        If headerRow Is Nothing Then
+            MsgBox "Column 'BT' not found in " & fileName, vbExclamation
+            wb.Close False
+            fileName = Dir
+            GoTo NextFile
+        Else
+            btCol = headerRow.Column
+        End If
+
+        ' Apply filter to keep only rows where BT = file name
+        With ws
+            .AutoFilterMode = False  ' Ensure filter is off
+            .Range("A2").CurrentRegion.AutoFilter Field:=btCol, Criteria1:="<>" & fileNameWithoutExt
+            
+            ' Delete visible rows (except header)
+            On Error Resume Next
+            .Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+            On Error GoTo 0
+
+            ' Clear filter
+            .AutoFilterMode = False
+        End With
+
+        ' Save & Close the file
+        wb.Save
+        wb.Close False
+
+NextFile:
+        ' Move to the next file
+        fileName = Dir
+    Loop
+
+    ' Restore application settings
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+
+    MsgBox "Filtering completed successfully!", vbInformation, "Done"
+End Sub
 
 
 
