@@ -1,3 +1,77 @@
+Sub FilterAndDeleteRowsByRegion()
+    Dim folderPath As String, fileName As String, filePath As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, regionCol As Long
+    Dim fileNameWithoutExt As String
+    Dim cell As Range, headerRow As Range
+    
+    ' Disable screen updating for better performance
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    ' Folder containing the region-split files
+    folderPath = ThisWorkbook.Path & "\Filtered_Regions\"
+
+    ' Get the first file in the folder
+    fileName = Dir(folderPath & "*.xlsx")
+
+    ' Process each file
+    Do While fileName <> ""
+        ' Build full file path
+        filePath = folderPath & fileName
+
+        ' Open the workbook
+        Set wb = Workbooks.Open(filePath)
+        Set ws = wb.Sheets("Data") ' Ensure sheet exists
+
+        ' Extract file name without extension
+        fileNameWithoutExt = Left(fileName, InStrRev(fileName, ".") - 1)
+
+        ' Find last row in "Data" sheet
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        
+        ' Find "Region" column dynamically in row 2 (trim spaces, case-insensitive)
+        Set headerRow = ws.Rows(2)
+        regionCol = 0
+        For Each cell In headerRow.Cells
+            If Trim(LCase(cell.Value)) = "region" Then
+                regionCol = cell.Column
+                Exit For
+            End If
+        Next cell
+
+        ' If "Region" column is not found, skip the file
+        If regionCol = 0 Then
+            MsgBox "Column 'Region' not found in " & fileName, vbExclamation
+            wb.Close False
+            fileName = Dir
+            GoTo NextFile
+        End If
+
+        ' Apply filter to keep only rows where Region = file name
+        With ws
+            .AutoFilterMode = False  ' Ensure filter is off
+            .Range("A2").CurrentRegion.AutoFilter Field:=regionCol, Criteria1:="<>" & fileNameWithoutExt
+            
+            ' Delete visible rows (except header)
+            On Error Resume Next
+            .Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+            On Error GoTo 0
+
+            ' Clear filter
+            .AutoFilterMode = False
+        End With
+
+        ' Save & Close the file
+        wb.Save
+        wb.Close False
+
+NextFile:
+        ' Move to the next file
+        fileName = Dir
+
+
 Sub FilterAndDeleteRowsByFileName()
     Dim folderPath As String, fileName As String, filePath As String
     Dim wb As Workbook, ws As Worksheet
