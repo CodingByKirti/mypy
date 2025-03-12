@@ -1,4 +1,25 @@
+You want to replicate the Excel formula:
 
+`=RIGHT(TEXT([column_name], "0000000000"), 10)`
+
+in Python.
+
+Here's the equivalent Python code:
+
+```
+import pandas as pd
+
+assuming 'df' is your DataFrame and 'column_name' is the column you want to process
+
+df['new_column'] = df['column_name'].apply(lambda x: str(x).zfill(10)[-10:])
+```
+
+Explanation:
+
+1. `str(x).zfill(10)` pads the value with leading zeros to a minimum length of 10 characters.
+2. `[-10:]` extracts the last 10 characters from the padded string.
+
+This code creates a new column 'new_column' with the processed values.
 Sub UpdateL4SummaryDropdown()
     Dim wb As Workbook
     Dim wsOptions As Worksheet, wsL4Summary As Worksheet
