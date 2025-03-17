@@ -1,3 +1,27 @@
+Subject: Updated Billing Output File & Responses to Raised Points
+
+Dear [Process Owner's Name],
+
+As discussed, I have reviewed and addressed the points raised in your last email. The updated Billing Output file is attached along with a detailed response document outlining the status of each point.
+
+Summary of Key Updates:
+Corrections have been made to employee details, AID, billing details, and cost centers.
+Existing reasons for non-billable positions are now retained, and dropdowns have been added where applicable.
+Certain points, such as FTE updates and open positions, require further clarification.
+Control checks and additional columns (Manager Operations & AVP) have been incorporated.
+For points requiring confirmation, I have highlighted them in the attached document. Please review and let me know if any adjustments are needed.
+
+Let me know if you need any further clarifications.
+
+Best regards,
+
+
+
+
+
+
+
+
 Sub MasterFilterMacro()
     ' Disable screen updating for speed
     Application.ScreenUpdating = False
