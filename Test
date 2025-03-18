@@ -1,3 +1,38 @@
+
+
+
+Book of Work – Status Update
+Task	Description	Status
+Anaplan Report Base File Preparation	Created and updated the Anaplan Consolidated report.	✅ Completed (03-Mar)
+Anaplan Rate File	Automated Python script to generate the Rate Card based on RTN + Country + GCB level.	✅ Completed (03-Mar)
+Anaplan Report Sample Split File	Created a sample file for submission to Vlima.	✅ Completed (07-Mar)
+Anaplan Report Splits by L3 and Region	Developed a macro for generating multiple split files by L3 and Region. The latest split was sent to Anshul & team. (Macro is slow; Python implementation is advisable.)	✅ Completed (13-Mar)
+Billing File Update	Updated and sent the Billing file as per the request.	✅ Completed (17-Mar)
+Code Updates for New L2/L3 Changes	Updated existing scripts to reflect changes in L2/L3 structures.	✅ Completed
+Leavers Process	Adjusted the process to align with new L2/L3 changes.	✅ Completed (12-Mar)
+Transaction Listing	Modified to reflect structural updates.	✅ Completed (11-Mar)
+JML File	Under review by Ritu/Himangi.	⏳ In Progress
+GIRS Activity	Developed a consolidated file with control checks. Awaiting input files and SOP from Sandipan/Nachiketa. (Discussed in person)	🔄 Pending (30-Mar-2025)
+Cost Template	Discussion held with Priyanka. Considering Saqib’s file as the base. Chandra suggested pausing work as he has an alternative approach but needs time to finalize.	⏳ On Hold
+SOD Process Walkthrough	Reviewed process with Rav Prasad. No automation scope identified due to dependency on multiple tools (Atlas, GIAM, EIM). Manual intervention required.	❌ No Scope
+This concise format ensures clarity, highlights pending actions, and differentiates tasks that are completed, in progress, on hold, or not feasible.
+
+Let me know if you want any refinements! 🚀
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Alteryx simplifies and automates data tasks that Excel handles manually, reducing effort, saving time, and enhancing efficiency—especially for repetitive and complex workflows. While it excels in data preparation, transformation, and automation, tasks like real-time collaboration and report formatting may still require Excel.
 
 Capabilities of Alteryx
