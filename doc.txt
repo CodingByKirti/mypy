@@ -1,3 +1,86 @@
+ 'Module-level variables
+Public selectedFile As String
+Public outputFolder As String
+
+'Select file button
+Sub SelectSourceFile()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    
+    With fd
+        .Title = "Select source Excel file"
+        .Filters.Clear
+        .Filters.Add "Excel Files", "*.xlsx;*.xlsm"
+        If .Show = -1 Then
+            selectedFile = .SelectedItems(1)
+            MsgBox "Selected File: " & selectedFile, vbInformation
+        End If
+    End With
+End Sub
+
+'select folder button
+Sub SelectOutputFolder()
+    Dim fd As FileDialog
+    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+    
+    With fd
+        .Title = "Choose where to save split files"
+        If .Show = -1 Then
+            outputFolder = .SelectedItems(1)
+            MsgBox "Output Folder Set: " & outputFolder, vbInformation
+        End If
+    End With
+End Sub
+
+
+' run split
+Sub RunSplitByColI()
+    If selectedFile = "" Or outputFolder = "" Then
+        MsgBox "Please select both a file and an output folder.", vbExclamation
+        Exit Sub
+    End If
+    
+    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim wb As Workbook, wbCopy As Workbook
+    Dim tempPath As String, fileName As String
+    Dim ws As Worksheet, val As Variant, vals As Collection
+    Dim newPath As String
+
+    Set wb = Workbooks.Open(selectedFile)
+    Set ws = wb.Sheets("Options")
+
+    Set vals = New Collection
+    On Error Resume Next
+    For Each cell In ws.Range("I2:I" & ws.Cells(ws.Rows.Count, "I").End(xlUp).Row)
+        If cell.Value <> "" Then vals.Add cell.Value, CStr(cell.Value)
+    Next
+    On Error GoTo 0
+
+    For Each val In vals
+        fileName = outputFolder & "\" & val & ".xlsm"
+        fso.CopyFile selectedFile, fileName
+        
+        Set wbCopy = Workbooks.Open(fileName)
+        On Error Resume Next
+        Application.DisplayAlerts = False
+        wbCopy.Sheets("L3 View").Delete
+        wbCopy.Sheets("L4 View").Delete
+        Application.DisplayAlerts = True
+        On Error GoTo 0
+        
+        wbCopy.Save
+        wbCopy.Close False
+    Next
+
+    wb.Close False
+    MsgBox "Done. Files saved to: " & outputFolder, vbInformation
+End Sub
+
+
+
+
+
+................................................................................................
 Sub SplitWorkbookByOptionsColumnI()
 
     Dim wsOptions As Worksheet
