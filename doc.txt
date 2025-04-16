@@ -1,12 +1,12 @@
-utomating Anaplan report splits by region and country, including GSC sites.
+Anaplan report split by region/country (incl. GSC sites) – Target: 23-Apr-2025
 
-Structuring and calculating data for the Global Role mapping input format.
+Data extraction and structuring for Global Role mapping input – Target: 30-Apr-2025
 
-Generating base files for GSC recharges to collect billing inputs from SPOCs.
+Base file creation for GSC recharges (billing input collection) – Target: 16-Apr-2025
 
-Starting phase 2: reviewing and validating billing data received from SPOCs.
+Phase 2: Review & validation of billing data from SPOCs – Target: 15-May-2025
 
-Automating the processing of Appian and other files to prepare hiring review inputs
+Processing Appian and other files to generate hiring review inputs – Target: 20-May-2025
 
 
 Sub FilterDataByRegionFromFileName()
