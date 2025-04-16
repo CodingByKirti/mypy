@@ -1,255 +1,73 @@
-' Store file and folder paths
-Public selectedFile As String
-Public outputFolder As String
-
-Sub SelectSourceFile()
-    Dim fd As FileDialog
-    Set fd = Application.FileDialog(msoFileDialogFilePicker)
-    
-    With fd
-        .Title = "Select the source Excel file"
-        .Filters.Clear
-        .Filters.Add "Excel Files", "*.xlsx; *.xlsm"
-        If .Show = -1 Then
-            selectedFile = .SelectedItems(1)
-            MsgBox "Selected File: " & selectedFile, vbInformation
-        End If
-    End With
-End Sub
-
-Sub SelectOutputFolder()
-    Dim fd As FileDialog
-    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
-    
-    With fd
-        .Title = "Choose where to save split files"
-        If .Show = -1 Then
-            outputFolder = .SelectedItems(1)
-            MsgBox "Output Folder: " & outputFolder, vbInformation
-        End If
-    End With
-End Sub
-
-Sub RunSplitByColI()
-    If selectedFile = "" Or outputFolder = "" Then
-        MsgBox "Please select both the file and output folder.", vbExclamation
-        Exit Sub
-    End If
-
-    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
-    Dim wb As Workbook, wbCopy As Workbook
-    Dim ws As Worksheet
-    Dim val As Variant, vals As Collection
+Sub FilterDataByRegionFromFileName()
+    Dim folderPath As String
     Dim fileName As String
-    Dim cell As Range
-
-    Set wb = Workbooks.Open(selectedFile)
-    Set ws = wb.Sheets("Options")
-
-    Set vals = New Collection
-    On Error Resume Next
-    For Each cell In ws.Range("I2:I" & ws.Cells(ws.Rows.Count, "I").End(xlUp).Row)
-        If cell.Value <> "" Then vals.Add cell.Value, CStr(cell.Value)
-    Next
-    On Error GoTo 0
-
-    For Each val In vals
-        fileName = outputFolder & "\" & val & ".xlsm"
-        fso.CopyFile selectedFile, fileName
-        Set wbCopy = Workbooks.Open(fileName)
-
-        Application.DisplayAlerts = False
-        On Error Resume Next
-        wbCopy.Sheets("L3 View").Delete
-        wbCopy.Sheets("L4 View").Delete
-        On Error GoTo 0
-        Application.DisplayAlerts = True
-
-        wbCopy.Save
-        wbCopy.Close False
-    Next
-
-    wb.Close False
-    MsgBox "✅ Done! Files saved to: " & outputFolder, vbInformation
-End Sub
-
-Sub OpenOutputFolder()
-    If outputFolder <> "" Then
-        Shell "explorer.exe """ & outputFolder & """", vbNormalFocus
-    Else
-        MsgBox "Please select the output folder first.", vbExclamation
-    End If
-End Sub
-
-
-
-
-
-
-
-------------------
-
-'Module-level variables
-Public selectedFile As String
-Public outputFolder As String
-
-'Select file button
-Sub SelectSourceFile()
-    Dim fd As FileDialog
-    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    Dim wb As Workbook
+    Dim wsData As Worksheet
+    Dim region As String
+    Dim lastRow As Long
+    Dim regionCol As Long
     
-    With fd
-        .Title = "Select source Excel file"
-        .Filters.Clear
-        .Filters.Add "Excel Files", "*.xlsx;*.xlsm"
-        If .Show = -1 Then
-            selectedFile = .SelectedItems(1)
-            MsgBox "Selected File: " & selectedFile, vbInformation
-        End If
-    End With
-End Sub
-
-'select folder button
-Sub SelectOutputFolder()
-    Dim fd As FileDialog
-    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
-    
-    With fd
-        .Title = "Choose where to save split files"
-        If .Show = -1 Then
-            outputFolder = .SelectedItems(1)
-            MsgBox "Output Folder Set: " & outputFolder, vbInformation
-        End If
-    End With
-End Sub
-
-
-' run split
-Sub RunSplitByColI()
-    If selectedFile = "" Or outputFolder = "" Then
-        MsgBox "Please select both a file and an output folder.", vbExclamation
-        Exit Sub
-    End If
-    
-    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
-    Dim wb As Workbook, wbCopy As Workbook
-    Dim tempPath As String, fileName As String
-    Dim ws As Worksheet, val As Variant, vals As Collection
-    Dim newPath As String
-
-    Set wb = Workbooks.Open(selectedFile)
-    Set ws = wb.Sheets("Options")
-
-    Set vals = New Collection
-    On Error Resume Next
-    For Each cell In ws.Range("I2:I" & ws.Cells(ws.Rows.Count, "I").End(xlUp).Row)
-        If cell.Value <> "" Then vals.Add cell.Value, CStr(cell.Value)
-    Next
-    On Error GoTo 0
-
-    For Each val In vals
-        fileName = outputFolder & "\" & val & ".xlsm"
-        fso.CopyFile selectedFile, fileName
-        
-        Set wbCopy = Workbooks.Open(fileName)
-        On Error Resume Next
-        Application.DisplayAlerts = False
-        wbCopy.Sheets("L3 View").Delete
-        wbCopy.Sheets("L4 View").Delete
-        Application.DisplayAlerts = True
-        On Error GoTo 0
-        
-        wbCopy.Save
-        wbCopy.Close False
-    Next
-
-    wb.Close False
-    MsgBox "Done. Files saved to: " & outputFolder, vbInformation
-End Sub
-
-
-
-
-
-................................................................................................
-Sub SplitWorkbookByOptionsColumnI()
-
-    Dim wsOptions As Worksheet
-    Dim uniqueValues As Collection
-    Dim cell As Range, val As Variant
-    Dim filePath As String, newWbPath As String
-    Dim fName As String
-    Dim wbOriginal As Workbook, wbCopy As Workbook
-    Dim tempFile As String
-    Dim saveFolder As String
-
-    ' Reference the original workbook
-    Set wbOriginal = ThisWorkbook
-    Set wsOptions = wbOriginal.Sheets("Options")
-
-    ' Ask for folder to save
+    ' Ask user to select the folder where the files are saved
     With Application.FileDialog(msoFileDialogFolderPicker)
-        .Title = "Select folder to save split files"
+        .Title = "Select folder with region workbooks"
         If .Show <> -1 Then Exit Sub
-        saveFolder = .SelectedItems(1)
+        folderPath = .SelectedItems(1) & "\"
     End With
 
-    ' Get unique values from Column I
-    Set uniqueValues = New Collection
-    On Error Resume Next
-    For Each cell In wsOptions.Range("I2:I" & wsOptions.Cells(wsOptions.Rows.Count, "I").End(xlUp).Row)
-        If Trim(cell.Value) <> "" Then
-            uniqueValues.Add cell.Value, CStr(cell.Value)
-        End If
-    Next cell
-    On Error GoTo 0
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
 
-    ' Loop through each unique value and create a workbook copy
-    For Each val In uniqueValues
-        ' Save a temporary copy of the original workbook
-        tempFile = saveFolder & "\TempCopy_" & Format(Now, "yyyymmdd_hhnnss") & ".xlsx"
-        wbOriginal.SaveCopyAs tempFile
-
-        ' Open the temporary copy
-        Set wbCopy = Workbooks.Open(tempFile)
-
-        ' Delete L3 View and L4 View sheets if they exist
-        Application.DisplayAlerts = False
+    ' Loop through all xlsx files in the folder
+    fileName = Dir(folderPath & "*.xlsx")
+    Do While fileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(folderPath & fileName)
+        
+        ' Extract region name from file name (remove .xlsx)
+        region = Replace(fileName, ".xlsx", "")
+        
+        ' Set reference to Data sheet
         On Error Resume Next
-        wbCopy.Sheets("L3 View").Delete
-        wbCopy.Sheets("L4 View").Delete
+        Set wsData = wb.Sheets("Data")
         On Error GoTo 0
-        Application.DisplayAlerts = True
 
-        ' Save with the unique name
-        fName = CleanFileName(CStr(val)) & ".xlsx"
-        newWbPath = saveFolder & "\" & fName
-        wbCopy.SaveAs Filename:=newWbPath, FileFormat:=xlOpenXMLWorkbook
-        wbCopy.Close SaveChanges:=False
+        If Not wsData Is Nothing Then
+            With wsData
+                ' Get the column number of BT
+                regionCol = .Range("BT1").Column
+                lastRow = .Cells(.Rows.Count, regionCol).End(xlUp).Row
 
-        ' Delete temporary file
-        Kill tempFile
-    Next val
+                ' Apply AutoFilter on row 2 (assuming row 1 is headers, row 2 starts data)
+                .AutoFilterMode = False
+                .Rows("1").AutoFilter Field:=regionCol, Criteria1:="<>" & region
 
-    MsgBox "✅ Files created successfully in: " & saveFolder, vbInformation
+                ' Delete visible rows that do not match region (excluding header row)
+                On Error Resume Next
+                .Range("A2:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+                On Error GoTo 0
 
+                .AutoFilterMode = False
+            End With
+        End If
+
+        ' Refresh all data connections if any
+        On Error Resume Next
+        wb.RefreshAll
+        On Error GoTo 0
+
+        ' Save and close the workbook
+        wb.Close SaveChanges:=True
+
+        ' Move to next file
+        fileName = Dir
+    Loop
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "✅ Region-based row filtering complete for all files.", vbInformation
 End Sub
-
-' Helper function to clean file names
-Function CleanFileName(s As String) As String
-    Dim i As Integer, c As String
-    Dim invalidChars As String
-    invalidChars = "/\:*?""<>|"
-    For i = 1 To Len(invalidChars)
-        c = Mid(invalidChars, i, 1)
-        s = Replace(s, c, "_")
-    Next i
-    CleanFileName = Trim(s)
-End Function
-
-
-
-
+-----------------------
 You want to replicate the Excel formula:
 
 `=RIGHT(TEXT([column_name], "0000000000"), 10)`
