@@ -1,3 +1,81 @@
+Sub SplitWorkbookByOptionsColumnI()
+
+    Dim wsOptions As Worksheet
+    Dim uniqueValues As Collection
+    Dim cell As Range, val As Variant
+    Dim filePath As String, newWbPath As String
+    Dim fName As String
+    Dim wbOriginal As Workbook, wbCopy As Workbook
+    Dim tempFile As String
+    Dim saveFolder As String
+
+    ' Reference the original workbook
+    Set wbOriginal = ThisWorkbook
+    Set wsOptions = wbOriginal.Sheets("Options")
+
+    ' Ask for folder to save
+    With Application.FileDialog(msoFileDialogFolderPicker)
+        .Title = "Select folder to save split files"
+        If .Show <> -1 Then Exit Sub
+        saveFolder = .SelectedItems(1)
+    End With
+
+    ' Get unique values from Column I
+    Set uniqueValues = New Collection
+    On Error Resume Next
+    For Each cell In wsOptions.Range("I2:I" & wsOptions.Cells(wsOptions.Rows.Count, "I").End(xlUp).Row)
+        If Trim(cell.Value) <> "" Then
+            uniqueValues.Add cell.Value, CStr(cell.Value)
+        End If
+    Next cell
+    On Error GoTo 0
+
+    ' Loop through each unique value and create a workbook copy
+    For Each val In uniqueValues
+        ' Save a temporary copy of the original workbook
+        tempFile = saveFolder & "\TempCopy_" & Format(Now, "yyyymmdd_hhnnss") & ".xlsx"
+        wbOriginal.SaveCopyAs tempFile
+
+        ' Open the temporary copy
+        Set wbCopy = Workbooks.Open(tempFile)
+
+        ' Delete L3 View and L4 View sheets if they exist
+        Application.DisplayAlerts = False
+        On Error Resume Next
+        wbCopy.Sheets("L3 View").Delete
+        wbCopy.Sheets("L4 View").Delete
+        On Error GoTo 0
+        Application.DisplayAlerts = True
+
+        ' Save with the unique name
+        fName = CleanFileName(CStr(val)) & ".xlsx"
+        newWbPath = saveFolder & "\" & fName
+        wbCopy.SaveAs Filename:=newWbPath, FileFormat:=xlOpenXMLWorkbook
+        wbCopy.Close SaveChanges:=False
+
+        ' Delete temporary file
+        Kill tempFile
+    Next val
+
+    MsgBox "✅ Files created successfully in: " & saveFolder, vbInformation
+
+End Sub
+
+' Helper function to clean file names
+Function CleanFileName(s As String) As String
+    Dim i As Integer, c As String
+    Dim invalidChars As String
+    invalidChars = "/\:*?""<>|"
+    For i = 1 To Len(invalidChars)
+        c = Mid(invalidChars, i, 1)
+        s = Replace(s, c, "_")
+    Next i
+    CleanFileName = Trim(s)
+End Function
+
+
+
+
 You want to replicate the Excel formula:
 
 `=RIGHT(TEXT([column_name], "0000000000"), 10)`
