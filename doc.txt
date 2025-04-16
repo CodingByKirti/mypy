@@ -1,3 +1,15 @@
+Automation Initiatives (Non-BAU):
+
+GSC recharge base file creation – Under UAT (16-Apr-2025)
+
+Anaplan report split by region/country – In Progress (23-Apr-2025)
+
+Global Role mapping input prep – Planned (30-Apr-2025)
+
+Billing data validation (Phase 2) – Upcoming (15-May-2025)
+
+Appian data processing for hiring review – Planned (20-May-2025)
+
 Anaplan report split by region/country (incl. GSC sites) – Target: 23-Apr-2025
 
 Data extraction and structuring for Global Role mapping input – Target: 30-Apr-2025
