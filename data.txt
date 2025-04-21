@@ -1,3 +1,72 @@
+Sub RunSplitByColI()
+    If selectedFile = "" Or outputFolder = "" Then
+        MsgBox "Please select both the file and output folder.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim wb As Workbook, wbCopy As Workbook
+    Dim ws As Worksheet
+    Dim val As Variant, vals As Collection
+    Dim fileName As String
+    Dim cell As Range
+    Dim lastRow As Long, colI As Long
+
+    Set wb = Workbooks.Open(selectedFile)
+    Set ws = wb.Sheets("Options")
+
+    ' Get unique values from Column I
+    Set vals = New Collection
+    On Error Resume Next
+    For Each cell In ws.Range("I2:I" & ws.Cells(ws.Rows.Count, "I").End(xlUp).Row)
+        If Trim(cell.Value) <> "" Then vals.Add cell.Value, CStr(cell.Value)
+    Next
+    On Error GoTo 0
+
+    wb.Close False ' Close source workbook after reading unique values
+
+    ' Loop through each unique value
+    For Each val In vals
+        fileName = outputFolder & "\" & val & ".xlsm"
+        fso.CopyFile selectedFile, fileName
+        Set wbCopy = Workbooks.Open(fileName)
+        Set ws = wbCopy.Sheets("Options")
+
+        ' Filter and delete unwanted rows
+        colI = 9 ' Column I
+        lastRow = ws.Cells(ws.Rows.Count, colI).End(xlUp).Row
+
+        With ws
+            .AutoFilterMode = False
+            .Range("A1").AutoFilter Field:=colI, Criteria1:="<>" & val
+
+            On Error Resume Next
+            .Range("A2:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+            On Error GoTo 0
+
+            .AutoFilterMode = False
+        End With
+
+        ' Optionally delete extra sheets
+        Application.DisplayAlerts = False
+        On Error Resume Next
+        wbCopy.Sheets("L3 View").Delete
+        wbCopy.Sheets("L4 View").Delete
+        On Error GoTo 0
+        Application.DisplayAlerts = True
+
+        wbCopy.Save
+        wbCopy.Close False
+    Next
+
+    MsgBox "✅ Done! Files saved to: " & outputFolder, vbInformation
+End Sub
+----------------
+
+
+
+
+
 Sub FilterAndCleanL3Files()
     Dim SaveFolder As String, FileName As String
     Dim wb As Workbook, ws As Worksheet
