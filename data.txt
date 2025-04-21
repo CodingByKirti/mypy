@@ -1,3 +1,71 @@
+Sub FilterAndCleanFiles()
+    Dim SaveFolder As String, FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, rng As Range
+    Dim Region As String
+    Const RegionCol As Long = 72 ' Column BT
+
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+
+    ' Folder where the filtered files were saved
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+
+    ' Loop through each Excel file
+    FileName = Dir(SaveFolder & "*.xlsx")
+    Do While FileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(SaveFolder & FileName)
+
+        ' Get Region from file name
+        Region = Replace(FileName, ".xlsx", "")
+
+        ' Reference Data sheet
+        On Error Resume Next
+        Set ws = wb.Sheets("Data")
+        On Error GoTo 0
+
+        If Not ws Is Nothing Then
+            ' Find last row in column BT
+            lastRow = ws.Cells(ws.Rows.Count, RegionCol).End(xlUp).Row
+
+            ' Apply AutoFilter on row 2
+            ws.Rows("2:2").AutoFilter Field:=RegionCol, Criteria1:="<>" & Region
+
+            ' Delete visible rows (except header)
+            If lastRow > 2 Then
+                On Error Resume Next
+                Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
+                On Error GoTo 0
+                If Not rng Is Nothing Then rng.Delete
+            End If
+
+            ' Turn off filter
+            If ws.AutoFilterMode Then ws.AutoFilterMode = False
+
+            ' Refresh data connections
+            wb.RefreshAll
+        End If
+
+        ' Save and close
+        wb.Save
+        wb.Close False
+
+        ' Next file
+        FileName = Dir
+    Loop
+
+    ' Restore settings
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "✅ Region-based filtering completed successfully!", vbInformation, "Done"
+End Sub
+
+--------------------------------
+
+
 Sub CreateFilteredFiles()
     Dim wsOptions As Worksheet
     Dim lastRowOptions As Long, cell As Range
