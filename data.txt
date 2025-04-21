@@ -1,3 +1,88 @@
+Sub CreateFilteredFiles()
+    Dim wsOptions As Worksheet
+    Dim lastRowOptions As Long, cell As Range
+    Dim L3Dict As Object, L3 As Variant
+    Dim selectedFile As String, SaveFolder As String, fileName As String
+    Dim fso As Object, wbCopy As Workbook, ws As Worksheet
+
+    ' Prompt user to select the base file
+    With Application.FileDialog(msoFileDialogFilePicker)
+        .Title = "Select the Base File"
+        .Filters.Add "Excel Files", "*.xlsm; *.xlsx", 1
+        If .Show <> -1 Then Exit Sub
+        selectedFile = .SelectedItems(1)
+    End With
+
+    ' Set reference to Options sheet
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+
+    ' Create dictionary for unique L3 values
+    Set L3Dict = CreateObject("Scripting.Dictionary")
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If cell.Value <> "" And Not L3Dict.Exists(cell.Value) Then
+            L3Dict.Add cell.Value, Nothing
+        End If
+    Next cell
+
+    ' Create folder to save files
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder
+
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    ' Loop through each L3 value and create copies
+    For Each L3 In L3Dict.Keys
+        fileName = SaveFolder & L3 & ".xlsx"
+
+        ' Copy base file to new file
+        fso.CopyFile selectedFile, fileName
+
+        ' Open the copied workbook
+        Set wbCopy = Workbooks.Open(fileName)
+
+        ' Delete "Reg Summary" sheet if exists
+        On Error Resume Next
+        Set ws = wbCopy.Sheets("Reg Summary")
+        If Not ws Is Nothing Then ws.Delete
+        On Error GoTo 0
+
+        wbCopy.Save
+        wbCopy.Close False
+    Next L3
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Files created using fso.CopyFile and 'Reg Summary' deleted successfully!", vbInformation, "Done"
+End Sub
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Sub RunSplitByColI()
 
     If selectedFile = "" Or outputFolder = "" Then
