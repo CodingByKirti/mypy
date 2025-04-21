@@ -1,3 +1,70 @@
+Sub FilterAndCleanL3Files()
+    Dim SaveFolder As String, FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, rng As Range
+    Dim L3 As String
+    Const L3Col As Long = 7 ' Column G
+
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+
+    ' Folder where filtered files were saved
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+
+    ' Loop through each Excel file
+    FileName = Dir(SaveFolder & "*.xlsx")
+    Do While FileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(SaveFolder & FileName)
+
+        ' Get L3 value from file name
+        L3 = Replace(FileName, ".xlsx", "")
+
+        ' Reference Data sheet
+        On Error Resume Next
+        Set ws = wb.Sheets("Data")
+        On Error GoTo 0
+
+        If Not ws Is Nothing Then
+            ' Find last row in column G
+            lastRow = ws.Cells(ws.Rows.Count, L3Col).End(xlUp).Row
+
+            ' Apply AutoFilter to column G (L3)
+            ws.Rows("2:2").AutoFilter Field:=L3Col, Criteria1:="<>" & L3
+
+            ' Delete visible rows (not matching L3)
+            If lastRow > 2 Then
+                On Error Resume Next
+                Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
+                On Error GoTo 0
+                If Not rng Is Nothing Then rng.Delete
+            End If
+
+            ' Turn off AutoFilter
+            If ws.AutoFilterMode Then ws.AutoFilterMode = False
+
+            ' Refresh data connections
+            wb.RefreshAll
+        End If
+
+        ' Save and close
+        wb.Save
+        wb.Close False
+
+        ' Next file
+        FileName = Dir
+    Loop
+
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "✅ L3 filtering done successfully!", vbInformation, "Done"
+End Sub
+
+
+
 Sub FilterAndCleanFiles()
     Dim SaveFolder As String, FileName As String
     Dim wb As Workbook, ws As Worksheet
