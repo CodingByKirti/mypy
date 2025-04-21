@@ -1,3 +1,87 @@
+Sub RunSplitByColI()
+
+    If selectedFile = "" Or outputFolder = "" Then
+        MsgBox "Please select both the file and output folder.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim fso As Object: Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim wb As Workbook, wbCopy As Workbook
+    Dim ws As Worksheet
+    Dim val As Variant, vals As Collection
+    Dim fileName As String
+    Dim cell As Range
+    Dim regionName As String
+    Dim dataWS As Worksheet
+    Dim lastRow As Long
+    Dim filterCol As Long: filterCol = 72 ' Column BT
+
+    Set wb = Workbooks.Open(selectedFile)
+    Set ws = wb.Sheets("Options")
+
+    Set vals = New Collection
+    On Error Resume Next
+    For Each cell In ws.Range("I2:I" & ws.Cells(ws.Rows.Count, "I").End(xlUp).Row)
+        If cell.Value <> "" Then vals.Add cell.Value, CStr(cell.Value)
+    Next
+    On Error GoTo 0
+
+    wb.Close False
+
+    For Each val In vals
+        fileName = outputFolder & "\" & val & ".xlsx"
+        regionName = val
+        
+        ' Copy the base file
+        fso.CopyFile selectedFile, fileName
+        Set wbCopy = Workbooks.Open(fileName)
+        
+        ' Delete L3 and L4 View sheets
+        Application.DisplayAlerts = False
+        On Error Resume Next
+        wbCopy.Sheets("L3 View").Delete
+        wbCopy.Sheets("L4 View").Delete
+        On Error GoTo 0
+        Application.DisplayAlerts = True
+
+        ' Filter Data sheet
+        On Error Resume Next
+        Set dataWS = wbCopy.Sheets("Data")
+        On Error GoTo 0
+        
+        If Not dataWS Is Nothing Then
+            lastRow = dataWS.Cells(dataWS.Rows.Count, filterCol).End(xlUp).Row
+            
+            ' Clear any existing filter
+            If dataWS.AutoFilterMode Then dataWS.AutoFilterMode = False
+            
+            ' Apply filter on Region (BT column)
+            With dataWS.Range("A1").CurrentRegion
+                .AutoFilter Field:=filterCol, Criteria1:="<>" & regionName
+                On Error Resume Next
+                .Offset(1, 0).Resize(.Rows.Count - 1).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+                On Error GoTo 0
+                .AutoFilter
+            End With
+        End If
+
+        wbCopy.RefreshAll
+        wbCopy.Save
+        wbCopy.Close False
+    Next
+
+    MsgBox "✅ Done! Files created, filtered, and saved in: " & outputFolder, vbInformation
+
+End Sub
+
+
+
+
+
+
+
+
+...............
 Subject: Updated Billing Output File & Responses to Raised Points
 
 Dear [Process Owner's Name],
