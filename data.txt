@@ -3,6 +3,107 @@ Sub CreateFilteredFiles()
     Dim lastRowOptions As Long, cell As Range
     Dim L3Dict As Object
     Dim L3 As Variant
+    Dim baseFilePath As String, outputFolder As String, SaveFolder As String
+    Dim NewFilePath As String
+    Dim fso As Object
+    Dim fd As FileDialog
+    Dim tempWorkbook As Workbook
+    Dim ws As Worksheet
+
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+
+    ' Ask user to select the base .xlsx file
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    With fd
+        .Title = "Select the BASE Excel (.xlsx) file"
+        .Filters.Clear
+        .Filters.Add "Excel Workbook", "*.xlsx"
+        If .Show = -1 Then
+            baseFilePath = .SelectedItems(1)
+        Else
+            MsgBox "No file selected. Exiting.", vbExclamation
+            Exit Sub
+        End If
+    End With
+
+    ' Ask user to choose output folder
+    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+    With fd
+        .Title = "Select folder to save filtered files"
+        If .Show = -1 Then
+            outputFolder = .SelectedItems(1)
+        Else
+            MsgBox "No folder selected. Exiting.", vbExclamation
+            Exit Sub
+        End If
+    End With
+
+    ' Create subfolder L3_Split_Files inside selected folder
+    SaveFolder = outputFolder & "\L3_Split_Files\"
+    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder
+
+    ' Create FileSystemObject
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' Open the base .xlsx workbook temporarily
+    Set tempWorkbook = Workbooks.Open(baseFilePath, ReadOnly:=True)
+    Set wsOptions = tempWorkbook.Sheets("Options")
+
+    ' Create dictionary for unique L3 values
+    Set L3Dict = CreateObject("Scripting.Dictionary")
+
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+
+    ' Loop through and add unique L3 values
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
+            L3Dict.Add cell.Value, Nothing
+        End If
+    Next cell
+
+    ' Close the base file
+    tempWorkbook.Close SaveChanges:=False
+
+    ' Loop through L3s to create filtered copies
+    For Each L3 In L3Dict.Keys
+        NewFilePath = SaveFolder & L3 & ".xlsx"
+
+        ' Copy the file using FSO
+        fso.CopyFile baseFilePath, NewFilePath
+
+        ' Open the copied file
+        Set tempWorkbook = Workbooks.Open(NewFilePath)
+
+        ' Delete specified sheets if they exist
+        On Error Resume Next
+        Set ws = tempWorkbook.Sheets("Region View")
+        If Not ws Is Nothing Then ws.Delete
+
+        Set ws = tempWorkbook.Sheets("Country View")
+        If Not ws Is Nothing Then ws.Delete
+        On Error GoTo 0
+
+        ' Save and close
+        tempWorkbook.Save
+        tempWorkbook.Close False
+    Next L3
+
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "✅ All .xlsx files created under 'L3_Split_Files' folder successfully!", vbInformation, "Done"
+End Sub
+
+
+
+Sub CreateFilteredFiles()
+    Dim wsOptions As Worksheet
+    Dim lastRowOptions As Long, cell As Range
+    Dim L3Dict As Object
+    Dim L3 As Variant
     Dim baseFilePath As String, SaveFolder As String
     Dim NewFilePath As String
     Dim fso As Object
