@@ -36,21 +36,21 @@ Sub FilterAndCleanFiles()
         On Error GoTo 0
 
         If Not ws Is Nothing Then
-            ' Get data range
             Dim lastRow As Long, lastCol As Long
             lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
             lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
 
             If lastRow >= 2 Then
+                ' Set L3 name based on current file
+                L3 = Replace(FileName, ".xlsx", "")
+                
+                ' Load full data (headers in row 2 onward)
                 dataArray = ws.Range(ws.Cells(2, 1), ws.Cells(lastRow, lastCol)).Value
                 ReDim outputArray(1 To UBound(dataArray, 1), 1 To UBound(dataArray, 2))
 
-                L3 = Replace(FileName, ".xlsx", "")
                 keepRowCount = 0
-
-                ' Keep header + rows matching column G = L3
                 For i = 1 To UBound(dataArray, 1)
-                    If i = 1 Or Trim(dataArray(i, 7)) = L3 Then
+                    If Trim(dataArray(i, 7)) = L3 Then
                         keepRowCount = keepRowCount + 1
                         For j = 1 To UBound(dataArray, 2)
                             outputArray(keepRowCount, j) = dataArray(i, j)
@@ -58,9 +58,12 @@ Sub FilterAndCleanFiles()
                     End If
                 Next i
 
-                ' Clear old data and paste filtered
-                ws.Cells.ClearContents
-                ws.Range("A2").Resize(keepRowCount, UBound(outputArray, 2)).Value = outputArray
+                ' Clear all data below headers
+                ws.Rows("3:" & lastRow).ClearContents
+
+                If keepRowCount > 0 Then
+                    ws.Range("A3").Resize(keepRowCount, UBound(outputArray, 2)).Value = outputArray
+                End If
             End If
 
             wb.RefreshAll
@@ -76,8 +79,6 @@ Sub FilterAndCleanFiles()
 
     MsgBox "Filtering and cleanup completed successfully!", vbInformation
 End Sub
-
-
 
 
 
