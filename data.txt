@@ -1,3 +1,79 @@
+Sub CreateFilteredFiles()
+    Dim wsOptions As Worksheet
+    Dim lastRowOptions As Long, cell As Range
+    Dim L3Dict As Object
+    Dim L3 As Variant
+    Dim MainWorkbook As Workbook
+    Dim SaveFolder As String, NewFilePath As String
+    Dim fso As Object
+    Dim baseFilePath As String
+    Dim NewWorkbook As Workbook
+    Dim ws As Worksheet
+
+    ' Disable alerts and screen updating
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+
+    ' Set reference to Options sheet
+    Set wsOptions = ThisWorkbook.Sheets("Options")
+    Set MainWorkbook = ThisWorkbook
+
+    ' Create dictionary to store unique L3 values
+    Set L3Dict = CreateObject("Scripting.Dictionary")
+
+    ' Get last row in column D (L3 values)
+    lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
+
+    ' Loop through L3 values and store unique ones
+    For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
+        If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
+            L3Dict.Add cell.Value, Nothing
+        End If
+    Next cell
+
+    ' Set folder to save new files
+    SaveFolder = ThisWorkbook.Path & "\Filtered_Files\"
+    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder
+
+    ' Define base file path
+    baseFilePath = ThisWorkbook.FullName
+
+    ' Create FileSystemObject
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' Loop through unique L3 values and create file copies
+    For Each L3 In L3Dict.Keys
+        ' Define the new file path
+        NewFilePath = SaveFolder & L3 & ".xlsm"
+
+        ' Copy the file using fso
+        fso.CopyFile baseFilePath, NewFilePath
+
+        ' Open the copied file to delete "Reg Summary" sheet
+        Set NewWorkbook = Workbooks.Open(NewFilePath)
+
+        On Error Resume Next
+        Set ws = NewWorkbook.Sheets("Reg Summary")
+        If Not ws Is Nothing Then ws.Delete
+        On Error GoTo 0
+
+        NewWorkbook.Save
+        NewWorkbook.Close False
+    Next L3
+
+    ' Re-enable alerts and screen updating
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Files created and 'Reg Summary' deleted successfully!", vbInformation, "Done"
+End Sub
+
+
+
+
+
+
+:::::::::::::::::::::
 Sub RunSplitByColI()
     If selectedFile = "" Or outputFolder = "" Then
         MsgBox "Please select both the file and output folder.", vbExclamation
