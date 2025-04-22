@@ -1,75 +1,58 @@
 Sub FilterAndCleanFiles()
-    Dim folderDialog As FileDialog
     Dim FileName As String
     Dim wb As Workbook, ws As Worksheet
-    Dim dataArray As Variant, outputArray() As Variant
-    Dim L3 As String
-    Dim i As Long, j As Long
-    Dim keepRowCount As Long
+    Dim lastRow As Long
+    Dim i As Long
+    Dim L3Value As String
+    Dim OutputFolderPath As String
 
-    ' Ask user if OutputFolderPath is not already set
-    If OutputFolderPath = "" Then
-        If MsgBox("Output folder not selected. Do you want to pick it now?", vbYesNo + vbQuestion) = vbYes Then
-            Set folderDialog = Application.FileDialog(msoFileDialogFolderPicker)
-            If folderDialog.Show = -1 Then
-                OutputFolderPath = folderDialog.SelectedItems(1) & "\"
-            Else
-                MsgBox "Operation cancelled.", vbExclamation
-                Exit Sub
-            End If
+    ' Ask user for Output Folder path if not already set
+    If OutputFolderPathGlobal = "" Then
+        If MsgBox("Output folder not selected. Do you want to select it now?", vbYesNo + vbQuestion) = vbYes Then
+            With Application.FileDialog(msoFileDialogFolderPicker)
+                .Title = "Select Output Folder (L3 Files)"
+                If .Show = -1 Then
+                    OutputFolderPathGlobal = .SelectedItems(1) & "\"
+                Else
+                    MsgBox "Cancelled. Please run the first macro first.", vbExclamation
+                    Exit Sub
+                End If
+            End With
         Else
-            MsgBox "Please run the first macro to generate the files first.", vbInformation
+            MsgBox "Please run the first macro first to generate L3 files.", vbInformation
             Exit Sub
         End If
     End If
 
+    OutputFolderPath = OutputFolderPathGlobal
+
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
+    ' Loop through .xlsx files in the folder
     FileName = Dir(OutputFolderPath & "*.xlsx")
-
     Do While FileName <> ""
-        Set wb = Workbooks.Open(Filename:=OutputFolderPath & FileName, ReadOnly:=False)
-        Set ws = Nothing
+        Set wb = Workbooks.Open(OutputFolderPath & FileName)
         On Error Resume Next
         Set ws = wb.Sheets("Data")
         On Error GoTo 0
 
         If Not ws Is Nothing Then
-            Dim lastRow As Long, lastCol As Long
-            lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-            lastCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+            ' Get L3 value (file name without .xlsx)
+            L3Value = Replace(FileName, ".xlsx", "")
 
-            If lastRow >= 2 Then
-                ' Set L3 name based on current file
-                L3 = Replace(FileName, ".xlsx", "")
-                
-                ' Load full data (headers in row 2 onward)
-                dataArray = ws.Range(ws.Cells(2, 1), ws.Cells(lastRow, lastCol)).Value
-                ReDim outputArray(1 To UBound(dataArray, 1), 1 To UBound(dataArray, 2))
+            ' Find last row in column G
+            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
 
-                keepRowCount = 0
-                For i = 1 To UBound(dataArray, 1)
-                    If Trim(dataArray(i, 7)) = L3 Then
-                        keepRowCount = keepRowCount + 1
-                        For j = 1 To UBound(dataArray, 2)
-                            outputArray(keepRowCount, j) = dataArray(i, j)
-                        Next j
-                    End If
-                Next i
-
-                ' Clear all data below headers
-                ws.Rows("3:" & lastRow).ClearContents
-
-                If keepRowCount > 0 Then
-                    ws.Range("A3").Resize(keepRowCount, UBound(outputArray, 2)).Value = outputArray
+            ' Loop from bottom to top to delete rows where G ≠ L3
+            For i = lastRow To 3 Step -1
+                If Trim(ws.Cells(i, "G").Value) <> L3Value Then
+                    ws.Rows(i).Delete
                 End If
-            End If
-
-            wb.RefreshAll
-            wb.Save
+            Next i
         End If
 
+        wb.Save
         wb.Close False
         FileName = Dir
     Loop
@@ -77,9 +60,8 @@ Sub FilterAndCleanFiles()
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    MsgBox "Filtering and cleanup completed successfully!", vbInformation
+    MsgBox "Filtering and cleanup completed!", vbInformation
 End Sub
-
 
 
 ........................
