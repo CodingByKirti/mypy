@@ -2,6 +2,82 @@ Sub FilterAndCleanFiles()
     Dim FileName As String
     Dim wb As Workbook, ws As Worksheet
     Dim lastRow As Long
+    Dim L3Value As String
+    Dim OutputFolderPath As String
+
+    ' Check global variable for previously selected folder
+    If OutputFolderPathGlobal = "" Then
+        If MsgBox("Output folder not selected. Do you want to select it now?", vbYesNo + vbQuestion) = vbYes Then
+            With Application.FileDialog(msoFileDialogFolderPicker)
+                .Title = "Select Output Folder (L3 Files)"
+                If .Show = -1 Then
+                    OutputFolderPathGlobal = .SelectedItems(1) & "\"
+                Else
+                    MsgBox "Cancelled. Please run the first macro first.", vbExclamation
+                    Exit Sub
+                End If
+            End With
+        Else
+            MsgBox "Please run the first macro first to generate L3 files.", vbInformation
+            Exit Sub
+        End If
+    End If
+
+    OutputFolderPath = OutputFolderPathGlobal
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+
+    ' Loop through all .xlsx files in the folder
+    FileName = Dir(OutputFolderPath & "*.xlsx")
+    Do While FileName <> ""
+        ' Open the workbook
+        Set wb = Workbooks.Open(OutputFolderPath & FileName, UpdateLinks:=False, ReadOnly:=False)
+        Set ws = Nothing
+        On Error Resume Next
+        Set ws = wb.Sheets("Data")
+        On Error GoTo 0
+
+        If Not ws Is Nothing Then
+            L3Value = Replace(FileName, ".xlsx", "") ' Extract L3 value from filename (without .xlsx)
+            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+
+            ' Apply filter on column G (assuming L3 values are in column G)
+            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>"
+            
+            ' Filter to exclude the L3Value
+            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>", Operator:=xlAnd, Criteria2:="<>" & L3Value
+
+            ' Select and delete all visible rows that do not match L3Value
+            If lastRow > 2 Then
+                On Error Resume Next
+                ws.Rows("3:" & lastRow).SpecialCells(xlCellTypeVisible).Delete
+                On Error GoTo 0
+            End If
+
+            ' Turn off filter
+            ws.AutoFilterMode = False
+
+            ' Save the workbook
+            wb.Save
+        End If
+
+        wb.Close SaveChanges:=False
+        FileName = Dir ' Move to the next file
+    Loop
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+
+    MsgBox "Filtering and cleanup completed!", vbInformation
+End Sub
+=================================================
+Sub FilterAndCleanFiles()
+    Dim FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long
     Dim i As Long
     Dim L3Value As String
     Dim deleteRange As Range
