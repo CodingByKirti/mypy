@@ -7,20 +7,19 @@ Sub CreateFilteredFiles()
     Dim NewFilePath As String
     Dim fso As Object
     Dim fd As FileDialog
-    Dim MainWorkbook As Workbook
-    Dim NewWorkbook As Workbook
+    Dim tempWorkbook As Workbook
     Dim ws As Worksheet
 
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
 
-    ' Ask user to select the base file
+    ' Ask user to select the base .xlsx file
     Set fd = Application.FileDialog(msoFileDialogFilePicker)
     With fd
-        .Title = "Select the BASE Excel file"
+        .Title = "Select the BASE Excel (.xlsx) file"
         .Filters.Clear
-        .Filters.Add "Excel Macro-Enabled Workbook", "*.xlsm"
+        .Filters.Add "Excel Workbook", "*.xlsx"
         If .Show = -1 Then
             baseFilePath = .SelectedItems(1)
         Else
@@ -44,9 +43,9 @@ Sub CreateFilteredFiles()
     ' Create FileSystemObject
     Set fso = CreateObject("Scripting.FileSystemObject")
 
-    ' Open the base workbook temporarily (read-only for reference)
-    Set MainWorkbook = Workbooks.Open(baseFilePath, ReadOnly:=True)
-    Set wsOptions = MainWorkbook.Sheets("Options")
+    ' Open the base .xlsx workbook temporarily
+    Set tempWorkbook = Workbooks.Open(baseFilePath, ReadOnly:=True)
+    Set wsOptions = tempWorkbook.Sheets("Options")
 
     ' Create dictionary for unique L3 values
     Set L3Dict = CreateObject("Scripting.Dictionary")
@@ -60,39 +59,40 @@ Sub CreateFilteredFiles()
         End If
     Next cell
 
-    ' Close the base file after capturing L3s
-    MainWorkbook.Close SaveChanges:=False
+    ' Close the base file
+    tempWorkbook.Close SaveChanges:=False
 
     ' Loop through L3s to create filtered copies
     For Each L3 In L3Dict.Keys
-        NewFilePath = SaveFolder & L3 & ".xlsm"
+        NewFilePath = SaveFolder & L3 & ".xlsx"
 
         ' Copy the file using FSO
         fso.CopyFile baseFilePath, NewFilePath
 
         ' Open the copied file
-        Set NewWorkbook = Workbooks.Open(NewFilePath)
+        Set tempWorkbook = Workbooks.Open(NewFilePath)
 
         ' Delete specified sheets if they exist
         On Error Resume Next
-        Set ws = NewWorkbook.Sheets("Region View")
+        Set ws = tempWorkbook.Sheets("Region View")
         If Not ws Is Nothing Then ws.Delete
 
-        Set ws = NewWorkbook.Sheets("Country View")
+        Set ws = tempWorkbook.Sheets("Country View")
         If Not ws Is Nothing Then ws.Delete
         On Error GoTo 0
 
         ' Save and close
-        NewWorkbook.Save
-        NewWorkbook.Close False
+        tempWorkbook.Save
+        tempWorkbook.Close False
     Next L3
 
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
 
-    MsgBox "🎉 All files created successfully! 'Region View' and 'Country View' tabs deleted.", vbInformation, "Done"
+    MsgBox "✅ All .xlsx files created successfully! 'Region View' and 'Country View' tabs deleted.", vbInformation, "Done"
 End Sub
+
 :::::::::::::::::::::
 Sub RunSplitByColI()
     If selectedFile = "" Or outputFolder = "" Then
