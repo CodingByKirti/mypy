@@ -4,9 +4,10 @@ Sub FilterAndCleanFiles()
     Dim lastRow As Long
     Dim i As Long
     Dim L3Value As String
+    Dim deleteRange As Range
     Dim OutputFolderPath As String
 
-    ' Ask user for Output Folder path if not already set
+    ' Check global variable for previously selected folder
     If OutputFolderPathGlobal = "" Then
         If MsgBox("Output folder not selected. Do you want to select it now?", vbYesNo + vbQuestion) = vbYes Then
             With Application.FileDialog(msoFileDialogFolderPicker)
@@ -28,40 +29,52 @@ Sub FilterAndCleanFiles()
 
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
 
-    ' Loop through .xlsx files in the folder
+    ' Loop through all .xlsx files
     FileName = Dir(OutputFolderPath & "*.xlsx")
     Do While FileName <> ""
-        Set wb = Workbooks.Open(OutputFolderPath & FileName)
+        Set wb = Workbooks.Open(OutputFolderPath & FileName, UpdateLinks:=False, ReadOnly:=False)
+        Set ws = Nothing
         On Error Resume Next
         Set ws = wb.Sheets("Data")
         On Error GoTo 0
 
         If Not ws Is Nothing Then
-            ' Get L3 value (file name without .xlsx)
             L3Value = Replace(FileName, ".xlsx", "")
-
-            ' Find last row in column G
             lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+            Set deleteRange = Nothing
 
-            ' Loop from bottom to top to delete rows where G ≠ L3
-            For i = lastRow To 3 Step -1
+            ' Start from row 3 (assuming row 2 is header)
+            For i = 3 To lastRow
                 If Trim(ws.Cells(i, "G").Value) <> L3Value Then
-                    ws.Rows(i).Delete
+                    If deleteRange Is Nothing Then
+                        Set deleteRange = ws.Rows(i)
+                    Else
+                        Set deleteRange = Union(deleteRange, ws.Rows(i))
+                    End If
                 End If
             Next i
+
+            ' Delete all non-matching rows at once
+            If Not deleteRange Is Nothing Then deleteRange.Delete
+
+            wb.Save
         End If
 
-        wb.Save
-        wb.Close False
+        wb.Close SaveChanges:=False
         FileName = Dir
     Loop
 
+    Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
     MsgBox "Filtering and cleanup completed!", vbInformation
 End Sub
+
+-------------------------------
+
 
 
 ........................
