@@ -1,4 +1,76 @@
 Sub FilterAndCleanFiles()
+    Dim FileName As String
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long
+    Dim rng As Range
+    Dim L3 As String
+    Dim userResponse As VbMsgBoxResult
+    Dim folderPicker As FileDialog
+
+    ' If OutputFolderPath is not set, ask user if they want to select it manually
+    If OutputFolderPath = "" Then
+        userResponse = MsgBox("No output folder path is set." & vbNewLine & _
+                              "Do you want to manually select the folder where the L3 split files are saved?", _
+                              vbYesNo + vbQuestion, "Select Output Folder")
+
+        If userResponse = vbYes Then
+            Set folderPicker = Application.FileDialog(msoFileDialogFolderPicker)
+            folderPicker.Title = "Select the folder with L3 split files"
+            If folderPicker.Show = -1 Then ' User picked a folder
+                OutputFolderPath = folderPicker.SelectedItems(1) & "\"
+            Else
+                MsgBox "No folder selected. Operation cancelled.", vbExclamation
+                Exit Sub
+            End If
+        Else
+            MsgBox "Please run the first macro to generate split files first.", vbInformation
+            Exit Sub
+        End If
+    End If
+
+    Application.DisplayAlerts = False
+    Application.ScreenUpdating = False
+
+    FileName = Dir(OutputFolderPath & "*.xlsx")
+
+    Do While FileName <> ""
+        L3 = Replace(FileName, ".xlsx", "")
+        Set wb = Workbooks.Open(OutputFolderPath & FileName)
+
+        On Error Resume Next
+        Set ws = wb.Sheets("Data")
+        On Error GoTo 0
+
+        If Not ws Is Nothing Then
+            lastRow = ws.Cells(ws.Rows.Count, "G").End(xlUp).Row
+            ws.Rows("2:2").AutoFilter Field:=7, Criteria1:="<>" & L3
+
+            On Error Resume Next
+            Set rng = ws.Range("A3:A" & lastRow).SpecialCells(xlCellTypeVisible).EntireRow
+            If Not rng Is Nothing Then rng.Delete
+            On Error GoTo 0
+
+            If ws.AutoFilterMode Then ws.AutoFilterMode = False
+            wb.RefreshAll
+        End If
+
+        wb.Save
+        wb.Close False
+        Set ws = Nothing
+        Set wb = Nothing
+        FileName = Dir
+    Loop
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "Filtering and cleanup completed successfully!", vbInformation, "Done"
+End Sub
+;;;;;;;;;;;;;;;;;
+
+
+
+Sub FilterAndCleanFiles()
     Dim SaveFolder As String, FileName As String
     Dim wb As Workbook, ws As Worksheet
     Dim lastRow As Long
