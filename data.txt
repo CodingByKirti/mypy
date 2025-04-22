@@ -1,102 +1,119 @@
 Sub CreateFilteredFiles()
-    Dim wsOptions As Worksheet
-    Dim lastRowOptions As Long, cell As Range
-    Dim L3Dict As Object
-    Dim L3 As Variant
-    Dim baseFilePath As String, outputFolder As String, SaveFolder As String
+    Dim wsOptions As Worksheet, wsData As Worksheet
+    Dim lastRowOptions As Long, rngL3 As Range, cell As Range
+    Dim L3Dict As Object, FilePath As String, L3 As Variant
     Dim NewFilePath As String
+    Dim SaveFolder As String, L3Folder As String
+    Dim baseFilePath As String
     Dim fso As Object
-    Dim fd As FileDialog
     Dim tempWorkbook As Workbook
     Dim ws As Worksheet
-
+    
     ' Disable alerts and screen updating
     Application.DisplayAlerts = False
     Application.ScreenUpdating = False
-
-    ' Ask user to select the base .xlsx file
-    Set fd = Application.FileDialog(msoFileDialogFilePicker)
-    With fd
-        .Title = "Select the BASE Excel (.xlsx) file"
+    
+    ' Ask user to select the base Excel file
+    With Application.FileDialog(msoFileDialogFilePicker)
+        .Title = "Select the Base Excel File"
         .Filters.Clear
-        .Filters.Add "Excel Workbook", "*.xlsx"
+        .Filters.Add "Excel Files", "*.xlsx; *.xlsm"
         If .Show = -1 Then
             baseFilePath = .SelectedItems(1)
         Else
-            MsgBox "No file selected. Exiting.", vbExclamation
+            MsgBox "No file selected. Macro will exit.", vbExclamation
             Exit Sub
         End If
     End With
-
-    ' Ask user to choose output folder
-    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
-    With fd
-        .Title = "Select folder to save filtered files"
+    
+    ' Ask user to select the output folder
+    With Application.FileDialog(msoFileDialogFolderPicker)
+        .Title = "Select the Output Folder"
         If .Show = -1 Then
-            outputFolder = .SelectedItems(1)
+            SaveFolder = .SelectedItems(1)
         Else
-            MsgBox "No folder selected. Exiting.", vbExclamation
+            MsgBox "No folder selected. Macro will exit.", vbExclamation
             Exit Sub
         End If
     End With
-
-    ' Create subfolder L3_Split_Files inside selected folder
-    SaveFolder = outputFolder & "\L3_Split_Files\"
-    If Dir(SaveFolder, vbDirectory) = "" Then MkDir SaveFolder
-
-    ' Create FileSystemObject
-    Set fso = CreateObject("Scripting.FileSystemObject")
-
-    ' Open the base .xlsx workbook temporarily
-    Set tempWorkbook = Workbooks.Open(baseFilePath, ReadOnly:=True)
-    Set wsOptions = tempWorkbook.Sheets("Options")
-
-    ' Create dictionary for unique L3 values
-    Set L3Dict = CreateObject("Scripting.Dictionary")
-
+    
+    ' Create a subfolder "L3_Split_Files" inside the selected folder
+    L3Folder = SaveFolder & "\L3_Split_Files"
+    If Dir(L3Folder, vbDirectory) = "" Then MkDir L3Folder
+    
+    ' Set reference to Options sheet in the base file
+    Set wsOptions = Workbooks.Open(baseFilePath).Sheets("Options")
+    
+    ' Get last row in column D (L3 values)
     lastRowOptions = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
-
-    ' Loop through and add unique L3 values
+    
+    ' Create dictionary to store unique L3 values
+    Set L3Dict = CreateObject("Scripting.Dictionary")
+    
+    ' Loop through L3 values and store unique ones
     For Each cell In wsOptions.Range("D2:D" & lastRowOptions)
         If Not L3Dict.Exists(cell.Value) And cell.Value <> "" Then
             L3Dict.Add cell.Value, Nothing
         End If
     Next cell
-
-    ' Close the base file
-    tempWorkbook.Close SaveChanges:=False
-
-    ' Loop through L3s to create filtered copies
+    
+    ' Set FileSystemObject
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    ' Loop through unique L3 values and create file copies
     For Each L3 In L3Dict.Keys
-        NewFilePath = SaveFolder & L3 & ".xlsx"
-
-        ' Copy the file using FSO
+        ' Define the new file path
+        NewFilePath = L3Folder & "\" & L3 & ".xlsx"
+        
+        ' Copy the base file to the new location using FileSystemObject
         fso.CopyFile baseFilePath, NewFilePath
-
-        ' Open the copied file
+        
+        ' Ensure file exists before opening
+        If Dir(NewFilePath) = "" Then
+            MsgBox "⚠️ File was not copied successfully to: " & NewFilePath, vbCritical
+            Exit Sub
+        End If
+        
+        DoEvents ' Let system finish file I/O
+        
+        ' Try opening the copied file
         Set tempWorkbook = Workbooks.Open(NewFilePath)
-
-        ' Delete specified sheets if they exist
-        On Error Resume Next
+        
+        If tempWorkbook Is Nothing Then
+            MsgBox "❌ Could not open file: " & NewFilePath, vbCritical
+            Exit Sub
+        End If
+        
+        ' Delete "Region View" sheet (formerly "Reg Summary") if it exists
+        On Error Resume Next ' Prevent error if the sheet doesn't exist
         Set ws = tempWorkbook.Sheets("Region View")
-        If Not ws Is Nothing Then ws.Delete
-
+        If Not ws Is Nothing Then
+            ws.Delete
+        End If
+        On Error GoTo 0 ' Re-enable error handling
+        
+        ' Delete "Country View" sheet if it exists
+        On Error Resume Next
         Set ws = tempWorkbook.Sheets("Country View")
-        If Not ws Is Nothing Then ws.Delete
+        If Not ws Is Nothing Then
+            ws.Delete
+        End If
         On Error GoTo 0
-
-        ' Save and close
-        tempWorkbook.Save
+        
+        ' Save the workbook in .xlsx format
+        tempWorkbook.SaveAs Filename:=NewFilePath, FileFormat:=xlOpenXMLWorkbook
+        
+        ' Close the workbook without saving again
         tempWorkbook.Close False
     Next L3
-
+    
     ' Re-enable alerts and screen updating
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-
-    MsgBox "✅ All .xlsx files created under 'L3_Split_Files' folder successfully!", vbInformation, "Done"
+    
+    MsgBox "Files created and unwanted sheets deleted successfully!", vbInformation, "Done"
 End Sub
-
+00000
 
 
 Sub CreateFilteredFiles()
