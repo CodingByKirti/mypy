@@ -1,29 +1,28 @@
-Sub UpdateRegionAndCountryDropdowns()
-    Dim FolderPath As String
-    Dim Filename As String
-    Dim wb As Workbook, wsOptions As Worksheet
-    Dim wsRegion As Worksheet, wsCountry As Worksheet
+Sub Update_Region_Country_Views()
+    Dim fd As FileDialog
+    Dim selectedFolder As String
+    Dim fileName As String
+    Dim wb As Workbook
+    Dim wsOptions As Worksheet, wsRegion As Worksheet, wsCountry As Worksheet
     Dim lastRow As Long, i As Long
-    Dim RegionName As String
+    Dim regionName As String
     Dim countryList As Collection
-    Dim cell As Range
+    Dim exists As Boolean
 
-    ' Prompt user to select folder
-    With Application.FileDialog(msoFileDialogFolderPicker)
-        .Title = "Select Folder with Region Files"
-        If .Show <> -1 Then Exit Sub
-        FolderPath = .SelectedItems(1) & "\"
-    End With
+    ' Ask user to select folder
+    Set fd = Application.FileDialog(msoFileDialogFolderPicker)
+    If fd.Show <> -1 Then Exit Sub
+    selectedFolder = fd.SelectedItems(1) & "\"
 
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
-    Filename = Dir(FolderPath & "*.xlsx")
-    Do While Filename <> ""
+    fileName = Dir(selectedFolder & "*.xlsx")
+    Do While fileName <> ""
+        Set wb = Workbooks.Open(selectedFolder & fileName)
+        regionName = Replace(fileName, ".xlsx", "")
 
-        Set wb = Workbooks.Open(FolderPath & Filename)
-        RegionName = Replace(Filename, ".xlsx", "")
-
+        ' Set references to sheets
         On Error Resume Next
         Set wsOptions = wb.Sheets("Options")
         Set wsRegion = wb.Sheets("Region View")
@@ -31,72 +30,58 @@ Sub UpdateRegionAndCountryDropdowns()
         On Error GoTo 0
 
         If Not wsOptions Is Nothing And Not wsRegion Is Nothing And Not wsCountry Is Nothing Then
+            ' Clear previous Region-Country list
+            wsOptions.Range("G2").Value = regionName
+            wsOptions.Range("G3:G" & wsOptions.Rows.Count).ClearContents
+            wsOptions.Range("H2:H" & wsOptions.Rows.Count).ClearContents
 
-            ' Update Options sheet
-            With wsOptions
-                .Range("G2").Value = RegionName
-                .Range("G3:G" & .Rows.Count).ClearContents
-                .Range("H3:H" & .Rows.Count).ClearContents
+            ' Collect matching countries from J & K
+            Set countryList = New Collection
+            lastRow = wsOptions.Cells(wsOptions.Rows.Count, "J").End(xlUp).Row
+            For i = 2 To lastRow
+                If wsOptions.Cells(i, "J").Value = regionName Then
+                    On Error Resume Next
+                    countryList.Add wsOptions.Cells(i, "K").Value, CStr(wsOptions.Cells(i, "K").Value)
+                    On Error GoTo 0
+                End If
+            Next i
 
-                ' Create collection to store countries
-                Set countryList = New Collection
-                lastRow = .Cells(.Rows.Count, "J").End(xlUp).Row
+            ' Populate Options columns G (Region) and H (Countries)
+            wsOptions.Range("H2").Value = "*"
+            For i = 1 To countryList.Count
+                wsOptions.Range("G" & i + 2).Value = regionName
+                wsOptions.Range("H" & i + 2).Value = countryList(i)
+            Next i
 
-                For i = 2 To lastRow
-                    If .Cells(i, "J").Value = RegionName Then
-                        On Error Resume Next
-                        countryList.Add .Cells(i, "K").Value, CStr(.Cells(i, "K").Value)
-                        On Error GoTo 0
-                    End If
-                Next i
-
-                ' Write countries starting from H3
-                .Range("H2").Value = "*"
-                For i = 1 To countryList.Count
-                    .Range("H" & (i + 2)).Value = countryList(i)
-                Next i
-            End With
-
-            ' Update Region View - B1 as dropdown with only Region name
+            ' Update Region View
             With wsRegion
-                .Range("B1").ClearContents
+                .Range("B1").Value = regionName
                 .Range("B1").Validation.Delete
-                .Range("B1").Value = RegionName
-                With .Range("B1").Validation
-                    .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Operator:=xlBetween, Formula1:="""" & RegionName & """"
-                    .IgnoreBlank = True
-                    .InCellDropdown = True
-                    .ShowInput = True
-                    .ShowError = True
-                End With
+                .Range("B1").Validation.Add Type:=xlValidateList, _
+                    AlertStyle:=xlValidAlertStop, Operator:=xlBetween, _
+                    Formula1:="""" & regionName & """"
                 .Range("E1").ClearContents
             End With
 
-            ' Update Country View - B1 as dropdown with countries
+            ' Update Country View dropdown
             With wsCountry
                 .Range("B1").Validation.Delete
-                With .Range("B1").Validation
-                    .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-                         Operator:=xlBetween, Formula1:="=Options!H2:H100"
-                    .IgnoreBlank = True
-                    .InCellDropdown = True
-                    .ShowInput = True
-                    .ShowError = True
-                End With
+                .Range("B1").Validation.Add Type:=xlValidateList, _
+                    AlertStyle:=xlValidAlertStop, Operator:=xlBetween, _
+                    Formula1:="=Options!H2:H100"
             End With
-
         End If
 
         wb.Close SaveChanges:=True
-        Filename = Dir
+        fileName = Dir
     Loop
 
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    MsgBox "All Region and Country Views have been updated!", vbInformation
-
+    MsgBox "Region and Country dropdowns updated successfully!", vbInformation
 End Sub
+
 
 
 
