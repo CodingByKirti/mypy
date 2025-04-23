@@ -1,8 +1,8 @@
 Sub UpdateFilteredFilesAndDropdowns()
     Dim wb As Workbook
     Dim wsData As Worksheet, wsOptions As Worksheet
-    Dim wsL4Summary As Worksheet, wsL3View As Worksheet, wsL4View As Worksheet
-    Dim folderPath As String
+    Dim wsL3View As Worksheet, wsL4View As Worksheet
+    Dim folderPath As String, filePath As String
     Dim fso As Object, file As Object
     Dim L3Name As String
     Dim lastRow As Long, rowNum As Long
@@ -10,52 +10,42 @@ Sub UpdateFilteredFilesAndDropdowns()
     Dim L4List As Object
     Dim rng As Range, cell As Range
     Dim i As Integer
+    Dim selectedFolder As FileDialog
 
-    ' Prompt user to select target folder
-    With Application.FileDialog(msoFileDialogFolderPicker)
-        .Title = "Select Folder Containing Filtered Files"
-        If .Show <> -1 Then Exit Sub ' Cancel pressed
-        folderPath = .SelectedItems(1) & "\"
-    End With
+    ' Ask user to select folder
+    Set selectedFolder = Application.FileDialog(msoFileDialogFolderPicker)
+    selectedFolder.Title = "Select folder containing filtered files"
+    If selectedFolder.Show <> -1 Then Exit Sub
+    folderPath = selectedFolder.SelectedItems(1) & "\"
 
-    ' Disable updates for better performance
+    ' Setup performance options
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
 
-    ' Create File System Object
+    ' FileSystemObject
     Set fso = CreateObject("Scripting.FileSystemObject")
 
-    ' Ensure folder exists
-    If Not fso.FolderExists(folderPath) Then
-        MsgBox "Selected folder not found!", vbExclamation, "Error"
-        Exit Sub
-    End If
-
-    ' Loop through each file in the folder
+    ' Loop through Excel files
     For Each file In fso.GetFolder(folderPath).Files
         If LCase(Right(file.Name, 5)) = ".xlsx" Then
-            ' Open workbook and get L3 name
             Set wb = Workbooks.Open(file.Path)
             L3Name = Replace(file.Name, ".xlsx", "")
 
-            ' Set sheet references
             On Error Resume Next
             Set wsData = wb.Sheets("Data")
             Set wsOptions = wb.Sheets("Options")
-            Set wsL4Summary = wb.Sheets("L4 Summary")
             Set wsL3View = wb.Sheets("L3 View")
             Set wsL4View = wb.Sheets("L4 View")
             On Error GoTo 0
 
-            ' Validate sheets
             If wsData Is Nothing Or wsOptions Is Nothing Then
-                MsgBox "Missing required sheets in: " & wb.Name, vbExclamation, "Skipping"
+                MsgBox "Missing 'Data' or 'Options' sheet in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
             End If
 
-            ' ---- FILTER "DATA" SHEET ----
+            ' Filter "Data" sheet
             lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
             For rowNum = lastRow To 2 Step -1
                 If wsData.Cells(rowNum, 1).Value <> L3Name Then
@@ -63,7 +53,7 @@ Sub UpdateFilteredFilesAndDropdowns()
                 End If
             Next rowNum
 
-            ' ---- COLLECT L4 FROM OPTIONS ----
+            ' Get L4 values from Options
             Set L4List = CreateObject("Scripting.Dictionary")
             wsOptionsLastRow = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
             Set rng = wsOptions.Range("D2:D" & wsOptionsLastRow)
@@ -76,77 +66,45 @@ Sub UpdateFilteredFilesAndDropdowns()
                 End If
             Next cell
 
-            ' ---- UPDATE OPTIONS SHEET ----
+            ' Update Options sheet
             wsOptions.Range("A2").Value = L3Name
             wsOptions.Range("A3:A" & wsOptions.Rows.Count).ClearContents
-            wsOptions.Range("B3:B" & wsOptions.Rows.Count).ClearContents
             wsOptions.Range("B2").Value = "*"
+            wsOptions.Range("B3:B" & wsOptions.Rows.Count).ClearContents
+
             i = 3
             For Each key In L4List.keys
                 wsOptions.Cells(i, 2).Value = key
                 i = i + 1
             Next key
 
-            ' ---- UPDATE DROPDOWN IN L4 SUMMARY ----
-            If Not wsL4Summary Is Nothing Then
-                If i > 3 Then
-                    Set rng = wsOptions.Range("B3:B" & i - 1)
-                    With wsL4Summary.Range("B1").Validation
-                        .Delete
-                        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-                             Operator:=xlBetween, Formula1:="='" & wsOptions.Name & "'!" & rng.Address
-                        .IgnoreBlank = True
-                        .InCellDropdown = True
-                        .ShowInput = False
-                        .ShowError = False
-                    End With
-                Else
-                    wsL4Summary.Range("B1").Validation.Delete
-                End If
-            End If
-
-            ' ---- UPDATE DROPDOWN IN L3 VIEW ----
+            ' Update dropdown in L3 View B1 with filename
             If Not wsL3View Is Nothing Then
                 With wsL3View.Range("B1").Validation
                     .Delete
                     .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-                         Operator:=xlBetween, Formula1:="""" & L3Name & """"
+                        Operator:=xlBetween, Formula1:="""" & L3Name & """"
                     .IgnoreBlank = True
                     .InCellDropdown = True
-                    .ShowInput = False
-                    .ShowError = False
                 End With
                 wsL3View.Range("B1").Value = L3Name
             End If
 
-            ' ---- UPDATE DROPDOWN IN L4 VIEW ----
-            If Not wsL4View Is Nothing Then
-                If i > 3 Then
-                    Set rng = wsOptions.Range("B3:B" & i - 1)
-                    With wsL4View.Range("B1").Validation
-                        .Delete
-                        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-                             Operator:=xlBetween, Formula1:="='" & wsOptions.Name & "'!" & rng.Address
-                        .IgnoreBlank = True
-                        .InCellDropdown = True
-                        .ShowInput = False
-                        .ShowError = False
-                    End With
-                Else
-                    wsL4View.Range("B1").Validation.Delete
-                End If
+            ' Update dropdown in L4 View B1 with L4 list from Options
+            If Not wsL4View Is Nothing And i > 3 Then
+                Set rng = wsOptions.Range("B3:B" & i - 1)
+                With wsL4View.Range("B1").Validation
+                    .Delete
+                    .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+                        Operator:=xlBetween, Formula1:="='" & wsOptions.Name & "'!" & rng.Address
+                    .IgnoreBlank = True
+                    .InCellDropdown = True
+                End With
             End If
 
-            ' Save and close file
             wb.Save
             wb.Close False
-
 NextFile:
-            Set wsData = Nothing
-            Set wsOptions = Nothing
-            Set wsL4Summary = Nothing
-            Set wsL3View = Nothing
-            Set wsL4View = Nothing
         End If
     Next file
 
@@ -155,19 +113,8 @@ NextFile:
     Application.Calculation = xlCalculationAutomatic
     Application.EnableEvents = True
 
-    MsgBox "All files processed and dropdowns updated!", vbInformation, "Complete"
+    MsgBox "All files processed and dropdowns updated!", vbInformation
 End Sub
-
-
-
-
-
-
-
-
-
-
-
 
 
 
