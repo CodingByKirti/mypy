@@ -1,11 +1,10 @@
 Sub UpdateFilteredFilesAndDropdowns()
     Dim wb As Workbook
-    Dim wsData As Worksheet, wsOptions As Worksheet
+    Dim wsOptions As Worksheet
     Dim wsL3View As Worksheet, wsL4View As Worksheet
-    Dim folderPath As String, filePath As String
+    Dim folderPath As String
     Dim fso As Object, file As Object
     Dim L3Name As String
-    Dim lastRow As Long, rowNum As Long
     Dim wsOptionsLastRow As Long
     Dim L4List As Object
     Dim rng As Range, cell As Range
@@ -18,7 +17,7 @@ Sub UpdateFilteredFilesAndDropdowns()
     If selectedFolder.Show <> -1 Then Exit Sub
     folderPath = selectedFolder.SelectedItems(1) & "\"
 
-    ' Setup performance options
+    ' Improve performance
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
@@ -33,27 +32,18 @@ Sub UpdateFilteredFilesAndDropdowns()
             L3Name = Replace(file.Name, ".xlsx", "")
 
             On Error Resume Next
-            Set wsData = wb.Sheets("Data")
             Set wsOptions = wb.Sheets("Options")
             Set wsL3View = wb.Sheets("L3 View")
             Set wsL4View = wb.Sheets("L4 View")
             On Error GoTo 0
 
-            If wsData Is Nothing Or wsOptions Is Nothing Then
-                MsgBox "Missing 'Data' or 'Options' sheet in: " & wb.Name, vbExclamation, "Skipping"
+            If wsOptions Is Nothing Then
+                MsgBox "Missing 'Options' sheet in: " & wb.Name, vbExclamation, "Skipping"
                 wb.Close False
                 GoTo NextFile
             End If
 
-            ' Filter "Data" sheet
-            lastRow = wsData.Cells(wsData.Rows.Count, "A").End(xlUp).Row
-            For rowNum = lastRow To 2 Step -1
-                If wsData.Cells(rowNum, 1).Value <> L3Name Then
-                    wsData.Rows(rowNum).Delete
-                End If
-            Next rowNum
-
-            ' Get L4 values from Options
+            ' Get L4 values from Options sheet
             Set L4List = CreateObject("Scripting.Dictionary")
             wsOptionsLastRow = wsOptions.Cells(wsOptions.Rows.Count, "D").End(xlUp).Row
             Set rng = wsOptions.Range("D2:D" & wsOptionsLastRow)
@@ -78,12 +68,12 @@ Sub UpdateFilteredFilesAndDropdowns()
                 i = i + 1
             Next key
 
-            ' Update dropdown in L3 View B1 with filename
+            ' Update dropdown in L3 View B1 with filename (without quotes)
             If Not wsL3View Is Nothing Then
                 With wsL3View.Range("B1").Validation
                     .Delete
                     .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-                        Operator:=xlBetween, Formula1:="""" & L3Name & """"
+                        Operator:=xlBetween, Formula1:="=" & L3Name
                     .IgnoreBlank = True
                     .InCellDropdown = True
                 End With
@@ -108,12 +98,12 @@ NextFile:
         End If
     Next file
 
-    ' Restore application settings
+    ' Restore settings
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
     Application.EnableEvents = True
 
-    MsgBox "All files processed and dropdowns updated!", vbInformation
+    MsgBox "All files processed successfully!", vbInformation
 End Sub
 
 
