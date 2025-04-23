@@ -1,3 +1,12 @@
+Clarity in requirements: All SOPs and change requests must include detailed guidelines to ensure accurate and timely automation.
+
+Evolving needs: Continuous changes in structure or data requirements may delay tool stability and delivery.
+
+Partial automation: Certain processes still require human judgment and manual commentary, limiting full automation.
+
+
+
+
 Automation Initiatives (Non-BAU Work):
 
 Anaplan report split and multiple file generation based on region, country, and GSC sites – Target: 23-Apr-2025
