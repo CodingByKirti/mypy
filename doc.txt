@@ -1,3 +1,4 @@
+
 Sub Update_Region_Country_Views()
 
     Dim wsOptions As Worksheet
@@ -5,8 +6,6 @@ Sub Update_Region_Country_Views()
     Dim wsCountry As Worksheet
     Dim regionName As String
     Dim lastRow As Long, i As Long, outRow As Long
-    Dim countries As Collection
-    Dim cell As Range
     Dim fileDialog As FileDialog
     Dim selectedFolder As String
     Dim fileName As String
@@ -32,18 +31,18 @@ Sub Update_Region_Country_Views()
 
         If Not wsOptions Is Nothing And Not wsRegion Is Nothing And Not wsCountry Is Nothing Then
 
-            ' Step 1: Update Options sheet G and H from J and K
+            ' Step 1: Update Options sheet G and H from I and J
             wsOptions.Range("G2").Value = regionName
             wsOptions.Range("G3:G" & wsOptions.Rows.Count).ClearContents
             wsOptions.Range("H2:H" & wsOptions.Rows.Count).ClearContents
             wsOptions.Range("H2").Value = "*"
             
             outRow = 3
-            lastRow = wsOptions.Cells(wsOptions.Rows.Count, "J").End(xlUp).Row
+            lastRow = wsOptions.Cells(wsOptions.Rows.Count, "I").End(xlUp).Row
             For i = 2 To lastRow
-                If wsOptions.Cells(i, "J").Value = regionName Then
+                If Trim(wsOptions.Cells(i, "I").Value) = Trim(regionName) Then
                     wsOptions.Cells(outRow, "G").Value = regionName
-                    wsOptions.Cells(outRow, "H").Value = wsOptions.Cells(i, "K").Value
+                    wsOptions.Cells(outRow, "H").Value = wsOptions.Cells(i, "J").Value
                     outRow = outRow + 1
                 End If
             Next i
@@ -78,10 +77,6 @@ Sub Update_Region_Country_Views()
     MsgBox "Region & Country dropdowns updated successfully!", vbInformation
 
 End Sub
-
-
-
-
 
 
 
