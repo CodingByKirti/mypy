@@ -1,3 +1,22 @@
+def add_bp_cc_columns_from_last_month(main_df, last_month_df):
+    # Standardize PS ID format: convert to string and pad to 8 digits
+    main_df['Billing Contact PS ID'] = main_df['Billing Contact PS ID'].astype(str).str.zfill(8)
+    last_month_df['Billing Contact PS ID'] = last_month_df['Billing Contact PS ID'].astype(str).str.zfill(8)
+
+    # Extract only needed columns from last month file
+    lookup_df = last_month_df[['Billing Contact PS ID', 'BP CC1', 'BP CC2']].drop_duplicates()
+
+    # Merge these columns into main_df
+    main_df = main_df.merge(lookup_df, on='Billing Contact PS ID', how='left')
+
+    return main_df
+
+main_df = add_bp_cc_columns_from_last_month(main_df, last_month_df)
+
+
+
+
+
 
 import pandas as pd
 import pandas as pd
