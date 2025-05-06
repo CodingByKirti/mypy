@@ -1,3 +1,22 @@
+def refresh_region_country_from_entity(main_df, last_month_df):
+    # Ensure 'Entity Name' is consistent type
+    main_df['Entity Name'] = main_df['Entity Name'].astype(str).str.strip()
+    last_month_df['Entity Name'] = last_month_df['Entity Name'].astype(str).str.strip()
+
+    # Extract unique Entity Name → Region, Country mapping
+    entity_lookup = last_month_df[['Entity Name', 'Region', 'Country']].drop_duplicates()
+
+    # Merge into main_df to get updated values
+    main_df = main_df.drop(columns=['Region', 'Country'], errors='ignore')
+    main_df = main_df.merge(entity_lookup, on='Entity Name', how='left')
+
+    return main_df
+
+main_df = refresh_region_country_from_entity(main_df, last_month_df)
+
+
+
+
 def add_bp_cc_columns_from_last_month(main_df, last_month_df):
     # Standardize PS ID format: convert to string and pad to 8 digits
     main_df['Billing Contact PS ID'] = main_df['Billing Contact PS ID'].astype(str).str.zfill(8)
