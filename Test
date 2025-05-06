@@ -1,5 +1,55 @@
 
 import pandas as pd
+import pandas as pd
+
+def flag_duplicate_billing_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Flags records where a Billing Contact PSID is linked to multiple Billing Contact Names,
+    and suggests if the email and name might belong to the same person.
+    """
+
+    # Ensure required columns exist
+    if 'Billing Contact PSID' not in df.columns or 'Billing Contact name' not in df.columns:
+        raise KeyError("Missing required columns in the dataframe.")
+
+    # Ensure 'Comment' column exists
+    if 'Comment' not in df.columns:
+        df['Comment'] = ""
+
+    # Group by PSID and collect distinct contact names
+    grouped = df.groupby('Billing Contact PSID')['Billing Contact name'].unique().reset_index()
+
+    for _, row in grouped.iterrows():
+        psid = row['Billing Contact PSID']
+        names = row['Billing Contact name']
+
+        # Separate full names and email addresses
+        name_names = [n for n in names if '@' not in str(n)]
+        email_names = [n for n in names if '@' in str(n)]
+
+        for name in name_names:
+            name_words = str(name).lower().split()
+            for email in email_names:
+                email_lower = str(email).lower()
+                if any(word in email_lower for word in name_words):
+                    idxs = df[(df['Billing Contact PSID'] == psid) & 
+                              (df['Billing Contact name'].isin([name, email]))].index
+                    for idx in idxs:
+                        old_comment = str(df.at[idx, 'Comment'])
+                        new_comment = 'Duplicate name against same PSID, but might belong to same person.'
+                        if new_comment not in old_comment:
+                            updated_comment = f"{old_comment} | {new_comment}".strip(" |")
+                            df.at[idx, 'Comment'] = updated_comment
+
+    return df
+
+
+
+
+
+
+
+
 import re
 
 def flag_duplicate_billing_contact_names(df):
