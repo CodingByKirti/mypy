@@ -1,3 +1,56 @@
+
+import pandas as pd
+import re
+
+def flag_duplicate_billing_contact_names(df):
+    # Ensure comment columns exist
+    if 'Comment' not in df.columns:
+        df['Comment'] = ''
+    if 'Comment2' not in df.columns:
+        df['Comment2'] = ''
+    
+    # Normalize to strings
+    df['Billing Contact Name'] = df['Billing Contact Name'].astype(str).str.strip()
+    df['Billing Contact PSID'] = df['Billing Contact PSID'].astype(str).str.strip()
+
+    # Step 1: Same name → multiple PSIDs
+    name_to_psid = df.groupby('Billing Contact Name')['Billing Contact PSID'].nunique()
+    multi_psid_names = name_to_psid[name_to_psid > 1].index
+    df.loc[df['Billing Contact Name'].isin(multi_psid_names), 'Comment2'] += 'Duplicate PSID for same Billing Contact Name. '
+
+    # Step 2: Same PSID → multiple names
+    psid_groups = df.groupby('Billing Contact PSID')
+    for psid, group in psid_groups:
+        unique_names = group['Billing Contact Name'].dropna().unique()
+        if len(unique_names) <= 1:
+            continue
+
+        name_candidates = [name for name in unique_names if '@' not in name]
+        email_candidates = [name for name in unique_names if '@' in name]
+
+        likely_same = False
+        for name in name_candidates:
+            name_words = set(re.findall(r'\b[a-zA-Z]+\b', name.lower()))
+            for email in email_candidates:
+                if any(word in email.lower() for word in name_words):
+                    likely_same = True
+                    break
+            if likely_same:
+                break
+
+        if likely_same:
+            df.loc[group.index, 'Comment2'] += 'Duplicate names against same PSID, but might be same person. '
+        else:
+            df.loc[group.index, 'Comment2'] += 'Duplicate names against same PSID. '
+
+    # Clean and combine Comment + Comment2
+    df['Comment'] = (df['Comment'].fillna('') + ' ' + df['Comment2'].fillna('')).str.strip()
+    df['Comment'] = df['Comment'].apply(lambda x: ' | '.join(dict.fromkeys(x.split(' | '))))  # Deduplicate by order
+    df.drop(columns=['Comment2'], inplace=True)
+
+    return df
+
+
 GIRS Problem Specification Document & Implementation Steps
 
 Hi [Recipient's Name],
