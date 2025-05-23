@@ -1,3 +1,75 @@
+def flag_new_bpce_combinations(main_df, last_month_df):
+    def clean_for_key(series):
+        return series.astype(str).str.strip().str.lstrip('0')
+
+    main_df['Temp_BPCC'] = clean_for_key(main_df['Business Partner Cost Center'])
+    last_month_df['Temp_BPCC'] = clean_for_key(last_month_df['Business Partner Cost Center'])
+
+    # Ensure Comment column exists
+    if 'Comment' not in main_df.columns:
+        main_df['Comment'] = ''
+
+    # 1. STEP: Fix minor differences within main_df (like underscores)
+    main_df['Billing Entity Clean'] = main_df['Billing Entity'].astype(str).str.strip().str.replace('_', '', regex=False).str.lower()
+    duplicates_within_main = (
+        main_df.groupby(['Temp_BPCC', 'Billing Entity Clean'])['Billing Entity']
+        .transform('first')
+    )
+
+    main_df['Old Billing Entity'] = main_df['Billing Entity']
+    update_mask_main = main_df['Billing Entity'] != duplicates_within_main
+
+    main_df.loc[update_mask_main, 'Billing Entity'] = duplicates_within_main
+    main_df.loc[update_mask_main, 'Comment'] += main_df.loc[update_mask_main].apply(
+        lambda row: f"Billing Entity normalized from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' within same file", axis=1
+    )
+
+    # 2. STEP: Fallback update using last month file based on BPCC
+    bpcc_billing_map = (
+        last_month_df.dropna(subset=['Billing Entity'])
+        .drop_duplicates('Temp_BPCC')
+        .set_index('Temp_BPCC')['Billing Entity']
+        .to_dict()
+    )
+
+    main_df['BPCC_Billing_Key_Orig'] = main_df['Temp_BPCC'] + main_df['Old Billing Entity'].astype(str).str.strip()
+    last_month_df['BPCC_Billing_Key'] = last_month_df['Temp_BPCC'] + last_month_df['Billing Entity'].astype(str).str.strip()
+
+    unmatched_mask = ~main_df['BPCC_Billing_Key_Orig'].isin(last_month_df['BPCC_Billing_Key'])
+
+    bpcc_only_matches = unmatched_mask & main_df['Temp_BPCC'].isin(bpcc_billing_map.keys())
+    main_df.loc[bpcc_only_matches, 'Old Billing Entity'] = main_df.loc[bpcc_only_matches, 'Billing Entity']
+    main_df.loc[bpcc_only_matches, 'Billing Entity'] = main_df.loc[bpcc_only_matches, 'Temp_BPCC'].map(bpcc_billing_map)
+
+    main_df.loc[bpcc_only_matches, 'Comment'] += main_df.loc[bpcc_only_matches].apply(
+        lambda row: f"Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using last month's BPCC mapping", axis=1
+    )
+
+    # 3. STEP: Final unmatched after all updates
+    main_df['BPCC_Billing_Key'] = main_df['Temp_BPCC'] + main_df['Billing Entity'].astype(str).str.strip()
+    still_unmatched = ~main_df['BPCC_Billing_Key'].isin(last_month_df['BPCC_Billing_Key'])
+
+    comment_text = 'Business Partner Cost Center & Billing Entity not found in last month file'
+    main_df.loc[still_unmatched & main_df['Comment'].eq(''), 'Comment'] = comment_text
+    main_df.loc[
+        still_unmatched & main_df['Comment'].ne('') & ~main_df['Comment'].str.contains(comment_text, case=False),
+        'Comment'
+    ] += ' | ' + comment_text
+
+    # Clean up
+    main_df.drop(columns=[
+        'Temp_BPCC', 'BPCC_Billing_Key', 'BPCC_Billing_Key_Orig',
+        'Billing Entity Clean', 'Old Billing Entity'
+    ], errors='ignore', inplace=True)
+    last_month_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key'], inplace=True)
+
+    return main_df
+
+
+
+
+
+,.............
 def refresh_region_country_from_entity(main_df, last_month_df):
     # Ensure 'Entity Name' is consistent type
     main_df['Entity Name'] = main_df['Entity Name'].astype(str).str.strip()
