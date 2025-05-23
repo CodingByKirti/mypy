@@ -1,4 +1,74 @@
 def flag_new_bpce_combinations(main_df, last_month_df):
+    # Clean for matching
+    def clean_for_key(series):
+        return series.astype(str).str.strip().str.lstrip('0')
+
+    # Extract meaningful Billing Entity from right of last '_'
+    def extract_clean_billing_entity(entity):
+        if pd.isna(entity):
+            return entity
+        parts = str(entity).split('_')
+        return parts[-1].strip()
+
+    # Clean columns
+    main_df['Comment'] = main_df['Comment'].fillna('').astype(str)
+    main_df['Billing Entity'] = main_df['Billing Entity'].astype(str).str.strip()
+    main_df['Old Billing Entity'] = main_df['Billing Entity']
+
+    # Step 1: Extract from main_df by removing prefixes
+    main_df['Cleaned Billing Entity'] = main_df['Billing Entity'].apply(extract_clean_billing_entity)
+
+    # Identify those rows where cleaned version is different and update
+    mask_diff = main_df['Billing Entity'] != main_df['Cleaned Billing Entity']
+    main_df.loc[mask_diff, 'Billing Entity'] = main_df.loc[mask_diff, 'Cleaned Billing Entity']
+    main_df.loc[mask_diff, 'Comment'] += main_df.loc[mask_diff].apply(
+        lambda row: f"Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using internal cleanup", axis=1
+    )
+
+    # Step 2: Clean BPCCs for mapping
+    main_df['Temp_BPCC'] = clean_for_key(main_df['Business Partner Cost Center'])
+    last_month_df['Temp_BPCC'] = clean_for_key(last_month_df['Business Partner Cost Center'])
+
+    # Map from last month
+    bpcc_billing_map = last_month_df.dropna(subset=['Billing Entity']).drop_duplicates('Temp_BPCC').set_index('Temp_BPCC')['Billing Entity'].to_dict()
+
+    # Step 3: Apply BPCC-only updates using last month's mapping
+    bpcc_only_matches = main_df['Temp_BPCC'].isin(bpcc_billing_map.keys())
+    main_df.loc[bpcc_only_matches, 'Old Billing Entity'] = main_df.loc[bpcc_only_matches, 'Billing Entity']
+    main_df.loc[bpcc_only_matches, 'Billing Entity'] = main_df.loc[bpcc_only_matches, 'Temp_BPCC'].map(bpcc_billing_map)
+    main_df.loc[bpcc_only_matches, 'Comment'] += main_df.loc[bpcc_only_matches].apply(
+        lambda row: f" | Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using last month's BPCC mapping", axis=1
+    )
+
+    # Step 4: Identify unmatched BPCC + Billing Entity pairs
+    main_df['BPCC_Billing_Key'] = main_df['Temp_BPCC'] + main_df['Billing Entity'].astype(str).str.strip()
+    last_month_df['BPCC_Billing_Key'] = last_month_df['Temp_BPCC'] + last_month_df['Billing Entity'].astype(str).str.strip()
+
+    unmatched_mask = ~main_df['BPCC_Billing_Key'].isin(last_month_df['BPCC_Billing_Key'])
+    comment_text = 'Business Partner Cost Center & Billing Entity not found in last month file'
+
+    still_unmatched = unmatched_mask
+    still_unmatched &= ~main_df['Comment'].str.contains(comment_text, case=False)
+
+    main_df.loc[still_unmatched & main_df['Comment'].eq(''), 'Comment'] = comment_text
+    main_df.loc[still_unmatched & main_df['Comment'].ne(''), 'Comment'] += ' | ' + comment_text
+
+    # Clean up
+    main_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key', 'Cleaned Billing Entity'], inplace=True)
+    last_month_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key'], inplace=True)
+
+    return main_df
+
+
+
+
+
+
+
+
+
+
+def flag_new_bpce_combinations(main_df, last_month_df):
     def clean_for_key(series):
         return series.astype(str).str.strip().str.lstrip('0')
 
