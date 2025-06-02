@@ -1,78 +1,65 @@
-change
-# Pick correct comment
-if is_likely_same_person:
-    final_comment = 'Duplicate name against same PS ID, might be same person.'
-else:
-    final_comment = 'Same PS ID has unrelated names (likely different people).'
-....
-
-# If there's no email, and more than 2 very different names, flag as unrelated
-if not has_email and len(set(norm_names)) > 2:
-    final_comment = 'Same PS ID has unrelated names (likely different people).'
-elif is_likely_same_person:
-    final_comment = 'Duplicate name against same PS ID, might be same person.'
-else:
-    final_comment = 'Same PS ID has unrelated names (likely different people).'
-...........
-
-
 import pandas as pd
 
-def normalize_bpcc_and_billing_entities(main_df: pd.DataFrame, last_month_df: pd.DataFrame) -> pd.DataFrame:
-    # Copy to avoid changing original columns
-    main_df = main_df.copy()
-    last_month_df = last_month_df.copy()
+def flag_duplicate_billing_names(df: pd.DataFrame) -> pd.DataFrame:
+    name_col = 'Billing Contact Name'
+    psid_col = 'Billing Contact PS ID'
+    comment_col = 'Comment'
 
-    # Normalize BPCC: string, strip spaces, remove leading zeros
-    main_df['BPCC_temp'] = main_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
-    last_month_df['BPCC_temp'] = last_month_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
+    if name_col not in df.columns or psid_col not in df.columns:
+        raise KeyError("Missing required columns in the dataframe.")
 
-    # Normalize Billing Entity
-    main_df['Billing_Entity_temp'] = main_df['Billing Entity'].astype(str).str.strip().str.upper()
-    last_month_df['Billing_Entity_temp'] = last_month_df['Billing Entity'].astype(str).str.strip().str.upper()
+    if comment_col not in df.columns:
+        df[comment_col] = ""
 
-    # Create combo key for matching (except for BPCCs starting with '9')
-    main_df['combo_key'] = main_df.apply(
-        lambda row: f"{row['BPCC_temp']}|{row['Billing_Entity_temp']}" if not str(row['BPCC_temp']).startswith('9') else None,
-        axis=1
-    )
+    # --------- CASE 1: Same PS ID with multiple names ---------
+    psid_groups = df.groupby(psid_col)[name_col].unique().reset_index()
 
-    last_month_df['combo_key'] = last_month_df.apply(
-        lambda row: f"{row['BPCC_temp']}|{row['Billing_Entity_temp']}" if not str(row['BPCC_temp']).startswith('9') else None,
-        axis=1
-    )
+    for _, row in psid_groups.iterrows():
+        psid = row[psid_col]
+        names = [str(n).strip() for n in row[name_col] if pd.notna(n)]
+        if len(names) <= 1:
+            continue
 
-    # Build set of valid combo keys from last month
-    valid_combos = set(last_month_df['combo_key'].dropna())
+        norm_names = [n.lower() for n in names]
+        unique_names = list(set(norm_names))
+        if len(unique_names) == 1:
+            continue  # All names are effectively same
 
-    # Ensure 'Comment' column exists
-    if 'Comment' not in main_df.columns:
-        main_df['Comment'] = ""
+        # Separate email and name
+        email_names = [n for n in names if '@' in n]
+        plain_names = [n for n in names if '@' not in n]
 
-    # Identify rows where combo_key is not in last_month_df and BPCC does not start with '9'
-    for idx, row in main_df.iterrows():
-        combo = row['combo_key']
-        bpcc = row['BPCC_temp']
+        has_similar_name_email_pair = False
+        for name in plain_names:
+            name_words = name.lower().split()
+            for email in email_names:
+                if all(word in email.lower() for word in name_words):
+                    has_similar_name_email_pair = True
+                    break
+            if has_similar_name_email_pair:
+                break
 
-        if combo is not None and combo not in valid_combos:
-            # Try to find a matching BPCC in last_month_df
-            match = last_month_df[last_month_df['BPCC_temp'] == bpcc]
+        # NEW: if unrelated names exist along with similar email-name pairs
+        if len(set(plain_names)) > 2:
+            final_comment = 'Same PS ID has unrelated names (likely different people).'
+        elif has_similar_name_email_pair:
+            final_comment = 'Duplicate name against same PS ID, might be same person.'
+        else:
+            final_comment = 'Same PS ID has unrelated names (likely different people).'
 
-            if not match.empty:
-                new_entity = match['Billing_Entity_temp'].iloc[0]
-                old_entity = row['Billing Entity']
+        idxs = df[df[psid_col] == psid].index
+        for idx in idxs:
+            df.at[idx, comment_col] = final_comment
 
-                # Update Billing Entity
-                main_df.at[idx, 'Billing Entity'] = new_entity
+    # --------- CASE 2: Same name appears with multiple PS IDs ---------
+    name_groups = df.groupby(name_col)[psid_col].nunique().reset_index()
+    suspicious_names = name_groups[name_groups[psid_col] > 1][name_col]
 
-                # Update comment
-                comment = f"Mismatch in Billing Entity; replaced '{old_entity}' with '{new_entity}' based on BPCC."
-                existing_comment = main_df.at[idx, 'Comment']
-                if comment not in existing_comment:
-                    updated_comment = f"{existing_comment} | {comment}".strip(" |")
-                    main_df.at[idx, 'Comment'] = updated_comment
+    for name in suspicious_names:
+        idxs = df[df[name_col] == name].index
+        for idx in idxs:
+            existing = str(df.at[idx, comment_col])
+            if not existing.strip():
+                df.at[idx, comment_col] = 'Same contact name appears with multiple PS IDs.'
 
-    # Drop temporary columns
-    main_df.drop(columns=['BPCC_temp', 'Billing_Entity_temp', 'combo_key'], inplace=True, errors='ignore')
-
-    return main_df
+    return df
