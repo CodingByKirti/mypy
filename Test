@@ -1,47 +1,48 @@
 import pandas as pd
 
-def normalize_bpcc_and_billing_entities(main_df, last_month_df):
-    # Create cleaned versions of BPCC for both dataframes
-    main_df['BPCC_clean'] = main_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
-    last_month_df['BPCC_clean'] = last_month_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
+def enrich_billing_entity_info(main_df: pd.DataFrame, last_month_df: pd.DataFrame, ospd_df: pd.DataFrame) -> pd.DataFrame:
+    # Normalize BPCC and LE_Description
+    def normalize_bpcc(series):
+        return series.astype(str).str.strip().str.lstrip('0').str.upper()
 
-    # Clean Billing Entity too
-    main_df['Billing_clean'] = main_df['Billing Entity'].astype(str).str.strip()
-    last_month_df['Billing_clean'] = last_month_df['Billing Entity'].astype(str).str.strip()
+    main_df['__BPCC_tmp'] = normalize_bpcc(main_df['Business Partner Cost Center'])
+    last_month_df['__BPCC_tmp'] = normalize_bpcc(last_month_df['Business Partner Cost Center'])
+    ospd_df['__BPCC_tmp'] = normalize_bpcc(ospd_df['CC_ID'])
 
-    # Create combo column (except BPCCs starting with '9')
-    main_df['BPCC_combo'] = main_df.apply(
-        lambda row: "" if row['BPCC_clean'].startswith('9') else f"{row['BPCC_clean']}|{row['Billing_clean']}", axis=1)
-    last_month_df['BPCC_combo'] = last_month_df.apply(
-        lambda row: "" if row['BPCC_clean'].startswith('9') else f"{row['BPCC_clean']}|{row['Billing_clean']}", axis=1)
+    # Normalize LE_Description
+    ospd_df['__LE_tmp'] = ospd_df['LE_Description'].astype(str).str.strip().str.upper()
 
-    # Create lookup maps
-    combo_lookup = dict(zip(last_month_df['BPCC_combo'], last_month_df['Billing_clean']))
-    bpcc_lookup = dict(zip(last_month_df['BPCC_clean'], last_month_df['Billing_clean']))
-
+    # Initialize columns
     if 'Comment' not in main_df.columns:
         main_df['Comment'] = ""
+    main_df['Billing Entity name as per OSPD'] = ""
+
+    # Set for faster lookup
+    bpcc_last_month_set = set(last_month_df['__BPCC_tmp'])
+    bpcc_ospd_set = set(ospd_df['__BPCC_tmp'])
 
     for idx, row in main_df.iterrows():
-        combo = row['BPCC_combo']
-        bpcc = row['BPCC_clean']
-        curr_billing = row['Billing_clean']
-        
-        if combo and combo in combo_lookup:
-            continue  # Combo found, nothing to do
-        
-        elif combo and bpcc in bpcc_lookup:
-            # BPCC exists, but combo does not match – mismatch
-            old_billing = curr_billing
-            new_billing = bpcc_lookup[bpcc]
+        bpcc = row['__BPCC_tmp']
+        billing_entity = str(row['Billing Entity']).replace("_", " ").strip().upper()
 
-            if old_billing != new_billing:
-                main_df.at[idx, 'Billing Entity'] = new_billing
-                main_df.at[idx, 'Comment'] = f"Mismatch in Billing Entity. Updated from {old_billing} to {new_billing}."
-        
-        elif combo:  # combo exists but BPCC not found at all in last_month_df
-            main_df.at[idx, 'Comment'] = "New BPCC found – no match in last month data."
+        # Case 1: BPCC not found in OSPD
+        if bpcc not in bpcc_ospd_set:
+            main_df.at[idx, 'Comment'] = "No BPCC found in OSPD."
+            continue
 
-    # Drop temporary columns
-    main_df.drop(columns=['BPCC_clean', 'Billing_clean', 'BPCC_combo'], inplace=True)
+        # Case 2: New BPCC (not in last month file)
+        if bpcc not in bpcc_last_month_set:
+            matching_ospd_entries = ospd_df[ospd_df['__BPCC_tmp'] == bpcc]['__LE_tmp'].unique()
+
+            # Join all expected LE_Descriptions from OSPD
+            combined_le = " | ".join(sorted(set(matching_ospd_entries)))
+            main_df.at[idx, 'Billing Entity name as per OSPD'] = combined_le
+
+            # Compare with cleaned Billing Entity from main_df
+            if billing_entity not in matching_ospd_entries:
+                comment = f"New BPCC found. Billing Entity mismatch. Expected from OSPD: {combined_le}"
+                main_df.at[idx, 'Comment'] = comment
+
+    # Cleanup temporary columns
+    main_df.drop(columns=['__BPCC_tmp'], inplace=True)
     return main_df
