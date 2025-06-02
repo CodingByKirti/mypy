@@ -1,606 +1,78 @@
-import pandas as pd
-
-def flag_duplicate_billing_names(df: pd.DataFrame) -> pd.DataFrame:
-    name_col = 'Billing Contact Name'
-    psid_col = 'Billing Contact PS ID'
-    comment_col = 'Comment'
-
-    if name_col not in df.columns or psid_col not in df.columns:
-        raise KeyError("Missing required columns in the dataframe.")
-
-    if comment_col not in df.columns:
-        df[comment_col] = ""
-
-    # --------- CASE 1: Same PS ID with multiple names ---------
-    psid_groups = df.groupby(psid_col)[name_col].unique().reset_index()
-
-    for _, row in psid_groups.iterrows():
-        psid = row[psid_col]
-        names = [str(n).strip() for n in row[name_col] if pd.notna(n)]
-
-        if len(names) <= 1:
-            continue
-
-        # Normalize names
-        norm_names = [n.lower() for n in names]
-        unique_names = list(set(norm_names))
-
-        if len(unique_names) == 1:
-            continue  # All names are same
-
-        has_email = any('@' in n for n in names)
-        name_names = [n for n in names if '@' not in n]
-        email_names = [n for n in names if '@' in n]
-
-        is_likely_same_person = False
-
-        for name in name_names:
-            name_words = name.lower().split()
-            for email in email_names:
-                if any(word in email.lower() for word in name_words):
-                    is_likely_same_person = True
-                    break
-            if is_likely_same_person:
-                break
-
-        # Pick correct comment
-        if is_likely_same_person:
-            final_comment = 'Duplicate name against same PS ID, might be same person.'
-        else:
-            final_comment = 'Same PS ID has unrelated names (likely different people).'
-
-        idxs = df[df[psid_col] == psid].index
-        for idx in idxs:
-            df.at[idx, comment_col] = final_comment
-
-    # --------- CASE 2: Same name appears with multiple PS IDs ---------
-    name_groups = df.groupby(name_col)[psid_col].nunique().reset_index()
-    suspicious_names = name_groups[name_groups[psid_col] > 1][name_col]
-
-    for name in suspicious_names:
-        idxs = df[df[name_col] == name].index
-        for idx in idxs:
-            # Do not overwrite existing comment if already flagged from previous step
-            existing = str(df.at[idx, comment_col])
-            if not existing.strip():
-                df.at[idx, comment_col] = 'Same contact name appears with multiple PS IDs.'
-
-    return df
-
-
-
-vvvvbbbbb
-
-def flag_new_bpce_combinations(main_df, last_month_df):
-    # Clean for matching
-    def clean_for_key(series):
-        return series.astype(str).str.strip().str.lstrip('0')
-
-    # Extract meaningful Billing Entity from right of last '_'
-    def extract_clean_billing_entity(entity):
-        if pd.isna(entity):
-            return entity
-        parts = str(entity).split('_')
-        return parts[-1].strip()
-
-    # Clean columns
-    main_df['Comment'] = main_df['Comment'].fillna('').astype(str)
-    main_df['Billing Entity'] = main_df['Billing Entity'].astype(str).str.strip()
-    main_df['Old Billing Entity'] = main_df['Billing Entity']
-
-    # Step 1: Extract from main_df by removing prefixes
-    main_df['Cleaned Billing Entity'] = main_df['Billing Entity'].apply(extract_clean_billing_entity)
-
-    # Identify those rows where cleaned version is different and update
-    mask_diff = main_df['Billing Entity'] != main_df['Cleaned Billing Entity']
-    main_df.loc[mask_diff, 'Billing Entity'] = main_df.loc[mask_diff, 'Cleaned Billing Entity']
-    main_df.loc[mask_diff, 'Comment'] += main_df.loc[mask_diff].apply(
-        lambda row: f"Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using internal cleanup", axis=1
-    )
-
-    # Step 2: Clean BPCCs for mapping
-    main_df['Temp_BPCC'] = clean_for_key(main_df['Business Partner Cost Center'])
-    last_month_df['Temp_BPCC'] = clean_for_key(last_month_df['Business Partner Cost Center'])
-
-    # Map from last month
-    bpcc_billing_map = last_month_df.dropna(subset=['Billing Entity']).drop_duplicates('Temp_BPCC').set_index('Temp_BPCC')['Billing Entity'].to_dict()
-
-    # Step 3: Apply BPCC-only updates using last month's mapping
-    bpcc_only_matches = main_df['Temp_BPCC'].isin(bpcc_billing_map.keys())
-    main_df.loc[bpcc_only_matches, 'Old Billing Entity'] = main_df.loc[bpcc_only_matches, 'Billing Entity']
-    main_df.loc[bpcc_only_matches, 'Billing Entity'] = main_df.loc[bpcc_only_matches, 'Temp_BPCC'].map(bpcc_billing_map)
-    main_df.loc[bpcc_only_matches, 'Comment'] += main_df.loc[bpcc_only_matches].apply(
-        lambda row: f" | Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using last month's BPCC mapping", axis=1
-    )
-
-    # Step 4: Identify unmatched BPCC + Billing Entity pairs
-    main_df['BPCC_Billing_Key'] = main_df['Temp_BPCC'] + main_df['Billing Entity'].astype(str).str.strip()
-    last_month_df['BPCC_Billing_Key'] = last_month_df['Temp_BPCC'] + last_month_df['Billing Entity'].astype(str).str.strip()
-
-    unmatched_mask = ~main_df['BPCC_Billing_Key'].isin(last_month_df['BPCC_Billing_Key'])
-    comment_text = 'Business Partner Cost Center & Billing Entity not found in last month file'
-
-    still_unmatched = unmatched_mask
-    still_unmatched &= ~main_df['Comment'].str.contains(comment_text, case=False)
-
-    main_df.loc[still_unmatched & main_df['Comment'].eq(''), 'Comment'] = comment_text
-    main_df.loc[still_unmatched & main_df['Comment'].ne(''), 'Comment'] += ' | ' + comment_text
-
-    # Clean up
-    main_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key', 'Cleaned Billing Entity'], inplace=True)
-    last_month_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key'], inplace=True)
-
-    return main_df
-
-
-
-
-
-
-
-
-
-
-def flag_new_bpce_combinations(main_df, last_month_df):
-    def clean_for_key(series):
-        return series.astype(str).str.strip().str.lstrip('0')
-
-    main_df['Temp_BPCC'] = clean_for_key(main_df['Business Partner Cost Center'])
-    last_month_df['Temp_BPCC'] = clean_for_key(last_month_df['Business Partner Cost Center'])
-
-    # Ensure Comment column exists
-    if 'Comment' not in main_df.columns:
-        main_df['Comment'] = ''
-
-    # 1. STEP: Fix minor differences within main_df (like underscores)
-    main_df['Billing Entity Clean'] = main_df['Billing Entity'].astype(str).str.strip().str.replace('_', '', regex=False).str.lower()
-    duplicates_within_main = (
-        main_df.groupby(['Temp_BPCC', 'Billing Entity Clean'])['Billing Entity']
-        .transform('first')
-    )
-
-    main_df['Old Billing Entity'] = main_df['Billing Entity']
-    update_mask_main = main_df['Billing Entity'] != duplicates_within_main
-
-    main_df.loc[update_mask_main, 'Billing Entity'] = duplicates_within_main
-    main_df.loc[update_mask_main, 'Comment'] += main_df.loc[update_mask_main].apply(
-        lambda row: f"Billing Entity normalized from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' within same file", axis=1
-    )
-
-    # 2. STEP: Fallback update using last month file based on BPCC
-    bpcc_billing_map = (
-        last_month_df.dropna(subset=['Billing Entity'])
-        .drop_duplicates('Temp_BPCC')
-        .set_index('Temp_BPCC')['Billing Entity']
-        .to_dict()
-    )
-
-    main_df['BPCC_Billing_Key_Orig'] = main_df['Temp_BPCC'] + main_df['Old Billing Entity'].astype(str).str.strip()
-    last_month_df['BPCC_Billing_Key'] = last_month_df['Temp_BPCC'] + last_month_df['Billing Entity'].astype(str).str.strip()
-
-    unmatched_mask = ~main_df['BPCC_Billing_Key_Orig'].isin(last_month_df['BPCC_Billing_Key'])
-
-    bpcc_only_matches = unmatched_mask & main_df['Temp_BPCC'].isin(bpcc_billing_map.keys())
-    main_df.loc[bpcc_only_matches, 'Old Billing Entity'] = main_df.loc[bpcc_only_matches, 'Billing Entity']
-    main_df.loc[bpcc_only_matches, 'Billing Entity'] = main_df.loc[bpcc_only_matches, 'Temp_BPCC'].map(bpcc_billing_map)
-
-    main_df.loc[bpcc_only_matches, 'Comment'] += main_df.loc[bpcc_only_matches].apply(
-        lambda row: f"Billing Entity updated from '{row['Old Billing Entity']}' to '{row['Billing Entity']}' using last month's BPCC mapping", axis=1
-    )
-
-    # 3. STEP: Final unmatched after all updates
-    main_df['BPCC_Billing_Key'] = main_df['Temp_BPCC'] + main_df['Billing Entity'].astype(str).str.strip()
-    still_unmatched = ~main_df['BPCC_Billing_Key'].isin(last_month_df['BPCC_Billing_Key'])
-
-    comment_text = 'Business Partner Cost Center & Billing Entity not found in last month file'
-    main_df.loc[still_unmatched & main_df['Comment'].eq(''), 'Comment'] = comment_text
-    main_df.loc[
-        still_unmatched & main_df['Comment'].ne('') & ~main_df['Comment'].str.contains(comment_text, case=False),
-        'Comment'
-    ] += ' | ' + comment_text
-
-    # Clean up
-    main_df.drop(columns=[
-        'Temp_BPCC', 'BPCC_Billing_Key', 'BPCC_Billing_Key_Orig',
-        'Billing Entity Clean', 'Old Billing Entity'
-    ], errors='ignore', inplace=True)
-    last_month_df.drop(columns=['Temp_BPCC', 'BPCC_Billing_Key'], inplace=True)
-
-    return main_df
-
-
-
-
-
-,.............
-def refresh_region_country_from_entity(main_df, last_month_df):
-    # Ensure 'Entity Name' is consistent type
-    main_df['Entity Name'] = main_df['Entity Name'].astype(str).str.strip()
-    last_month_df['Entity Name'] = last_month_df['Entity Name'].astype(str).str.strip()
-
-    # Extract unique Entity Name → Region, Country mapping
-    entity_lookup = last_month_df[['Entity Name', 'Region', 'Country']].drop_duplicates()
-
-    # Merge into main_df to get updated values
-    main_df = main_df.drop(columns=['Region', 'Country'], errors='ignore')
-    main_df = main_df.merge(entity_lookup, on='Entity Name', how='left')
-
-    return main_df
-
-main_df = refresh_region_country_from_entity(main_df, last_month_df)
-
-
-
-
-def add_bp_cc_columns_from_last_month(main_df, last_month_df):
-    # Standardize PS ID format: convert to string and pad to 8 digits
-    main_df['Billing Contact PS ID'] = main_df['Billing Contact PS ID'].astype(str).str.zfill(8)
-    last_month_df['Billing Contact PS ID'] = last_month_df['Billing Contact PS ID'].astype(str).str.zfill(8)
-
-    # Extract only needed columns from last month file
-    lookup_df = last_month_df[['Billing Contact PS ID', 'BP CC1', 'BP CC2']].drop_duplicates()
-
-    # Merge these columns into main_df
-    main_df = main_df.merge(lookup_df, on='Billing Contact PS ID', how='left')
-
-    return main_df
-
-main_df = add_bp_cc_columns_from_last_month(main_df, last_month_df)
-
-
-
-
+change
+# Pick correct comment
+if is_likely_same_person:
+    final_comment = 'Duplicate name against same PS ID, might be same person.'
+else:
+    final_comment = 'Same PS ID has unrelated names (likely different people).'
+....
+
+# If there's no email, and more than 2 very different names, flag as unrelated
+if not has_email and len(set(norm_names)) > 2:
+    final_comment = 'Same PS ID has unrelated names (likely different people).'
+elif is_likely_same_person:
+    final_comment = 'Duplicate name against same PS ID, might be same person.'
+else:
+    final_comment = 'Same PS ID has unrelated names (likely different people).'
+...........
 
 
 import pandas as pd
-import pandas as pd
 
-def flag_duplicate_billing_names(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flags records where a Billing Contact PSID is linked to multiple Billing Contact Names,
-    and suggests if the email and name might belong to the same person.
-    """
+def normalize_bpcc_and_billing_entities(main_df: pd.DataFrame, last_month_df: pd.DataFrame) -> pd.DataFrame:
+    # Copy to avoid changing original columns
+    main_df = main_df.copy()
+    last_month_df = last_month_df.copy()
 
-    # Ensure required columns exist
-    if 'Billing Contact PSID' not in df.columns or 'Billing Contact name' not in df.columns:
-        raise KeyError("Missing required columns in the dataframe.")
+    # Normalize BPCC: string, strip spaces, remove leading zeros
+    main_df['BPCC_temp'] = main_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
+    last_month_df['BPCC_temp'] = last_month_df['Business Partner Cost Center'].astype(str).str.strip().str.lstrip('0')
+
+    # Normalize Billing Entity
+    main_df['Billing_Entity_temp'] = main_df['Billing Entity'].astype(str).str.strip().str.upper()
+    last_month_df['Billing_Entity_temp'] = last_month_df['Billing Entity'].astype(str).str.strip().str.upper()
+
+    # Create combo key for matching (except for BPCCs starting with '9')
+    main_df['combo_key'] = main_df.apply(
+        lambda row: f"{row['BPCC_temp']}|{row['Billing_Entity_temp']}" if not str(row['BPCC_temp']).startswith('9') else None,
+        axis=1
+    )
+
+    last_month_df['combo_key'] = last_month_df.apply(
+        lambda row: f"{row['BPCC_temp']}|{row['Billing_Entity_temp']}" if not str(row['BPCC_temp']).startswith('9') else None,
+        axis=1
+    )
+
+    # Build set of valid combo keys from last month
+    valid_combos = set(last_month_df['combo_key'].dropna())
 
     # Ensure 'Comment' column exists
-    if 'Comment' not in df.columns:
-        df['Comment'] = ""
-
-    # Group by PSID and collect distinct contact names
-    grouped = df.groupby('Billing Contact PSID')['Billing Contact name'].unique().reset_index()
-
-    for _, row in grouped.iterrows():
-        psid = row['Billing Contact PSID']
-        names = row['Billing Contact name']
-
-        # Separate full names and email addresses
-        name_names = [n for n in names if '@' not in str(n)]
-        email_names = [n for n in names if '@' in str(n)]
-
-        for name in name_names:
-            name_words = str(name).lower().split()
-            for email in email_names:
-                email_lower = str(email).lower()
-                if any(word in email_lower for word in name_words):
-                    idxs = df[(df['Billing Contact PSID'] == psid) & 
-                              (df['Billing Contact name'].isin([name, email]))].index
-                    for idx in idxs:
-                        old_comment = str(df.at[idx, 'Comment'])
-                        new_comment = 'Duplicate name against same PSID, but might belong to same person.'
-                        if new_comment not in old_comment:
-                            updated_comment = f"{old_comment} | {new_comment}".strip(" |")
-                            df.at[idx, 'Comment'] = updated_comment
-
-    return df
-
-
-
-
-
-
-
-
-import re
-
-def flag_duplicate_billing_contact_names(df):
-    # Ensure comment columns exist
-    if 'Comment' not in df.columns:
-        df['Comment'] = ''
-    if 'Comment2' not in df.columns:
-        df['Comment2'] = ''
-    
-    # Normalize to strings
-    df['Billing Contact Name'] = df['Billing Contact Name'].astype(str).str.strip()
-    df['Billing Contact PSID'] = df['Billing Contact PSID'].astype(str).str.strip()
-
-    # Step 1: Same name → multiple PSIDs
-    name_to_psid = df.groupby('Billing Contact Name')['Billing Contact PSID'].nunique()
-    multi_psid_names = name_to_psid[name_to_psid > 1].index
-    df.loc[df['Billing Contact Name'].isin(multi_psid_names), 'Comment2'] += 'Duplicate PSID for same Billing Contact Name. '
-
-    # Step 2: Same PSID → multiple names
-    psid_groups = df.groupby('Billing Contact PSID')
-    for psid, group in psid_groups:
-        unique_names = group['Billing Contact Name'].dropna().unique()
-        if len(unique_names) <= 1:
-            continue
-
-        name_candidates = [name for name in unique_names if '@' not in name]
-        email_candidates = [name for name in unique_names if '@' in name]
-
-        likely_same = False
-        for name in name_candidates:
-            name_words = set(re.findall(r'\b[a-zA-Z]+\b', name.lower()))
-            for email in email_candidates:
-                if any(word in email.lower() for word in name_words):
-                    likely_same = True
-                    break
-            if likely_same:
-                break
-
-        if likely_same:
-            df.loc[group.index, 'Comment2'] += 'Duplicate names against same PSID, but might be same person. '
-        else:
-            df.loc[group.index, 'Comment2'] += 'Duplicate names against same PSID. '
-
-    # Clean and combine Comment + Comment2
-    df['Comment'] = (df['Comment'].fillna('') + ' ' + df['Comment2'].fillna('')).str.strip()
-    df['Comment'] = df['Comment'].apply(lambda x: ' | '.join(dict.fromkeys(x.split(' | '))))  # Deduplicate by order
-    df.drop(columns=['Comment2'], inplace=True)
-
-    return df
-
-
-GIRS Problem Specification Document & Implementation Steps
-
-Hi [Recipient's Name],
-
-Thanks for today’s call.
-
-I am attaching the GIRS Problem Specification document, which includes the proposal you shared. Additionally, I have added a new sheet outlining the Implementation Steps based on my understanding.
-
-Please feel free to review and add any comments or new points in case I have missed anything. Your thumbs-up will help me proceed with the coding process.
-
-Looking forward to your feedback!
-
-Thanks,
-
-
-Subject: Guidance Needed on Cost Template Automation
-
-Dear [Recipient's Name],
-
-I hope you're doing well.
-
-I recently received a request from Priyanka and Sushma to automate the cost template work, which involves generating around 50 files and structuring the output in a predefined format. They mentioned that this is quite urgent.
-
-At the same time, Chandra reached out to me, suggesting that I hold off on this as he has a better solution in mind. Given these differing inputs, I’m a bit unsure about how to proceed.
-
-Could you please advise on the best way forward? I’d really appreciate your guidance on this.
-
-Looking forward to your thoughts.
-
-Best regards,
-
-
-Book of Work – Status Update
-Task	Description	Status
-Anaplan Report Base File Preparation	Created and updated the Anaplan Consolidated report.	✅ Completed (03-Mar)
-Anaplan Rate File	Automated Python script to generate the Rate Card based on RTN + Country + GCB level.	✅ Completed (03-Mar)
-Anaplan Report Sample Split File	Created a sample file for submission to Vlima.	✅ Completed (07-Mar)
-Anaplan Report Splits by L3 and Region	Developed a macro for generating multiple split files by L3 and Region. The latest split was sent to Anshul & team. (Macro is slow; Python implementation is advisable.)	✅ Completed (13-Mar)
-Billing File Update	Updated and sent the Billing file as per the request.	✅ Completed (17-Mar)
-Code Updates for New L2/L3 Changes	Updated existing scripts to reflect changes in L2/L3 structures.	✅ Completed
-Leavers Process	Adjusted the process to align with new L2/L3 changes.	✅ Completed (12-Mar)
-Transaction Listing	Modified to reflect structural updates.	✅ Completed (11-Mar)
-JML File	Under review by Ritu/Himangi.	⏳ In Progress
-GIRS Activity	Developed a consolidated file with control checks. Awaiting input files and SOP from Sandipan/Nachiketa. (Discussed in person)	🔄 Pending (30-Mar-2025)
-Cost Template	Discussion held with Priyanka. Considering Saqib’s file as the base. Chandra suggested pausing work as he has an alternative approach but needs time to finalize.	⏳ On Hold
-SOD Process Walkthrough	Reviewed process with Rav Prasad. No automation scope identified due to dependency on multiple tools (Atlas, GIAM, EIM). Manual intervention required.	❌ No Scope
-This concise format ensures clarity, highlights pending actions, and differentiates tasks that are completed, in progress, on hold, or not feasible.
-
-Let me know if you want any refinements! 🚀
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Alteryx simplifies and automates data tasks that Excel handles manually, reducing effort, saving time, and enhancing efficiency—especially for repetitive and complex workflows. While it excels in data preparation, transformation, and automation, tasks like real-time collaboration and report formatting may still require Excel.
-
-Capabilities of Alteryx
-Automates repetitive Excel tasks like data cleaning, merging, and filtering.
-Handles large datasets efficiently without performance slowdowns.
-Performs complex calculations and transformations with minimal effort.
-Integrates data from multiple sources (Excel, databases, APIs, etc.).
-Reduces manual errors through standardized workflows.
-Enables advanced analytics such as forecasting, variance analysis, and trends.
-Exports clean, processed data back into Excel or other formats for reporting.
-
-Tested basic processes in Alteryx using self-created sample data.
-Applied common Excel-based operations to understand feasibility.
-Gradually implemented simple tasks with partial success.
-Identified areas where Alteryx can replace or enhance Excel workflows.
-Recognized limitations and areas requiring further learning.
-Compiled potential use cases for partial or full transformation.
-
-
-
-
-
-------------------------------------------------
-One-Pager Overview – My Role & Contributions
-1. Activities & Time Commitment
-Technology Exploration: Researching new tools (Alteryx, Anaplan Model Builder) to enhance team efficiency.
-Solution Development for Recharges Team: Saving ~26 hrs/month (7 hrs already implemented).
-HDPI GL Extract Automation: Saves ~4 hrs/month.
-Ad-hoc Automation Support: Addressing process inefficiencies (e.g., Cost Template Automation).
-Qlik Dashboards Management: Maintaining & updating views for:
-Time to Hire
-Cost Reporting
-Forecast Dashboard
-Forecast into Journal
-Anaplan Support: Preparing & validating data for Global Role Exercise.
-Time Investment Factors: SOP availability, task complexity, and stakeholder responsiveness significantly impact delivery timelines.
-2. Key Stakeholders & Engagement Channels
-Finance COE Team: Primary point of interaction for automation requests, clarifications, and process understanding.
-Business Managers (BMs): Engaged on a need basis for project details, but their availability is a challenge.
-Engagement Methods:
-Regular check-ins with Finance COE for alignment
-Ad-hoc discussions with BMs for project inputs
-Email/slack-based communication for automation requests
-3. Key Challenges & Roadblocks
-Limited Stakeholder Availability: Many projects stall due to delays in responses from BMs.
-Lack of Process Documentation: SOPs are often missing, making automation difficult.
-Resistance to Automation: Some stakeholders perceive automation as a threat to manual roles.
-Scope Creep & Abandoned Projects: Stakeholders often change requirements midway or drop projects without communication.
-✅ Past Attempts to Address Challenges:
-
-Follow-ups to ensure clarity → Often leads to long delays.
-Self-driven documentation → Requires additional effort without formal approvals.
-Proactive automation suggestions → Met with hesitation or resistance.
-4. Opportunities for Improvement & Next Steps
-📌 Streamlining Engagement & Visibility:
-
-Formalizing a structured automation request & approval process to avoid abandoned projects.
-Setting clear timelines & checkpoints for stakeholder inputs to avoid indefinite waiting periods.
-📌 Enhancing Documentation & SOPs:
-
-Encouraging teams to maintain standardized process documents for smoother automation.
-Proposing a central repository for business processes & automation requests.
-📌 Driving a Proactive Automation Culture:
-
-Showcasing successful automation use cases to demonstrate impact & encourage adoption.
-Creating automation training sessions for stakeholders to ease resistance.
------------------------
-One-Pager Overview – My Role & Contributions
-1. Key Activities & Time Commitment
-Technology Exploration: Evaluating tools like Alteryx and Anaplan Model Builder to enhance efficiency.
-Process Automation & Efficiency Gains:
-Recharges Team Solution: Projected to save ~26 hrs/month (7 hrs already implemented).
-HDPI GL Extract Automation: Saves ~4 hrs/month.
-Ad-hoc Automation: Addressing process inefficiencies (e.g., Cost Template Automation).
-Qlik Dashboard Management: Maintaining & updating dashboards for Time to Hire, Cost Reporting, and Forecasting.
-Anaplan Support: Preparing & validating input data for key exercises.
-Time Investment Factors: Task complexity, documentation availability, and stakeholder engagement impact timelines.
-2. Stakeholders & Engagement
-Finance COE Team: Regular collaboration for process improvements and automation initiatives.
-Business Managers (BMs): Engaged for process insights and project alignment.
-Engagement Channels:
-Day-to-day collaboration with Finance COE.
-Project-based discussions with BMs.
-Ad-hoc troubleshooting and automation requests.
-3. Key Challenges & Considerations
-Stakeholder Availability: Timely inputs are essential for project completion.
-Process Documentation: Clear SOPs would streamline automation efforts.
-Evolving Requirements: Aligning automation with dynamic business needs requires flexibility.
-4. Opportunities for Improvement
-✅ Enhancing Collaboration & Efficiency:
-
-Establishing a structured automation request & feedback loop to ensure alignment.
-Encouraging process documentation to improve clarity and scalability.
-Showcasing successful automation use cases to drive adoption and awareness.
---------------------
-Key Challenges & Considerations
-Stakeholder Availability: Timely inputs are essential for project completion.
-Process Documentation: Clear SOPs would streamline automation efforts.
-Evolving Requirements: Aligning automation with dynamic business needs requires flexibility.
-Perception of Automation: Some stakeholders are cautious about automation, either due to concerns about its impact on their roles or the belief that manual processes offer more control and accuracy. Encouraging a shift in perspective—seeing automation as a tool to enhance efficiency while allowing teams to focus on higher-value tasks—can help drive adoption.
-
-
-
-
-
-
-
-
-
----------------------------------------------------------------------------
-Sub ProcessReportFiles()
-    Dim srcWB As Workbook, tgtWB As Workbook, copyWB As Workbook
-    Dim srcWS As Worksheet, tgtWS As Worksheet, ws As Worksheet
-    Dim inputRow As Integer, lastRow As Integer
-    Dim RTN As String, ReportName As String, FileName As String
-    Dim tgtFilePath As String, inputFilePath As String, outputFolder As String
-    Dim tgtWBPath As String
-
-    ' Set input and output paths
-    inputFilePath = "C:\Path\To\Reportnames.xlsx" ' Update with actual path
-    tgtWBPath = "C:\Path\To\TargetWorkbook.xlsx"  ' Update with actual path
-    outputFolder = "C:\Path\To\OutputFolder\"      ' Ensure this folder exists
-
-    ' Open source workbook (Reportnames.xlsx)
-    Set srcWB = Workbooks.Open(inputFilePath)
-    Set srcWS = srcWB.Sheets(1) ' Assuming data is in the first sheet
-
-    ' Find last row in column A (RTN CODE CHILD)
-    lastRow = srcWS.Cells(srcWS.Rows.Count, 1).End(xlUp).Row
-
-    ' Loop through each row
-    For inputRow = 2 To lastRow
-        RTN = srcWS.Cells(inputRow, 1).Value
-        ReportName = srcWS.Cells(inputRow, 2).Value
-        
-        ' Skip empty values
-        If RTN = "" Or ReportName = "" Then GoTo NextIteration
-
-        ' Open target workbook
-        Set tgtWB = Workbooks.Open(tgtWBPath)
-        Set tgtWS = tgtWB.Sheets("Setup")
-
-        ' Paste values
-        tgtWS.Range("D3").Value = RTN
-        tgtWS.Range("D4").Value = ReportName
-
-        ' Refresh workbook (F9 equivalent)
-        Application.CalculateFull
-
-        ' Create a copy of the entire workbook
-        tgtWB.SaveCopyAs outputFolder & "Temp_Copy.xlsx"
-        Set copyWB = Workbooks.Open(outputFolder & "Temp_Copy.xlsx")
-
-        ' Paste all sheets as values
-        For Each ws In copyWB.Sheets
-            ws.Cells.Copy
-            ws.Cells.PasteSpecial Paste:=xlPasteValues
-            Application.CutCopyMode = False
-        Next ws
-
-        ' Get filename from D4
-        FileName = tgtWS.Range("D4").Value & ".xlsx"
-        tgtFilePath = outputFolder & FileName
-
-        ' Save the copied workbook with new name
-        copyWB.SaveAs Filename:=tgtFilePath, FileFormat:=xlOpenXMLWorkbook
-        copyWB.Close SaveChanges:=False ' Close copied workbook
-
-        ' Close target workbook without saving
-        tgtWB.Close SaveChanges:=False
-
-NextIteration:
-    Next inputRow
-
-    ' Close source workbook
-    srcWB.Close SaveChanges:=False
-
-    ' Cleanup
-    Set srcWS = Nothing
-    Set srcWB = Nothing
-    Set tgtWS = Nothing
-    Set tgtWB = Nothing
-    Set copyWB = Nothing
-
-    MsgBox "Process Completed!", vbInformation
-End Sub
+    if 'Comment' not in main_df.columns:
+        main_df['Comment'] = ""
+
+    # Identify rows where combo_key is not in last_month_df and BPCC does not start with '9'
+    for idx, row in main_df.iterrows():
+        combo = row['combo_key']
+        bpcc = row['BPCC_temp']
+
+        if combo is not None and combo not in valid_combos:
+            # Try to find a matching BPCC in last_month_df
+            match = last_month_df[last_month_df['BPCC_temp'] == bpcc]
+
+            if not match.empty:
+                new_entity = match['Billing_Entity_temp'].iloc[0]
+                old_entity = row['Billing Entity']
+
+                # Update Billing Entity
+                main_df.at[idx, 'Billing Entity'] = new_entity
+
+                # Update comment
+                comment = f"Mismatch in Billing Entity; replaced '{old_entity}' with '{new_entity}' based on BPCC."
+                existing_comment = main_df.at[idx, 'Comment']
+                if comment not in existing_comment:
+                    updated_comment = f"{existing_comment} | {comment}".strip(" |")
+                    main_df.at[idx, 'Comment'] = updated_comment
+
+    # Drop temporary columns
+    main_df.drop(columns=['BPCC_temp', 'Billing_Entity_temp', 'combo_key'], inplace=True, errors='ignore')
+
+    return main_df
