@@ -1,4 +1,54 @@
 from openpyxl import load_workbook
+
+def clean_workbook(file_path, sheet_name, start_row, target_year):
+    wb = load_workbook(file_path)
+    ws = wb[sheet_name]
+
+    # Get header row
+    header_row = [cell.value for cell in ws[start_row]]
+    try:
+        period_col_idx = header_row.index("Period Month") + 1
+    except ValueError:
+        raise Exception("❌ 'Period Month' column not found")
+
+    # Loop bottom-up: safely remove rows matching last 2 digits of previous year
+    yy = target_year[-2:]
+    prev_yy = str(int(yy) - 1).zfill(2)
+    max_row = ws.max_row
+
+    for row in range(max_row, start_row, -1):
+        val = ws.cell(row=row, column=period_col_idx).value
+        if val and isinstance(val, str) and val.strip()[-2:] == prev_yy:
+            ws.delete_rows(row)
+
+    # Fix PRODUCT CONTROL tagging
+    try:
+        bf_idx = header_row.index("Business Framework") + 1
+        bfg_idx = header_row.index("Business Framework Group") + 1
+    except ValueError:
+        raise Exception("❌ Required columns not found")
+
+    for row in range(start_row + 1, ws.max_row + 1):
+        if str(ws.cell(row=row, column=bf_idx).value).strip() == "PRODUCT CONTROL":
+            if str(ws.cell(row=row, column=bfg_idx).value).strip() != "L3 - Financial Control & Tax":
+                ws.cell(row=row, column=bfg_idx).value = "L3 - Financial Control & Tax"
+
+    cleaned_file = file_path.replace(".xlsx", "_cleaned.xlsx")
+    wb.save(cleaned_file)
+    print(f"✅ Cleaned file saved: {cleaned_file}")
+    return cleaned_file
+
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+
+
+from openpyxl import load_workbook
 import os
 
 # --- User Inputs ---
