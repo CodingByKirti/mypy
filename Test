@@ -1,5 +1,4 @@
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 import os
 
 # --- User Inputs ---
@@ -19,35 +18,33 @@ if sheet_name not in wb.sheetnames:
 ws = wb[sheet_name]
 
 # --- Identify the "Period Month" column ---
-header_row = None
+header_row_number = 2  # Your headers are in row 2
+header_row = [cell.value for cell in ws[header_row_number]]
 period_col_index = None
 
-for row in ws.iter_rows(min_row=1, max_row=1, values_only=True):
-    header_row = row
-    for idx, col_name in enumerate(row):
-        if col_name == "Period Month":
-            period_col_index = idx
-            break
+for idx, col_name in enumerate(header_row):
+    if col_name and col_name.strip() == "Period Month":
+        period_col_index = idx
+        break
 
 if period_col_index is None:
     raise ValueError("'Period Month' column not found in the sheet.")
 
 # --- Filter Rows ---
 rows_to_keep = []
-rows_to_keep.append([cell.value for cell in ws[1]])  # Keep header
+rows_to_keep.append(header_row)  # Keep header
 
-for row in ws.iter_rows(min_row=2, values_only=True):
+for row in ws.iter_rows(min_row=header_row_number + 1, values_only=True):
     period_value = row[period_col_index]
     if not period_value or not isinstance(period_value, str):
         continue
-    # Match format like 'Jan 25', 'Mar 24', etc.
-    if period_value.strip()[-2:] == yy and not period_value.strip()[-2:] == prev_yy:
+    if period_value.strip()[-2:] == yy and period_value.strip()[-2:] != prev_yy:
         rows_to_keep.append(list(row))
 
-# --- Clear sheet and write filtered rows ---
-ws.delete_rows(2, ws.max_row)  # Keep header only, remove rest
+# --- Clear old data (keep header) and write filtered rows ---
+ws.delete_rows(header_row_number + 1, ws.max_row)  # Delete rows below header
 
-for i, row_data in enumerate(rows_to_keep[1:], start=2):  # Start writing from row 2
+for i, row_data in enumerate(rows_to_keep[1:], start=header_row_number + 1):
     for j, value in enumerate(row_data, start=1):
         ws.cell(row=i, column=j, value=value)
 
@@ -55,9 +52,7 @@ for i, row_data in enumerate(rows_to_keep[1:], start=2):  # Start writing from r
 new_file_path = os.path.splitext(file_path)[0] + f"_filtered_{yy}.xlsx"
 wb.save(new_file_path)
 
-print(f"Filtered data saved to: {new_file_path}")
-
-
+print(f"✅ Filtered data saved to: {new_file_path}")
 .......................................
 
 import pandas as pd
