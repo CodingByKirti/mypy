@@ -1,5 +1,52 @@
 import xlwings as xw
 
+def fix_product_control_xlwings(file_path, sheet_name, header_row):
+    app = xw.App(visible=False)
+    wb = app.books.open(file_path)
+    ws = wb.sheets[sheet_name]
+
+    headers = ws.range((header_row, 1)).expand('right').value
+
+    try:
+        bf_col_idx = headers.index("Business Framework") + 1
+        bfg_col_idx = headers.index("Business Framework Group") + 1
+    except ValueError:
+        app.quit()
+        raise Exception("One or both columns not found!")
+
+    last_row = ws.cells.last_cell.row
+
+    changed_count = 0
+
+    for row in range(header_row + 1, last_row + 1):
+        bf_val = ws.range((row, bf_col_idx)).value
+        bfg_val = ws.range((row, bfg_col_idx)).value
+
+        if isinstance(bf_val, str) and bf_val.strip().upper() == "PRODUCT CONTROL":
+            if isinstance(bfg_val, str) and bfg_val.strip() != "L3 - Financial Control & Tax":
+                ws.range((row, bfg_col_idx)).value = "L3 - Financial Control & Tax"
+                changed_count += 1
+
+    print(f"✅ Updated {changed_count} rows for PRODUCT CONTROL.")
+
+    fixed_file = file_path.replace(".xlsx", "_product_control_fixed.xlsx")
+    wb.save(fixed_file)
+    wb.close()
+    app.quit()
+
+    print(f"✅ File saved: {fixed_file}")
+    return fixed_file
+
+# Example usage:
+fix_product_control_xlwings(
+    file_path="your_file.xlsx",
+    sheet_name="Data",
+    header_row=2  # Adjust if your header is on row 2
+)
+
+
+import xlwings as xw
+
 def delete_prev_year_rows_xlwings_safe(file_path, sheet_name, header_row, target_year):
     app = xw.App(visible=False)
     wb = app.books.open(file_path)
