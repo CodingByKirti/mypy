@@ -1,49 +1,26 @@
-import pandas as pd
+import xlwings as xw
 
-def delete_previous_year_rows(df, period_col, target_year):
-    prev_yy = str(int(target_year[-2:]) - 1).zfill(2)
-    mask = df[period_col].astype(str).str.strip().str[-2:] != prev_yy
-    dropped_rows = (~mask).sum()
-    df_cleaned = df[mask]
-    print(f"✅ Deleted {dropped_rows} rows for year ending with {prev_yy}.")
-    return df_cleaned
+def fix_product_control_xlwings(file_path, header_row, rows_to_fix):
+    app = xw.App(visible=False)
+    wb = app.books.open(file_path)
+    ws = wb.sheets["Data"]
 
-def fix_product_control(df):
-    mask = df["Business Framework"].astype(str).str.strip().str.upper() == "PRODUCT CONTROL"
-    wrong_group = df["Business Framework Group"] != "L3 - Financial Control & Tax"
-    to_fix = mask & wrong_group
-    fix_count = to_fix.sum()
-    df.loc[to_fix, "Business Framework Group"] = "L3 - Financial Control & Tax"
-    print(f"✅ Fixed {fix_count} PRODUCT CONTROL rows.")
-    return df
+    headers = ws.range((header_row, 1)).expand('right').value
 
-def clean_data_sheet(file_path, sheet_name, header_row, target_year, fix_product=True):
-    df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row - 1)
+    bf_col_idx = headers.index("Business Framework") + 1
+    bfg_col_idx = headers.index("Business Framework Group") + 1
 
-    # 1️⃣ Delete previous year rows
-    df = delete_previous_year_rows(df, "Period Month", target_year)
+    for idx in rows_to_fix:
+        excel_row = header_row + 1 + idx  # pandas index to Excel row
+        ws.range((excel_row, bfg_col_idx)).value = "L3 - Financial Control & Tax"
 
-    # 2️⃣ Optionally fix PRODUCT CONTROL
-    if fix_product:
-        df = fix_product_control(df)
+    wb.save()
+    wb.close()
+    app.quit()
 
-    # 3️⃣ Save back
-    cleaned_file = file_path.replace(".xlsx", f"_cleaned_{target_year}.xlsx")
-    with pd.ExcelWriter(cleaned_file, engine="openpyxl", mode="w") as writer:
-        df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=header_row - 1)
-
-    print(f"✅ Cleaned file saved to: {cleaned_file}")
-    return cleaned_file
-
-# Example usage:
-clean_data_sheet(
-    file_path="your_file.xlsx",
-    sheet_name="Data",
-    header_row=2,
-    target_year="2025",
-    fix_product=True  # Set False if you want to skip the PRODUCT CONTROL fix later
-)
-
+# Example usage
+rows_to_fix = to_fix.index.tolist()
+fix_product_control_xlwings("your_file.xlsx", header_row=2, rows_to_fix=rows_to_fix)
 -----------------------------------------
 import xlwings as xw
 
