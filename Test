@@ -1,57 +1,45 @@
 import xlwings as xw
 
-def fix_product_control_xlwings(file_path, sheet_name="Data", header_row=2):
+from openpyxl import load_workbook
+
+def fix_product_control_openpyxl(file_path, sheet_name="Data", header_row_number=2):
     """
-    Open the workbook, update 'Business Framework Group' to
-    'L3 - Financial Control & Tax' for 'PRODUCT CONTROL' rows,
-    save and close.
+    Uses openpyxl to loop over rows in the sheet,
+    fix PRODUCT CONTROL's Business Framework Group in-place,
+    then save the file.
     """
 
-    app = xw.App(visible=False)
+    wb = load_workbook(file_path)
+    ws = wb[sheet_name]
+
+    # --- Get headers ---
+    header_row = [cell.value.strip() if cell.value else None for cell in ws[header_row_number]]
+
     try:
-        wb = app.books.open(file_path)
-        ws = wb.sheets[sheet_name]
+        bf_col_index = header_row.index("Business Framework")
+        bfg_col_index = header_row.index("Business Framework Group")
+    except ValueError:
+        raise ValueError("'Business Framework' or 'Business Framework Group' column not found!")
 
-        # Get headers
-        headers = ws.range((header_row, 1)).expand('right').value
+    # --- Loop rows ---
+    fix_count = 0
 
-        try:
-            bf_col_idx = headers.index("Business Framework") + 1
-            bfg_col_idx = headers.index("Business Framework Group") + 1
-        except ValueError as e:
-            print("❌ One of the required columns was not found in the headers.")
-            return
+    for row in ws.iter_rows(min_row=header_row_number + 1):
+        bf_cell = row[bf_col_index]
+        bfg_cell = row[bfg_col_index]
 
-        # Get data range below header
-        last_row = ws.cells.last_cell.row
-        used_range = ws.range((header_row + 1, bf_col_idx), (last_row, bf_col_idx)).expand('down')
-        data_rows = used_range.rows.count
+        bf_value = str(bf_cell.value).strip().upper() if bf_cell.value else ""
+        bfg_value = str(bfg_cell.value).strip() if bfg_cell.value else ""
 
-        fix_count = 0
+        if bf_value == "PRODUCT CONTROL" and bfg_value != "L3 - Financial Control & Tax":
+            bfg_cell.value = "L3 - Financial Control & Tax"
+            fix_count += 1
 
-        for i in range(data_rows):
-            row_idx = header_row + 1 + i
-            bf_value = ws.range((row_idx, bf_col_idx)).value
-            bfg_value = ws.range((row_idx, bfg_col_idx)).value
+    wb.save(file_path)
+    wb.close()
 
-            if isinstance(bf_value, str) and bf_value.strip().upper() == "PRODUCT CONTROL":
-                if bfg_value != "L3 - Financial Control & Tax":
-                    ws.range((row_idx, bfg_col_idx)).value = "L3 - Financial Control & Tax"
-                    fix_count += 1
+    print(f"✅ Fixed {fix_count} PRODUCT CONTROL rows and saved: {file_path}")
 
-        wb.save()
-        print(f"✅ Fixed {fix_count} PRODUCT CONTROL rows and saved: {file_path}")
-
-    finally:
-        wb.close()
-        app.quit()
-
-# Example usage
-fix_product_control_xlwings(
-    file_path="your_file.xlsx",
-    sheet_name="Data",
-    header_row=2  # adjust if header is somewhere else
-)
 ;;;;;;;;;
 import xlwings as xw
 
