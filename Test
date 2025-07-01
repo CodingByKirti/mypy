@@ -1,3 +1,65 @@
+import xlwings as xw
+
+def delete_prev_year_rows_xlwings(file_path, sheet_name, header_row, target_year):
+    app = xw.App(visible=False)
+    wb = app.books.open(file_path)
+    ws = wb.sheets[sheet_name]
+
+    # Get header row
+    headers = ws.range((header_row, 1)).expand('right').value
+
+    try:
+        period_col_idx = headers.index("Period Month") + 1
+    except ValueError:
+        app.quit()
+        raise Exception("'Period Month' column not found!")
+
+    prev_yy = str(int(target_year[-2:]) - 1).zfill(2)
+    print(f"Deleting rows ending with {prev_yy}")
+
+    # Clear any existing filter
+    ws.api.AutoFilterMode = False
+
+    # Apply filter
+    ws.range((header_row, 1)).api.AutoFilter(
+        Field=period_col_idx,
+        Criteria1=f"*{prev_yy}"
+    )
+
+    # Excel constant for visible cells
+    xlCellTypeVisible = 12
+
+    # Try to get visible rows (excluding header)
+    used_range = ws.used_range
+
+    try:
+        # Offset by header row to exclude it
+        visible_cells = used_range.api.Offset(header_row).SpecialCells(xlCellTypeVisible)
+        visible_cells.EntireRow.Delete()
+        print("✅ Rows deleted successfully.")
+    except Exception:
+        print("No rows found for previous year — nothing to delete.")
+
+    # Remove filter
+    ws.api.AutoFilterMode = False
+
+    cleaned_file = file_path.replace(".xlsx", f"_cleaned_{target_year}.xlsx")
+    wb.save(cleaned_file)
+    wb.close()
+    app.quit()
+
+    print(f"✅ Cleaned file saved to: {cleaned_file}")
+
+# Example usage
+delete_prev_year_rows_xlwings(
+    file_path="your_file.xlsx",
+    sheet_name="Data",
+    header_row=2,  # e.g., header on row 2
+    target_year="2025"
+)
+
+
+
 from openpyxl import load_workbook
 
 def clean_workbook(file_path, sheet_name, start_row, target_year):
