@@ -1,3 +1,50 @@
+import pandas as pd
+
+def delete_previous_year_rows(df, period_col, target_year):
+    prev_yy = str(int(target_year[-2:]) - 1).zfill(2)
+    mask = df[period_col].astype(str).str.strip().str[-2:] != prev_yy
+    dropped_rows = (~mask).sum()
+    df_cleaned = df[mask]
+    print(f"✅ Deleted {dropped_rows} rows for year ending with {prev_yy}.")
+    return df_cleaned
+
+def fix_product_control(df):
+    mask = df["Business Framework"].astype(str).str.strip().str.upper() == "PRODUCT CONTROL"
+    wrong_group = df["Business Framework Group"] != "L3 - Financial Control & Tax"
+    to_fix = mask & wrong_group
+    fix_count = to_fix.sum()
+    df.loc[to_fix, "Business Framework Group"] = "L3 - Financial Control & Tax"
+    print(f"✅ Fixed {fix_count} PRODUCT CONTROL rows.")
+    return df
+
+def clean_data_sheet(file_path, sheet_name, header_row, target_year, fix_product=True):
+    df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row - 1)
+
+    # 1️⃣ Delete previous year rows
+    df = delete_previous_year_rows(df, "Period Month", target_year)
+
+    # 2️⃣ Optionally fix PRODUCT CONTROL
+    if fix_product:
+        df = fix_product_control(df)
+
+    # 3️⃣ Save back
+    cleaned_file = file_path.replace(".xlsx", f"_cleaned_{target_year}.xlsx")
+    with pd.ExcelWriter(cleaned_file, engine="openpyxl", mode="w") as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=header_row - 1)
+
+    print(f"✅ Cleaned file saved to: {cleaned_file}")
+    return cleaned_file
+
+# Example usage:
+clean_data_sheet(
+    file_path="your_file.xlsx",
+    sheet_name="Data",
+    header_row=2,
+    target_year="2025",
+    fix_product=True  # Set False if you want to skip the PRODUCT CONTROL fix later
+)
+
+-----------------------------------------
 import xlwings as xw
 
 def fix_product_control_xlwings(file_path, sheet_name, header_row):
@@ -44,273 +91,6 @@ fix_product_control_xlwings(
     header_row=2  # Adjust if your header is on row 2
 )
 
-
-import xlwings as xw
-
-def delete_prev_year_rows_xlwings_safe(file_path, sheet_name, header_row, target_year):
-    app = xw.App(visible=False)
-    wb = app.books.open(file_path)
-    ws = wb.sheets[sheet_name]
-
-    headers = ws.range((header_row, 1)).expand('right').value
-
-    try:
-        period_col_idx = headers.index("Period Month") + 1
-    except ValueError:
-        app.quit()
-        raise Exception("'Period Month' column not found!")
-
-    prev_yy = str(int(target_year[-2:]) - 1).zfill(2)
-    print(f"Deleting rows ending with {prev_yy}")
-
-    # Clear filter if any
-    ws.api.AutoFilterMode = False
-
-    # Apply AutoFilter
-    ws.range((header_row, 1)).api.AutoFilter(
-        Field=period_col_idx,
-        Criteria1=f"*{prev_yy}"
-    )
-
-    xlCellTypeVisible = 12
-
-    # Data starts from header_row + 1
-    first_data_row = header_row + 1
-    last_row = ws.cells.last_cell.row
-    used_range = ws.range((first_data_row, 1), (last_row, ws.cells.last_cell.column))
-
-    try:
-        # Only visible rows in the data range
-        visible_cells = used_range.api.SpecialCells(xlCellTypeVisible)
-        visible_cells.EntireRow.Delete()
-        print("✅ Matching data rows deleted.")
-    except Exception:
-        print("No matching rows found — nothing deleted.")
-
-    ws.api.AutoFilterMode = False
-
-    cleaned_file = file_path.replace(".xlsx", f"_cleaned_{target_year}.xlsx")
-    wb.save(cleaned_file)
-    wb.close()
-    app.quit()
-
-    print(f"✅ Cleaned file saved: {cleaned_file}")
-
-# Example usage
-delete_prev_year_rows_xlwings_safe(
-    file_path="your_file.xlsx",
-    sheet_name="Data",
-    header_row=2,
-    target_year="2025"
-)
-
-
-
-from openpyxl import load_workbook
-
-def clean_workbook(file_path, sheet_name, start_row, target_year):
-    wb = load_workbook(file_path)
-    ws = wb[sheet_name]
-
-    # Get header row
-    header_row = [cell.value for cell in ws[start_row]]
-    try:
-        period_col_idx = header_row.index("Period Month") + 1
-    except ValueError:
-        raise Exception("❌ 'Period Month' column not found")
-
-    # Loop bottom-up: safely remove rows matching last 2 digits of previous year
-    yy = target_year[-2:]
-    prev_yy = str(int(yy) - 1).zfill(2)
-    max_row = ws.max_row
-
-    for row in range(max_row, start_row, -1):
-        val = ws.cell(row=row, column=period_col_idx).value
-        if val and isinstance(val, str) and val.strip()[-2:] == prev_yy:
-            ws.delete_rows(row)
-
-    # Fix PRODUCT CONTROL tagging
-    try:
-        bf_idx = header_row.index("Business Framework") + 1
-        bfg_idx = header_row.index("Business Framework Group") + 1
-    except ValueError:
-        raise Exception("❌ Required columns not found")
-
-    for row in range(start_row + 1, ws.max_row + 1):
-        if str(ws.cell(row=row, column=bf_idx).value).strip() == "PRODUCT CONTROL":
-            if str(ws.cell(row=row, column=bfg_idx).value).strip() != "L3 - Financial Control & Tax":
-                ws.cell(row=row, column=bfg_idx).value = "L3 - Financial Control & Tax"
-
-    cleaned_file = file_path.replace(".xlsx", "_cleaned.xlsx")
-    wb.save(cleaned_file)
-    print(f"✅ Cleaned file saved: {cleaned_file}")
-    return cleaned_file
-
-
-
-
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-
-
-
-
-
-from openpyxl import load_workbook
-import os
-
-# --- User Inputs ---
-file_path = input("Enter the full path to the Excel file: ").strip()
-sheet_name = "Data"  # Assuming your sheet is named 'Data'
-
-# --- Load Workbook ---
-wb = load_workbook(file_path)
-if sheet_name not in wb.sheetnames:
-    raise ValueError(f"Sheet '{sheet_name}' not found in workbook.")
-
-ws = wb[sheet_name]
-
-# --- Find columns ---
-header_row_number = 2  # Your headers are in row 2
-header_row = [cell.value for cell in ws[header_row_number]]
-
-# Get column indexes
-try:
-    framework_col_index = header_row.index("Business Framework")
-    group_col_index = header_row.index("Business Framework Group")
-except ValueError as e:
-    raise ValueError("Required columns not found in header row.") from e
-
-# --- Process rows ---
-for row in ws.iter_rows(min_row=header_row_number + 1):
-    framework_cell = row[framework_col_index]
-    group_cell = row[group_col_index]
-
-    if framework_cell.value and framework_cell.value.strip() == "PRODUCT CONTROL":
-        if group_cell.value.strip() != "L3 - Financial Control & Tax":
-            print(
-                f"Fixing row {framework_cell.row}: "
-                f"was '{group_cell.value}', setting to 'L3 - Financial Control & Tax'"
-            )
-            group_cell.value = "L3 - Financial Control & Tax"
-
-# --- Save updated workbook ---
-new_file_path = os.path.splitext(file_path)[0] + "_framework_fixed.xlsx"
-wb.save(new_file_path)
-
-print(f"✅ File saved with corrected tags: {new_file_path}")
-
-.................................................
-import xlwings as xw
-
-# --- Inputs ---
-file_path = input("Enter full path to Excel file: ").strip()
-sheet_name = "Data"
-target_year = input("Enter the target year (e.g., 2025): ").strip()
-
-yy = target_year[-2:]
-prev_yy = str(int(yy) - 1).zfill(2)
-
-# Open workbook with Excel app
-app = xw.App(visible=False)
-wb = app.books.open(file_path)
-ws = wb.sheets[sheet_name]
-
-# Find header row (row 2) and the Period Month column
-header_row_number = 2
-headers = ws.range((header_row_number, 1)).expand('right').value
-
-try:
-    period_col_index = headers.index("Period Month") + 1  # 1-based index
-except ValueError:
-    raise ValueError("'Period Month' column not found.")
-
-# Clear existing filter
-ws.api.AutoFilterMode = False
-
-# ✅ Correct syntax for calling AutoFilter in Python:
-ws.range((header_row_number, 1)).api.AutoFilter(
-    Field=period_col_index,
-    Criteria1="*" + prev_yy
-)
-
-# Find used range
-used_range = ws.used_range
-last_row = used_range.last_cell.row
-
-# Delete visible rows (bottom up) except header row
-for row in range(last_row, header_row_number, -1):
-    if not ws.range((row, 1)).api.EntireRow.Hidden:
-        ws.range((row, 1)).api.EntireRow.Delete()
-
-# Remove filter
-ws.api.AutoFilterMode = False
-
-# Save new file
-new_file_path = file_path.replace(".xlsx", f"_filtered_{yy}.xlsx")
-wb.save(new_file_path)
-wb.close()
-app.quit()
-
-print(f"✅ Filtered rows deleted and saved to: {new_file_path}")
-
-
-/................................
-from openpyxl import load_workbook
-import os
-
-# --- User Inputs ---
-file_path = input("Enter the full path to the Excel file: ").strip()
-sheet_name = input("Enter the sheet name: ").strip()
-target_year = input("Enter the target year (e.g., 2025): ").strip()
-
-# Derive last 2 digits of current and previous year
-yy = target_year[-2:]
-prev_yy = str(int(yy) - 1).zfill(2)
-
-# --- Load Workbook and Sheet ---
-wb = load_workbook(file_path)
-if sheet_name not in wb.sheetnames:
-    raise ValueError(f"Sheet '{sheet_name}' not found in workbook.")
-
-ws = wb[sheet_name]
-
-# --- Identify the "Period Month" column ---
-header_row_number = 2  # Your headers are in row 2
-header_row = [cell.value for cell in ws[header_row_number]]
-period_col_index = None
-
-for idx, col_name in enumerate(header_row):
-    if col_name and col_name.strip() == "Period Month":
-        period_col_index = idx
-        break
-
-if period_col_index is None:
-    raise ValueError("'Period Month' column not found in the sheet.")
-
-# --- Filter Rows ---
-rows_to_keep = []
-rows_to_keep.append(header_row)  # Keep header
-
-for row in ws.iter_rows(min_row=header_row_number + 1, values_only=True):
-    period_value = row[period_col_index]
-    if not period_value or not isinstance(period_value, str):
-        continue
-    if period_value.strip()[-2:] == yy and period_value.strip()[-2:] != prev_yy:
-        rows_to_keep.append(list(row))
-
-# --- Clear old data (keep header) and write filtered rows ---
-ws.delete_rows(header_row_number + 1, ws.max_row)  # Delete rows below header
-
-for i, row_data in enumerate(rows_to_keep[1:], start=header_row_number + 1):
-    for j, value in enumerate(row_data, start=1):
-        ws.cell(row=i, column=j, value=value)
-
-# --- Save updated workbook ---
-new_file_path = os.path.splitext(file_path)[0] + f"_filtered_{yy}.xlsx"
-wb.save(new_file_path)
-
-print(f"✅ Filtered data saved to: {new_file_path}")
 .......................................
 
 import pandas as pd
