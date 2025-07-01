@@ -22,19 +22,20 @@ try:
 except ValueError:
     raise ValueError("'Period Month' column not found.")
 
-# Apply autofilter on Period Month for previous year
-ws.api.AutoFilterMode = False  # Clear any existing filter
+# Clear existing filter
+ws.api.AutoFilterMode = False
 
-ws.range((header_row_number, 1)).api.AutoFilter( _
+# ✅ Correct syntax for calling AutoFilter in Python:
+ws.range((header_row_number, 1)).api.AutoFilter(
     Field=period_col_index,
     Criteria1="*" + prev_yy
 )
 
-# Find visible rows (excluding header)
+# Find used range
 used_range = ws.used_range
 last_row = used_range.last_cell.row
 
-# Delete visible rows except header
+# Delete visible rows (bottom up) except header row
 for row in range(last_row, header_row_number, -1):
     if not ws.range((row, 1)).api.EntireRow.Hidden:
         ws.range((row, 1)).api.EntireRow.Delete()
@@ -49,6 +50,7 @@ wb.close()
 app.quit()
 
 print(f"✅ Filtered rows deleted and saved to: {new_file_path}")
+
 
 /................................
 from openpyxl import load_workbook
