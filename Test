@@ -1,3 +1,48 @@
+from openpyxl import load_workbook
+import os
+
+# --- User Inputs ---
+file_path = input("Enter the full path to the Excel file: ").strip()
+sheet_name = "Data"  # Assuming your sheet is named 'Data'
+
+# --- Load Workbook ---
+wb = load_workbook(file_path)
+if sheet_name not in wb.sheetnames:
+    raise ValueError(f"Sheet '{sheet_name}' not found in workbook.")
+
+ws = wb[sheet_name]
+
+# --- Find columns ---
+header_row_number = 2  # Your headers are in row 2
+header_row = [cell.value for cell in ws[header_row_number]]
+
+# Get column indexes
+try:
+    framework_col_index = header_row.index("Business Framework")
+    group_col_index = header_row.index("Business Framework Group")
+except ValueError as e:
+    raise ValueError("Required columns not found in header row.") from e
+
+# --- Process rows ---
+for row in ws.iter_rows(min_row=header_row_number + 1):
+    framework_cell = row[framework_col_index]
+    group_cell = row[group_col_index]
+
+    if framework_cell.value and framework_cell.value.strip() == "PRODUCT CONTROL":
+        if group_cell.value.strip() != "L3 - Financial Control & Tax":
+            print(
+                f"Fixing row {framework_cell.row}: "
+                f"was '{group_cell.value}', setting to 'L3 - Financial Control & Tax'"
+            )
+            group_cell.value = "L3 - Financial Control & Tax"
+
+# --- Save updated workbook ---
+new_file_path = os.path.splitext(file_path)[0] + "_framework_fixed.xlsx"
+wb.save(new_file_path)
+
+print(f"✅ File saved with corrected tags: {new_file_path}")
+
+.................................................
 import xlwings as xw
 
 # --- Inputs ---
