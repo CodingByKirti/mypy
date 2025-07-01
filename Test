@@ -1,3 +1,56 @@
+import xlwings as xw
+
+# --- Inputs ---
+file_path = input("Enter full path to Excel file: ").strip()
+sheet_name = "Data"
+target_year = input("Enter the target year (e.g., 2025): ").strip()
+
+yy = target_year[-2:]
+prev_yy = str(int(yy) - 1).zfill(2)
+
+# Open workbook with Excel app
+app = xw.App(visible=False)
+wb = app.books.open(file_path)
+ws = wb.sheets[sheet_name]
+
+# Find header row (row 2) and the Period Month column
+header_row_number = 2
+headers = ws.range((header_row_number, 1)).expand('right').value
+
+try:
+    period_col_index = headers.index("Period Month") + 1  # 1-based index
+except ValueError:
+    raise ValueError("'Period Month' column not found.")
+
+# Apply autofilter on Period Month for previous year
+ws.api.AutoFilterMode = False  # Clear any existing filter
+
+ws.range((header_row_number, 1)).api.AutoFilter( _
+    Field=period_col_index,
+    Criteria1="*" + prev_yy
+)
+
+# Find visible rows (excluding header)
+used_range = ws.used_range
+last_row = used_range.last_cell.row
+
+# Delete visible rows except header
+for row in range(last_row, header_row_number, -1):
+    if not ws.range((row, 1)).api.EntireRow.Hidden:
+        ws.range((row, 1)).api.EntireRow.Delete()
+
+# Remove filter
+ws.api.AutoFilterMode = False
+
+# Save new file
+new_file_path = file_path.replace(".xlsx", f"_filtered_{yy}.xlsx")
+wb.save(new_file_path)
+wb.close()
+app.quit()
+
+print(f"✅ Filtered rows deleted and saved to: {new_file_path}")
+
+/................................
 from openpyxl import load_workbook
 import os
 
