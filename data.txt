@@ -1,3 +1,29 @@
+import numpy as np
+
+# 1. Assign new columns
+df1['Total_DC'] = df1['FY 25 DC']
+df1['Total_FTE'] = df1['FY 25 FTE']
+
+# 2. Calculate safe percentages
+df1['Per_DC'] = np.where(
+    (df1['Total_DC'].fillna(0) == 0),
+    0,
+    df1['A_DC'] / (df1['Total_DC'] * 1_000_000)
+)
+
+df1['Per_FTE'] = np.where(
+    (df1['Total_FTE'].fillna(0) == 0),
+    0,
+    df1['A_FTE'] / df1['Total_FTE']
+)
+
+# 3. Mark consecutive duplicate blocks
+cols_to_check = ['A_L4', 'A_Country', 'A_Role Type', 'A_DC', 'A_FTE']
+same_as_prev = df1[cols_to_check].eq(df1[cols_to_check].shift(1)).all(axis=1)
+df1['Comments'] = np.where(same_as_prev, 'Check Case', '')
+
+
+
 Sub FilterAndCleanFiles()
     Dim FileName As String
     Dim wb As Workbook, ws As Worksheet
