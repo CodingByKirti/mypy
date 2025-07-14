@@ -1,3 +1,20 @@
+
+import tkinter as tk
+from tkinter import filedialog
+
+def ask_user_to_select_folder():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    folder_path = filedialog.askdirectory(title="Select a Folder")
+    return folder_path
+
+# Example usage
+selected_folder = ask_user_to_select_folder()
+print("Selected folder:", selected_folder)
+
+..
+
+
 def safe_float(val):
     try:
         # Convert to string and strip commas and spaces
