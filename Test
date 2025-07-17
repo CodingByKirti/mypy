@@ -1,4 +1,95 @@
+import pandas as pd
 
+def apply_observations(d1: pd.DataFrame) -> pd.DataFrame:
+    # Ensure relevant columns are strings where needed
+    d1['Category for Static'] = d1['Category for Static'].astype(str).str.strip()
+    d1['Lookup for Billed CC'] = d1['Lookup for Billed CC'].astype(str).str.strip().str.lower().replace('nan', '')
+    d1['Check'] = d1['Check'].astype(str).str.strip().str.lower()
+    
+    # Make sure Observation & Comment exist
+    if 'Observation' not in d1.columns:
+        d1['Observation'] = ''
+    if 'Comment' not in d1.columns:
+        d1['Comment'] = ''
+
+    # --------------------
+    # 📌 Billed
+    mask_billed = d1['Category for Static'].str.lower() == 'billed'
+
+    # 1) FTE mismatch
+    mask_fte_mismatch = mask_billed & (d1['Employee FTE'] != d1['No. of FTE'])
+    d1.loc[mask_fte_mismatch, 'Comment'] = 'values are not same'
+
+    # 2) Employee FTE not 0/1 & No. of FTE = 1
+    mask_fte_neither_0_1 = mask_billed & (~d1['Employee FTE'].isin([0,1])) & (d1['No. of FTE'] == 1)
+    d1.loc[mask_fte_neither_0_1, 'Observation'] = 'Update FTE value to 1'
+
+    # 3) Employee FTE == 0 & Class == Employee
+    mask_fte_zero_employee = mask_billed & (d1['Employee FTE'] == 0) & (d1['Employee Class'].str.lower() == 'employee')
+    d1.loc[mask_fte_zero_employee, 'Observation'] = 'Update FTE value to 1'
+
+    # --------------------
+    # 📌 Not Billed
+    mask_not_billed = d1['Category for Static'].str.lower() == 'not billed'
+
+    # 1) Lookup for Billed CC not blank/n/a
+    mask_lookup_not_blank = mask_not_billed & (d1['Lookup for Billed CC'] != '') & (d1['Lookup for Billed CC'] != 'n/a')
+    d1.loc[mask_lookup_not_blank, 'Observation'] = 'Exclude'
+
+    # 2) Lookup blank/n/a & Check True
+    mask_lookup_blank_check_true = mask_not_billed & (d1['Lookup for Billed CC'].isin(['', 'n/a'])) & (d1['Check'] == 'true')
+    d1.loc[mask_lookup_blank_check_true, 'Observation'] = 'Ok'
+
+    # --------------------
+    # 📌 Others
+    mask_others = d1['Category for Static'].str.lower() == 'others'
+
+    # 1) External + Check True + GCB == Not Applicable
+    mask1 = (
+        mask_others &
+        (d1['Employee Class'].str.lower() == 'external') &
+        (d1['Check'] == 'true') &
+        (d1['Global Career Band'].str.strip().str.lower() == 'not applicable')
+    )
+    d1.loc[mask1, 'Observation'] = 'Ok'
+
+    # 2) External + Check True + GCB != Not Applicable + Lookup not blank/n/a
+    mask2 = (
+        mask_others &
+        (d1['Employee Class'].str.lower() == 'external') &
+        (d1['Check'] == 'true') &
+        (d1['Global Career Band'].str.strip().str.lower() != 'not applicable') &
+        (d1['Lookup for Billed CC'] != '') & (d1['Lookup for Billed CC'] != 'n/a')
+    )
+    d1.loc[mask2, 'Observation'] = 'Exclude'
+
+    # 3) Intern + Lookup not blank/n/a + GCB != Not Applicable
+    mask3 = (
+        mask_others &
+        (d1['Employee Class'].str.lower() == 'intern') &
+        (d1['Lookup for Billed CC'] != '') & (d1['Lookup for Billed CC'] != 'n/a') &
+        (d1['Global Career Band'].str.strip().str.lower() != 'not applicable')
+    )
+    d1.loc[mask3, 'Observation'] = 'Exclude'
+
+    # 4) Intern + GCB == Not Applicable
+    mask4 = (
+        mask_others &
+        (d1['Employee Class'].str.lower() == 'intern') &
+        (d1['Global Career Band'].str.strip().str.lower() == 'not applicable')
+    )
+    d1.loc[mask4, 'Observation'] = 'Ok'
+
+    # 5) Employee + GCB in [3, MD]
+    mask5 = (
+        mask_others &
+        (d1['Employee Class'].str.lower() == 'employee') &
+        (d1['Global Career Band'].astype(str).str.strip().isin(['3', 'MD']))
+    )
+    d1.loc[mask5, 'Observation'] = 'Ok'
+
+    return d1
+----------------------------------
 import tkinter as tk
 from tkinter import filedialog
 
