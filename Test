@@ -1,15 +1,30 @@
 import numpy as np
 import pandas as pd
 
-def process_df(df):
-    # Ensure PSID is integer
-    df['PSID'] = pd.to_numeric(df['PSID'], errors='coerce').fillna(0).astype(int)
+def convert_mixed_columns(df, columns):
+    """
+    Converts specified columns:
+    - If value is alphanumeric (contains letters), keep as string.
+    - If value is numeric only, convert to integer.
 
-    # Cost center logic using np.where
-    cc = df['Cost center'].astype(str).str.strip()
-    is_alpha = cc.str.contains('[A-Za-z]', regex=True)
+    Args:
+        df (pd.DataFrame): Input DataFrame
+        columns (list): List of column names to process
 
-    df['Cost center'] = np.where(is_alpha, cc, pd.to_numeric(cc, errors='coerce').fillna(0).astype(int))
+    Returns:
+        pd.DataFrame: Modified DataFrame
+    """
+    df = df.copy()  # avoid modifying original
+
+    for col in columns:
+        col_str = df[col].astype(str).str.strip()
+        is_alpha = col_str.str.contains('[A-Za-z]', regex=True)
+
+        df[col] = np.where(
+            is_alpha,
+            col_str,  # keep as string
+            pd.to_numeric(col_str, errors='coerce').fillna(0).astype(int)  # convert to int
+        )
 
     return df
 
