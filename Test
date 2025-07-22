@@ -1,3 +1,19 @@
+import numpy as np
+import pandas as pd
+
+def process_df(df):
+    # Ensure PSID is integer
+    df['PSID'] = pd.to_numeric(df['PSID'], errors='coerce').fillna(0).astype(int)
+
+    # Cost center logic using np.where
+    cc = df['Cost center'].astype(str).str.strip()
+    is_alpha = cc.str.contains('[A-Za-z]', regex=True)
+
+    df['Cost center'] = np.where(is_alpha, cc, pd.to_numeric(cc, errors='coerce').fillna(0).astype(int))
+
+    return df
+
+
 def clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
     def clean_name(col):
         col = str(col).strip()
