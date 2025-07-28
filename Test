@@ -1,3 +1,75 @@
+import xlwings as xw
+import os
+import shutil
+
+def run_task_two():
+    # === CONFIG ===
+    master_file = "Base_Dashboard.xlsx"
+    report_names = [
+        "Investor Relations",
+        "Stress Testing",
+        "APEX (FC)",
+        "Finance COO",
+        "Financial Support"
+    ]
+
+    sheets_and_cells = [
+        ("Index", "D3"),
+        ("Summary", "D3"),
+        ("P&L Item View", "B3"),
+        ("DC by Country", "B3"),
+        ("Headcount by Country", "B3"),
+        ("Driller", "B3")
+    ]
+
+    with xw.App(visible=False) as app:
+        # Read month once from master
+        wb_master = app.books.open(master_file)
+        month_text = wb_master.sheets['Dates'].range('C4').value  # e.g. 'May-25'
+        month_part, yy_part = month_text.split('-')
+        year_full = "20" + yy_part
+        month_year = f"{month_part} {year_full}"  # e.g., 'May 2025'
+
+        # Locate reporting sheet name
+        reporting_sheet_name = next(
+            (sh.name for sh in wb_master.sheets if 'Reporting' in sh.name),
+            None
+        )
+        wb_master.close()
+
+        if not reporting_sheet_name:
+            raise ValueError("No sheet with 'Reporting' found.")
+
+        # Now for each report
+        for report_name in report_names:
+            output_name = f"Dashboard_{report_name}.xlsx"
+            shutil.copyfile(master_file, output_name)  # ⚡ Instant copy
+
+            wb_copy = app.books.open(output_name)
+
+            # Rename Reporting sheet
+            new_reporting_name = f"{month_year} Reporting"
+            wb_copy.sheets[reporting_sheet_name].name = new_reporting_name
+
+            # Update cells
+            reporting_ws = wb_copy.sheets[new_reporting_name]
+            reporting_ws.range("C20").value = report_name
+            reporting_ws.range("B25").value = f"{month_year} Results"
+
+            for sheet_name, cell in sheets_and_cells:
+                ws = wb_copy.sheets[sheet_name]
+                ws.range(cell).value = report_name
+
+            wb_copy.save()
+            wb_copy.close()
+
+        print("✅ All reports created with faster file copying!")
+
+if __name__ == "__main__":
+    run_task_two()
+
+
+
 import tkinter as tk
 from tkinter import filedialog
 import sys
