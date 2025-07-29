@@ -1,32 +1,9 @@
-import pandas as pd
-
-# Load full base dataset (all employees)
-df_main = pd.read_excel("output_gcb_managers.xlsx")
-
-# Load lookup dataset (subset of employees)
-df_lookup = pd.read_excel("additional_info.xlsx")
-
-# Rename lookup columns (except Employee ID) to add suffix
-df_lookup_renamed = df_lookup.rename(columns={
-    col: f"{col}_info" for col in df_lookup.columns if col != "Employee ID"
-})
-
-# Merge using left join to retain all rows from df_main
-df_merged = pd.merge(df_main, df_lookup_renamed, on="Employee ID", how="left")
-
-# Save the result
-df_merged.to_excel("final_output_with_lookup_data.xlsx", index=False)
-
-
-
-.................
-
 import xlwings as xw
 import os
 import shutil
-import pandas as pd
 
 def run_task_two():
+    # === CONFIG ===
     master_file = "Base_Dashboard.xlsx"
     report_names = [
         "Investor Relations",
@@ -46,14 +23,18 @@ def run_task_two():
     ]
 
     with xw.App(visible=False) as app:
+        # Open master to read the month and find Reporting sheet name
         wb_master = app.books.open(master_file)
         month_text = wb_master.sheets['Dates'].range('C4').value  # e.g. 'May-25'
         month_part, yy_part = month_text.split('-')
         year_full = "20" + yy_part
-        month_year = f"{month_part} {year_full}"
-        output_folder = f"Cost_Templates_{month_part}"
+        month_year = f"{month_part} {year_full}"  # e.g., "May 2025"
+
+        # Output folder
+        output_folder = f"Cost_Templates_{month_year.replace(' ', '')}"
         os.makedirs(output_folder, exist_ok=True)
 
+        # Locate reporting sheet name
         reporting_sheet_name = next(
             (sh.name for sh in wb_master.sheets if 'Reporting' in sh.name),
             None
@@ -61,79 +42,37 @@ def run_task_two():
         wb_master.close()
 
         if not reporting_sheet_name:
-            raise ValueError("No sheet with 'Reporting' found.")
+            raise ValueError("❌ No sheet with 'Reporting' in the name found.")
 
+        # Loop through report names
         for report_name in report_names:
-            output_file = os.path.join(output_folder, f"Dashboard_{report_name}.xlsx")
-            shutil.copyfile(master_file, output_file)
+            output_path = os.path.join(output_folder, f"Dashboard_{report_name}.xlsx")
+            shutil.copyfile(master_file, output_path)  # Fast file copy
 
-            wb = app.books.open(output_file)
-            ws_data = wb.sheets['Data']
-
-            # Read full data including headers into pandas
-            used_range = ws_data.used_range
-            data = used_range.value
-            df = pd.DataFrame(data[1:], columns=data[0])  # Skip header row in data
-
-            if 'Report Name' not in df.columns:
-                raise ValueError("'Report Name' column not found in Data sheet.")
-
-            # Filter by report_name
-            filtered_df = df[df['Report Name'] == report_name]
-
-            # Clear only data (keep header)
-            ws_data.range("A2").expand('table').clear_contents()
-
-            # Write filtered data starting at A2
-            if not filtered_df.empty:
-                ws_data.range("A2").value = filtered_df.values.tolist()
+            wb_copy = app.books.open(output_path)
 
             # Rename Reporting sheet
             new_reporting_name = f"{month_year} Reporting"
-            wb.sheets[reporting_sheet_name].name = new_reporting_name
-            reporting_ws = wb.sheets[new_reporting_name]
+            wb_copy.sheets[reporting_sheet_name].name = new_reporting_name
+
+            # Update cells in Reporting sheet
+            reporting_ws = wb_copy.sheets[new_reporting_name]
             reporting_ws.range("C20").value = report_name
             reporting_ws.range("B25").value = f"{month_year} Results"
 
+            # Update other sheets
             for sheet_name, cell in sheets_and_cells:
-                ws = wb.sheets[sheet_name]
+                ws = wb_copy.sheets[sheet_name]
                 ws.range(cell).value = report_name
 
-            wb.save()
-            wb.close()
+            wb_copy.save()
+            wb_copy.close()
 
-        print("✅ All filtered reports created successfully!")
+        print(f"✅ All reports saved in: {output_folder}")
 
 if __name__ == "__main__":
     run_task_two()
-import tkinter as tk
-from tkinter import filedialog
-import sys
-
-def select_excel_file():
-    while True:
-        root = tk.Tk()
-        root.withdraw()
-
-        file_path = filedialog.askopenfilename(
-            title="Select an Excel file",
-            filetypes=[("Excel files", "*.xlsx *.xls")]
-        )
-
-        if file_path:
-            print("Selected file:", file_path)
-            return file_path
-        else:
-            retry = input("No file selected. Do you want to try again? (y/n): ").strip().lower()
-            if retry != 'y':
-                print("Exiting program.")
-                sys.exit()
-
-# Usage
-excel_file = select_excel_file()
-
-
-
+===============================
 import numpy as np
 import pandas as pd
 
