@@ -1,3 +1,26 @@
+import pandas as pd
+
+# Load full base dataset (all employees)
+df_main = pd.read_excel("output_gcb_managers.xlsx")
+
+# Load lookup dataset (subset of employees)
+df_lookup = pd.read_excel("additional_info.xlsx")
+
+# Rename lookup columns (except Employee ID) to add suffix
+df_lookup_renamed = df_lookup.rename(columns={
+    col: f"{col}_info" for col in df_lookup.columns if col != "Employee ID"
+})
+
+# Merge using left join to retain all rows from df_main
+df_merged = pd.merge(df_main, df_lookup_renamed, on="Employee ID", how="left")
+
+# Save the result
+df_merged.to_excel("final_output_with_lookup_data.xlsx", index=False)
+
+
+
+.................
+
 import xlwings as xw
 import os
 import shutil
