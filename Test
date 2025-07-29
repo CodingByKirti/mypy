@@ -23,30 +23,65 @@ def run_task_two():
     ]
 
     with xw.App(visible=False) as app:
-        # Read month once from master
+        # Open master once to get month
         wb_master = app.books.open(master_file)
-        month_text = wb_master.sheets['Dates'].range('C4').value  # e.g. 'May-25'
+        month_text = wb_master.sheets['Dates'].range('C4').value  # e.g., 'May-25'
         month_part, yy_part = month_text.split('-')
         year_full = "20" + yy_part
         month_year = f"{month_part} {year_full}"  # e.g., 'May 2025'
 
+        # Folder setup
+        folder_name = f"Cost_Templates_{month_part}"
+        os.makedirs(folder_name, exist_ok=True)
+
         # Locate reporting sheet name
-        reporting_sheet_name = next(
-            (sh.name for sh in wb_master.sheets if 'Reporting' in sh.name),
-            None
-        )
+        reporting_sheet_name = next((sh.name for sh in wb_master.sheets if 'Reporting' in sh.name), None)
         wb_master.close()
 
         if not reporting_sheet_name:
             raise ValueError("No sheet with 'Reporting' found.")
 
-        # Now for each report
         for report_name in report_names:
             output_name = f"Dashboard_{report_name}.xlsx"
-            shutil.copyfile(master_file, output_name)  # ⚡ Instant copy
+            output_path = os.path.join(folder_name, output_name)
 
-            wb_copy = app.books.open(output_name)
+            # Fast copy
+            shutil.copyfile(master_file, output_path)
+            wb_copy = app.books.open(output_path)
 
+            # === Step 1: Filter Data ===
+            data_sheet = wb_copy.sheets['Data']
+            data_backup = data_sheet.api.Copy(Before=data_sheet.api)  # duplicate sheet
+            data_backup_sheet = wb_copy.sheets[0]  # Newly copied is first in list
+
+            # Rename for clarity
+            data_backup_sheet.name = 'Data_Backup'
+
+            # Get headers from row 1
+            headers = data_backup_sheet.range('1:1').value
+            report_col_index = headers.index('Report Name') + 1  # 1-based
+
+            # Read all data from Data_Backup
+            last_row = data_backup_sheet.range('A' + str(data_backup_sheet.cells.last_cell.row)).end('up').row
+            all_data = data_backup_sheet.range(f'A2:A{last_row}').expand('right').value
+
+            # Filter rows for this report
+            if not isinstance(all_data[0], list):  # only one row?
+                all_data = [all_data]
+
+            matching_rows = [row for row in all_data if row[report_col_index - 1] == report_name]
+
+            # Clear old data in 'Data' except header
+            data_sheet.range('2:' + str(data_sheet.cells.last_cell.row)).clear_contents()
+
+            # Paste matching data
+            if matching_rows:
+                data_sheet.range('A2').value = matching_rows
+
+            # Delete backup
+            data_backup_sheet.delete()
+
+            # === Step 2: Update sheet values ===
             # Rename Reporting sheet
             new_reporting_name = f"{month_year} Reporting"
             wb_copy.sheets[reporting_sheet_name].name = new_reporting_name
@@ -63,12 +98,10 @@ def run_task_two():
             wb_copy.save()
             wb_copy.close()
 
-        print("✅ All reports created with faster file copying!")
+        print(f"✅ All reports created in folder: {folder_name}")
 
 if __name__ == "__main__":
     run_task_two()
-
-
 
 import tkinter as tk
 from tkinter import filedialog
