@@ -1,3 +1,48 @@
+import tkinter as tk
+from tkinter import ttk
+
+def ask_month_year():
+    result = {}
+
+    def submit():
+        result['month'] = month_var.get()
+        result['year'] = year_var.get()
+        root.quit()
+
+    # Tkinter window
+    root = tk.Tk()
+    root.title("Select Month & Enter Year")
+    root.geometry("300x150")
+    root.resizable(False, False)
+
+    # Month Dropdown
+    tk.Label(root, text="Select Month (MM):").pack(pady=5)
+    month_var = tk.StringVar()
+    months = [f"{i:02}" for i in range(1, 13)]  # 01 - 12
+    month_dropdown = ttk.Combobox(root, textvariable=month_var, values=months, state="readonly", width=10)
+    month_dropdown.current(0)
+    month_dropdown.pack()
+
+    # Year Entry
+    tk.Label(root, text="Enter Year (YYYY):").pack(pady=5)
+    year_var = tk.StringVar()
+    year_entry = tk.Entry(root, textvariable=year_var, width=12)
+    year_entry.pack()
+    year_entry.focus()
+
+    # Submit Button
+    tk.Button(root, text="OK", command=submit).pack(pady=10)
+
+    root.mainloop()
+    root.destroy()
+
+    return result['month'], result['year']
+
+
+# === Example Usage ===
+if __name__ == "__main__":
+    month, year = ask_month_year()
+    print(f"Selected Month: {month}, Year: {year}")
 
 
 import xlwings as xw
