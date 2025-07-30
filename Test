@@ -1,77 +1,83 @@
+
+
 import xlwings as xw
 import os
 import shutil
 
-def run_task_two():
-    # === CONFIG ===
-    master_file = "Base_Dashboard.xlsx"
-    report_names = [
-        "Investor Relations",
-        "Stress Testing",
-        "APEX (FC)",
-        "Finance COO",
-        "Financial Support"
-    ]
+# === CONFIG ===
+master_file = "Base_Dashboard.xlsx"
+report_names = [
+    "Investor Relations",
+    "Stress Testing",
+    "APEX (FC)",
+    "Finance COO",
+    "Financial Support"
+]
 
-    sheets_and_cells = [
-        ("Index", "D3"),
-        ("Summary", "D3"),
-        ("P&L Item View", "B3"),
-        ("DC by Country", "B3"),
-        ("Headcount by Country", "B3"),
-        ("Driller", "B3")
-    ]
+sheets_and_cells = [
+    ("Index", "D3"),
+    ("Summary", "D3"),
+    ("P&L Item View", "B3"),
+    ("DC by Country", "B3"),
+    ("Headcount by Country", "B3"),
+    ("Driller", "B3")
+]
+
+# === OUTPUT FOLDER ===
+output_folder = "Cost_Templates"
+
+def create_copies():
+    """Phase 1: Create all copies first using shutil (fast)."""
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    for i, report_name in enumerate(report_names, 1):
+        output_path = os.path.join(output_folder, f"Dashboard_{report_name}.xlsx")
+        shutil.copyfile(master_file, output_path)
+        print(f"📂 [{i}/{len(report_names)}] Created copy for: {report_name}")
+
+    print(f"\n✅ Created {len(report_names)} copies in '{output_folder}'.")
+
+def update_files():
+    """Phase 2: Open each file, update cells, and save."""
+    files = [f for f in os.listdir(output_folder) if f.endswith(".xlsx")]
 
     with xw.App(visible=False) as app:
-        # Open master to read the month and find Reporting sheet name
-        wb_master = app.books.open(master_file)
-        month_text = wb_master.sheets['Dates'].range('C4').value  # e.g. 'May-25'
-        month_part, yy_part = month_text.split('-')
-        year_full = "20" + yy_part
-        month_year = f"{month_part} {year_full}"  # e.g., "May 2025"
+        for idx, filename in enumerate(files, 1):
+            file_path = os.path.join(output_folder, filename)
+            print(f"✏️ [{idx}/{len(files)}] Updating file: {filename}")
 
-        # Output folder
-        output_folder = f"Cost_Templates_{month_year.replace(' ', '')}"
-        os.makedirs(output_folder, exist_ok=True)
+            wb = app.books.open(file_path)
 
-        # Locate reporting sheet name
-        reporting_sheet_name = next(
-            (sh.name for sh in wb_master.sheets if 'Reporting' in sh.name),
-            None
-        )
-        wb_master.close()
+            # Extract report name from file name
+            report_name = filename.replace("Dashboard_", "").replace(".xlsx", "")
 
-        if not reporting_sheet_name:
-            raise ValueError("❌ No sheet with 'Reporting' in the name found.")
+            # Read month details from Dates sheet
+            month_text = wb.sheets['Dates'].range('C4').value  # e.g. 'May-25'
+            month_part, yy_part = month_text.split('-')
+            year_full = "20" + yy_part
+            month_year = f"{month_part} {year_full}"
 
-        # Loop through report names
-        for report_name in report_names:
-            output_path = os.path.join(output_folder, f"Dashboard_{report_name}.xlsx")
-            shutil.copyfile(master_file, output_path)  # Fast file copy
-
-            wb_copy = app.books.open(output_path)
-
-            # Rename Reporting sheet
-            new_reporting_name = f"{month_year} Reporting"
-            wb_copy.sheets[reporting_sheet_name].name = new_reporting_name
-
-            # Update cells in Reporting sheet
-            reporting_ws = wb_copy.sheets[new_reporting_name]
-            reporting_ws.range("C20").value = report_name
-            reporting_ws.range("B25").value = f"{month_year} Results"
+            # Find Reporting sheet
+            reporting_sheet = next((sh for sh in wb.sheets if "Reporting" in sh.name), None)
+            if reporting_sheet:
+                reporting_sheet.name = f"{month_year} Reporting"
+                reporting_sheet.range("C20").value = report_name
+                reporting_sheet.range("B25").value = f"{month_year} Results"
 
             # Update other sheets
             for sheet_name, cell in sheets_and_cells:
-                ws = wb_copy.sheets[sheet_name]
+                ws = wb.sheets[sheet_name]
                 ws.range(cell).value = report_name
 
-            wb_copy.save()
-            wb_copy.close()
+            wb.save()
+            wb.close()
 
-        print(f"✅ All reports saved in: {output_folder}")
+    print(f"\n✅ Updated {len(files)} files with required values.")
 
 if __name__ == "__main__":
-    run_task_two()
+    create_copies()
+    update_files()
 ===============================
 import numpy as np
 import pandas as pd
