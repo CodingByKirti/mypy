@@ -1,3 +1,88 @@
+import pandas as pd
+
+# Sample structure to mimic the actual data
+columns_needed = [
+    "Employee ID", "Employee Name", "Employee Business Email Address", 
+    "Global Career Band", "Entity Manager Employee ID"
+]
+
+# For example, this would be your source data:
+# df = pd.read_excel("source.xlsx", sheet_name="Data", usecols=columns_needed)
+df = df.drop_duplicates(subset=["Employee ID"])  # ensure unique IDs
+
+# Create lookup for Employee ID → employee info
+employee_lookup = df.set_index("Employee ID").to_dict("index")
+
+# Helper to fetch employee info if exists
+def get_info(emp_id):
+    emp = employee_lookup.get(emp_id)
+    if emp:
+        return (
+            emp_id,
+            emp["Employee Name"],
+            emp["Employee Business Email Address"],
+            emp["Global Career Band"]
+        )
+    return (None, None, None, None)
+
+# Add new columns
+df["MD_ID"] = None
+df["MD_Name"] = None
+df["MD_Email"] = None
+
+df["GCB3_ID"] = None
+df["GCB3_Name"] = None
+df["GCB3_Email"] = None
+
+df["ReportingMgr_ID"] = None
+df["ReportingMgr_Name"] = None
+df["ReportingMgr_Email"] = None
+df["ReportingMgr_GCB"] = None
+
+for idx, row in df.iterrows():
+    emp_id = row["Employee ID"]
+    mgr_id = row["Entity Manager Employee ID"]
+
+    # Trace upwards
+    current_id = emp_id
+    gcb_path = []
+
+    while mgr_id:
+        mgr_info = employee_lookup.get(mgr_id)
+        if not mgr_info:
+            break
+
+        gcb = str(mgr_info["Global Career Band"]).strip()
+        gcb_path.append((mgr_id, mgr_info))
+
+        # Recurse upward
+        mgr_id = mgr_info["Entity Manager Employee ID"]
+
+    # Assign based on GCB level
+    for mid, minfo in gcb_path:
+        gcb = str(minfo["Global Career Band"]).strip()
+        if gcb.upper() == "MD" and df.at[idx, "MD_ID"] is None:
+            df.at[idx, "MD_ID"], df.at[idx, "MD_Name"], df.at[idx, "MD_Email"], _ = get_info(mid)
+        elif gcb == "3" and df.at[idx, "GCB3_ID"] is None:
+            df.at[idx, "GCB3_ID"], df.at[idx, "GCB3_Name"], df.at[idx, "GCB3_Email"], _ = get_info(mid)
+        elif gcb in {"3", "4"} and df.at[idx, "ReportingMgr_ID"] is None:
+            df.at[idx, "ReportingMgr_ID"], df.at[idx, "ReportingMgr_Name"], df.at[idx, "ReportingMgr_Email"], df.at[idx, "ReportingMgr_GCB"] = get_info(mid)
+
+# Optional: reorder or save to Excel
+final_cols = [
+    "Employee ID", "Employee Name", "Employee Business Email Address", "Global Career Band",
+    "MD_ID", "MD_Name", "MD_Email",
+    "GCB3_ID", "GCB3_Name", "GCB3_Email",
+    "ReportingMgr_ID", "ReportingMgr_Name", "ReportingMgr_Email", "ReportingMgr_GCB"
+]
+
+final_df = df[final_cols]
+
+# Save result
+# final_df.to_excel("final_hierarchy_output.xlsx", index=False)
+
+
+---------------
 import tkinter as tk
 from tkinter import ttk, messagebox
 
