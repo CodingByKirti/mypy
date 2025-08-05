@@ -1,39 +1,46 @@
 import pandas as pd
 
 # Load your data
-df = pd.read_excel("your_file.xlsx", sheet_name="YourSheetName")  # Update with actual file/sheet name
+df = pd.read_excel("your_file.xlsx", sheet_name="YourSheetName")  # Replace with actual file & sheet
 
-# Split into previous and new records
+# Filter old and new rows
 prev_df = df[df['FTE/CWR Movement'] == -1]
 new_df = df[df['FTE/CWR Movement'] == 1]
 
-# Select required columns
-common_cols = ['Employee ID', 'Employee Name', 'Global Career Band', 'Employment Type']
-prev_cols = ['Mapped BF Level 3 Name', 'Mapped BF Level 4 Name']
-new_cols = ['Mapped BF Level 3 Name', 'Mapped BF Level 4 Name']
+# Common join keys
+join_keys = ['Employee ID', 'Employee Name']
 
-# Rename columns for clarity
-prev_df = prev_df[common_cols + prev_cols].rename(
-    columns={
-        'Mapped BF Level 3 Name': 'Previous BF Level 3',
-        'Mapped BF Level 4 Name': 'Previous BF Level 4'
-    }
-)
+# Columns to keep from each side
+prev_df = prev_df[join_keys + [
+    'Global Career Band',
+    'Employment Type',
+    'Mapped BF Level 3 Name',
+    'Mapped BF Level 4 Name'
+]].rename(columns={
+    'Global Career Band': 'Previous Global Career Band',
+    'Employment Type': 'Previous Employment Type',
+    'Mapped BF Level 3 Name': 'Previous BF Level 3',
+    'Mapped BF Level 4 Name': 'Previous BF Level 4'
+})
 
-new_df = new_df[common_cols + new_cols].rename(
-    columns={
-        'Mapped BF Level 3 Name': 'New BF Level 3',
-        'Mapped BF Level 4 Name': 'New BF Level 4'
-    }
-)
+new_df = new_df[join_keys + [
+    'Global Career Band',
+    'Employment Type',
+    'Mapped BF Level 3 Name',
+    'Mapped BF Level 4 Name'
+]].rename(columns={
+    'Global Career Band': 'New Global Career Band',
+    'Employment Type': 'New Employment Type',
+    'Mapped BF Level 3 Name': 'New BF Level 3',
+    'Mapped BF Level 4 Name': 'New BF Level 4'
+})
 
-# Merge previous and new on Employee ID (and optionally other identifiers)
-final_df = pd.merge(prev_df, new_df, on=common_cols, how='inner')
+# Merge old and new records
+final_df = pd.merge(prev_df, new_df, on=join_keys, how='inner')
 
-# Save the result
+# Save to Excel
 final_df.to_excel("Headcount_Movement_Summary.xlsx", index=False)
 print("Summary file created with", len(final_df), "records.")
-
 
 
 
