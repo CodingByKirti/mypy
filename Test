@@ -1,5 +1,45 @@
 import pandas as pd
 
+# Load your data
+df = pd.read_excel("your_file.xlsx", sheet_name="YourSheetName")  # Update with actual file/sheet name
+
+# Split into previous and new records
+prev_df = df[df['FTE/CWR Movement'] == -1]
+new_df = df[df['FTE/CWR Movement'] == 1]
+
+# Select required columns
+common_cols = ['Employee ID', 'Employee Name', 'Global Career Band', 'Employment Type']
+prev_cols = ['Mapped BF Level 3 Name', 'Mapped BF Level 4 Name']
+new_cols = ['Mapped BF Level 3 Name', 'Mapped BF Level 4 Name']
+
+# Rename columns for clarity
+prev_df = prev_df[common_cols + prev_cols].rename(
+    columns={
+        'Mapped BF Level 3 Name': 'Previous BF Level 3',
+        'Mapped BF Level 4 Name': 'Previous BF Level 4'
+    }
+)
+
+new_df = new_df[common_cols + new_cols].rename(
+    columns={
+        'Mapped BF Level 3 Name': 'New BF Level 3',
+        'Mapped BF Level 4 Name': 'New BF Level 4'
+    }
+)
+
+# Merge previous and new on Employee ID (and optionally other identifiers)
+final_df = pd.merge(prev_df, new_df, on=common_cols, how='inner')
+
+# Save the result
+final_df.to_excel("Headcount_Movement_Summary.xlsx", index=False)
+print("Summary file created with", len(final_df), "records.")
+
+
+
+
+
+import pandas as pd
+
 # Sample structure to mimic the actual data
 columns_needed = [
     "Employee ID", "Employee Name", "Employee Business Email Address", 
