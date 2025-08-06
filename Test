@@ -1,6 +1,28 @@
 import pandas as pd
 import numpy as np
+import numpy as np
 
+# 1. Filter for Billed & FTE not in [0,1]
+cond_billed = d1['Category for Static'] == 'Billed'
+cond_fte_not_01 = ~d1['Employee FTE'].isin([0, 1])
+df_billed = d1[cond_billed & cond_fte_not_01].copy()
+
+# 2. Coerce FTE values to float
+df_billed['Employee FTE'] = pd.to_numeric(df_billed['Employee FTE'], errors='coerce')
+df_billed['No. of FTE'] = pd.to_numeric(df_billed['No. of FTE'], errors='coerce')
+
+# 3. Use np.isclose for float-safe match
+df_billed['match'] = np.isclose(df_billed['Employee FTE'], df_billed['No. of FTE'], atol=0.01)
+
+# 4. Debug info
+print("Total rows:", len(df_billed))
+print("Matched:", df_billed['match'].sum())
+print("Unmatched:", (~df_billed['match']).sum())
+
+# 5. Write to main dataframe using df_billed index
+d1.loc[df_billed[df_billed['match']].index, 'Observation'] = 'Ok'
+d1.loc[df_billed[~df_billed['match']].index, 'Observation'] = 'Update FTE value to 1'
+..............................
 invalid_vals = ['', 'n/a', 'na', 'nan', 'nan nan']
 
 def is_invalid(val):
