@@ -1,46 +1,71 @@
 import pandas as pd
 
 # Load your data
-df = pd.read_excel("your_file.xlsx", sheet_name="YourSheetName")  # Replace with actual file & sheet
+# d1 = pd.read_excel("your_file.xlsx")
 
-# Filter old and new rows
-prev_df = df[df['FTE/CWR Movement'] == -1]
-new_df = df[df['FTE/CWR Movement'] == 1]
+# Clean column names to remove extra spaces
+d1.columns = d1.columns.str.strip()
 
-# Common join keys
-join_keys = ['Employee ID', 'Employee Name']
+# Standardize necessary columns for consistent comparisons
+d1['Category for Static'] = d1['Category for Static'].str.strip()
+d1['Employee Class'] = d1['Employee Class'].str.strip()
+d1['Global Career Band'] = d1['Global Career Band'].astype(str).str.strip()
+d1['Check'] = d1['Check'].astype(str).str.lower()
+d1['Lookup for Billed CC'] = d1['Lookup for Billed CC'].astype(str).str.strip()
 
-# Columns to keep from each side
-prev_df = prev_df[join_keys + [
-    'Global Career Band',
-    'Employment Type',
-    'Mapped BF Level 3 Name',
-    'Mapped BF Level 4 Name'
-]].rename(columns={
-    'Global Career Band': 'Previous Global Career Band',
-    'Employment Type': 'Previous Employment Type',
-    'Mapped BF Level 3 Name': 'Previous BF Level 3',
-    'Mapped BF Level 4 Name': 'Previous BF Level 4'
-})
+# Initialize Observation column
+d1['Observation'] = ""
 
-new_df = new_df[join_keys + [
-    'Global Career Band',
-    'Employment Type',
-    'Mapped BF Level 3 Name',
-    'Mapped BF Level 4 Name'
-]].rename(columns={
-    'Global Career Band': 'New Global Career Band',
-    'Employment Type': 'New Employment Type',
-    'Mapped BF Level 3 Name': 'New BF Level 3',
-    'Mapped BF Level 4 Name': 'New BF Level 4'
-})
+### 1. For 'Category for Static' == 'Billed'
+cond_billed = d1['Category for Static'] == 'Billed'
+cond_fte_not_01 = ~d1['Employee FTE'].isin([0, 1])
+df_billed = d1[cond_billed & cond_fte_not_01]
 
-# Merge old and new records
-final_df = pd.merge(prev_df, new_df, on=join_keys, how='inner')
+# a. If Employee FTE == No. of FTE → Ok
+match_fte = df_billed['Employee FTE'] == df_billed['No. of FTE']
+d1.loc[df_billed[match_fte].index, 'Observation'] = 'Ok'
 
-# Save to Excel
-final_df.to_excel("Headcount_Movement_Summary.xlsx", index=False)
-print("Summary file created with", len(final_df), "records.")
+# b. Else → Update FTE value to 1
+d1.loc[df_billed[~match_fte].index, 'Observation'] = 'Update FTE value to 1'
+
+### 2. For 'Category for Static' == 'Not Billed'
+cond_not_billed = d1['Category for Static'] == 'Not Billed'
+
+# a. If 'Lookup for Billed CC' is not blank or N/A → Exclude
+not_na_lkp = d1['Lookup for Billed CC'].str.upper().ne('N/A') & d1['Lookup for Billed CC'].ne("")
+d1.loc[cond_not_billed & not_na_lkp, 'Observation'] = 'Exclude'
+
+# b. If 'Lookup for Billed CC' is blank or N/A and Check = true → Ok
+is_na_lkp = d1['Lookup for Billed CC'].str.upper().eq('N/A') | d1['Lookup for Billed CC'].eq("")
+check_true = d1['Check'].str.lower() == 'true'
+d1.loc[cond_not_billed & is_na_lkp & check_true, 'Observation'] = 'Ok'
+
+### 3. For 'Category for Static' == 'Others'
+cond_others = d1['Category for Static'] == 'Others'
+emp_class = d1['Employee Class'].str.lower()
+gcb = d1['Global Career Band'].str.upper()
+
+# a. External + Check true + GCB = Not Applicable → Ok
+d1.loc[cond_others & (emp_class == 'external') & (d1['Check'] == 'true') & (gcb == 'NOT APPLICABLE'), 'Observation'] = 'Ok'
+
+# b. External + Check true + GCB ≠ Not Applicable + Lookup not blank → Exclude
+not_blank_lkp = d1['Lookup for Billed CC'].ne("") & d1['Lookup for Billed CC'].str.upper().ne("N/A")
+d1.loc[cond_others & (emp_class == 'external') & (d1['Check'] == 'true') & (gcb != 'NOT APPLICABLE') & not_blank_lkp, 'Observation'] = 'Exclude'
+
+# c. Intern + Lookup not blank + GCB ≠ Not Applicable → Exclude
+d1.loc[cond_others & (emp_class == 'intern') & not_blank_lkp & (gcb != 'NOT APPLICABLE'), 'Observation'] = 'Exclude'
+
+# d. Intern + Lookup blank or N/A → Ok
+d1.loc[cond_others & (emp_class == 'intern') & ~not_blank_lkp, 'Observation'] = 'Ok'
+
+# e. Intern + GCB = Not Applicable → Ok
+d1.loc[cond_others & (emp_class == 'intern') & (gcb == 'NOT APPLICABLE'), 'Observation'] = 'Ok'
+
+# f. Employee + GCB = 3 or MD → Ok
+d1.loc[cond_others & (emp_class == 'employee') & (gcb.isin(['3', 'MD'])), 'Observation'] = 'Ok'
+
+# Save if needed
+# d1.to_excel("observation_updated.xlsx", index=False)
 
 
 
