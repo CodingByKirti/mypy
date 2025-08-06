@@ -1,4 +1,21 @@
 import pandas as pd
+import numpy as np
+
+# Standardize blanks and case
+d1['Con'] = d1['Con'].astype(str).str.strip()
+d1['Con_HR'] = d1['Con_HR'].astype(str).str.strip()
+
+# Function to apply row-wise
+def compare_con_cols(row):
+    con = row['Con']
+    con_hr = row['Con_HR']
+    if con.upper() in ['', 'N/A', 'NA'] or con_hr.upper() in ['', 'N/A', 'NA']:
+        return 'N/A'
+    else:
+        return str(con == con_hr)
+
+# Apply the function
+d1['Check'] = d1.apply(compare_con_cols, axis=1)
 
 # Load your data
 # d1 = pd.read_excel("your_file.xlsx")
