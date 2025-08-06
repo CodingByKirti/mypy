@@ -1,20 +1,20 @@
 import pandas as pd
 import numpy as np
 
-# Standardize blanks and case
-d1['Con'] = d1['Con'].astype(str).str.strip()
-d1['Con_HR'] = d1['Con_HR'].astype(str).str.strip()
+invalid_vals = ['', 'n/a', 'na', 'nan', 'nan nan']
 
-# Function to apply row-wise
+def is_invalid(val):
+    return pd.isna(val) or str(val).strip().lower() in invalid_vals
+
 def compare_con_cols(row):
     con = row['Con']
     con_hr = row['Con_HR']
-    if con.upper() in ['', 'N/A', 'NA'] or con_hr.upper() in ['', 'N/A', 'NA']:
+    if is_invalid(con) or is_invalid(con_hr):
         return 'N/A'
     else:
-        return str(con == con_hr)
+        return con == con_hr
 
-# Apply the function
+# Apply to dataframe
 d1['Check'] = d1.apply(compare_con_cols, axis=1)
 
 # Load your data
