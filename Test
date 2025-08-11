@@ -1,4 +1,4 @@
-
+ActiveSheet.ChartObjects
 Sub FixLabelPosition()
     Dim s As Series
     For Each s In ActiveSheet.ChartObjects("Chart 1").Chart.SeriesCollection
