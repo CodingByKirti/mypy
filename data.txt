@@ -1,10 +1,17 @@
 import pandas as pd
+# Ensure both are strings and case-insensitive
+gsc_df['Employee ID'] = gsc_df['Employee ID'].astype(str).str.strip().str.lower()
+base_df_updated['PSID'] = base_df_updated['PSID'].astype(str).str.strip().str.lower()
 
-# ---- 0. Assumptions ----
-# gsc_df              → HR Cut dataframe
-# base_df_updated     → Billing updated dataframe
-# cognos_df           → Cognos report dataframe
-# mapping_file_path   → Path to Excel mapping file
+# Lookup: If Employee ID in PSID, keep original Employee ID, else N/A
+gsc_df['Lookup from Master File'] = gsc_df['Employee ID'].apply(
+    lambda x: x if x in set(base_df_updated['PSID']) else "N/A"
+)
+
+# If you want to restore original casing for Employee ID in the output:
+gsc_df['Lookup from Master File'] = gsc_df['Lookup from Master File'].replace(
+    dict(zip(gsc_df['Employee ID'], gsc_df['Employee ID']))
+)
 
 # ---- 1. Read mapping file values ----
 mapping_df = pd.read_excel(mapping_file_path)
