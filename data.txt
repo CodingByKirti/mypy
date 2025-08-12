@@ -1,5 +1,136 @@
 import pandas as pd
 
+# ---- 0. Assumptions ----
+# gsc_df              → HR Cut dataframe
+# base_df_updated     → Billing updated dataframe
+# cognos_df           → Cognos report dataframe
+# mapping_file_path   → Path to Excel mapping file
+
+# ---- 1. Read mapping file values ----
+mapping_df = pd.read_excel(mapping_file_path)
+manager_ops_list = mapping_df['Manager Ops'].dropna().astype(str).str.strip().tolist()
+manager_ops_others_list = mapping_df['Manager Ops_others'].dropna().astype(str).str.strip().tolist()
+
+# ---- 2. Add the blank separator column and new columns at the end ----
+gsc_df['-'] = ''
+gsc_df['Lookup from Master File'] = gsc_df['Employee ID'].map(
+    base_df_updated.set_index('PSID').index.to_series()
+).fillna("N/A")
+
+# Merge for Manager Ops from Cognos
+manager_ops_map = cognos_df.set_index('Cost Code')['Manager Operations'].to_dict()
+gsc_df['Manager Ops'] = gsc_df['Cost Centre'].map(manager_ops_map).fillna("N/A")
+
+# Lookup for Billed CC
+# First, filter only billed records from base_df_updated
+billed_cc_map = base_df_updated.loc[
+    base_df_updated['Category for Static'].str.lower() == 'billed',
+    ['Cost center']
+].set_index('Cost center').index.to_series()
+
+gsc_df['Lookup for Billed CC'] = gsc_df['Cost Centre'].apply(
+    lambda cc: cc if cc in billed_cc_map.values else "N/A"
+)
+
+# Observations column - start empty
+gsc_df['Observations'] = ""
+
+# ---- 3. Apply complex rules ----
+
+# Helper: case-insensitive membership check
+def in_list_ci(val, lst):
+    return str(val).strip().lower() in [x.lower() for x in lst]
+
+# Helper: case-insensitive equality check
+def eq_ci(val, target):
+    return str(val).strip().lower() == str(target).strip().lower()
+
+# ---- Condition group i ----
+cond_i = (
+    gsc_df['Lookup from Master File'].str.upper() == "N/A"
+) & gsc_df['Manager Ops'].apply(lambda x: in_list_ci(x, manager_ops_list)) & \
+  gsc_df['BF Level 2 Name'].apply(
+      lambda x: in_list_ci(x, [
+          'Finance Function', 'Global Sustainanility',
+          'Group External Communication', 'Grp Chief Cntrl Oversight Off'
+      ])
+  )
+
+# i.1 → Lookup for Billed CC not N/A
+cond_i1 = cond_i & (gsc_df['Lookup for Billed CC'].str.upper() != "N/A")
+
+# a. Employee Class = Employee → Exclude
+mask = cond_i1 & gsc_df['Employee Class'].apply(lambda x: eq_ci(x, 'Employee'))
+gsc_df.loc[mask, 'Observations'] = 'Exclude'
+
+# b.i. External + Not Applicable → Ok
+mask = cond_i1 & gsc_df['Employee Class'].apply(lambda x: eq_ci(x, 'External')) & \
+       gsc_df['Global Career Band'].apply(lambda x: eq_ci(x, 'Not Applicable'))
+gsc_df.loc[mask, 'Observations'] = 'Ok'
+
+# b.ii. External + not Not Applicable → Exclude
+mask = cond_i1 & gsc_df['Employee Class'].apply(lambda x: eq_ci(x, 'External')) & \
+       ~gsc_df['Global Career Band'].apply(lambda x: eq_ci(x, 'Not Applicable'))
+gsc_df.loc[mask, 'Observations'] = 'Exclude'
+
+# c.i. Intern + not Not Applicable → Exclude
+mask = cond_i1 & gsc_df['Employee Class'].apply(lambda x: eq_ci(x, 'Intern')) & \
+       ~gsc_df['Global Career Band'].apply(lambda x: eq_ci(x, 'Not Applicable'))
+gsc_df.loc[mask, 'Observations'] = 'Exclude'
+
+# c.ii. Intern + Not Applicable → Ok
+mask = cond_i1 & gsc_df['Employee Class'].apply(lambda x: eq_ci(x, 'Intern')) & \
+       gsc_df['Global Career Band'].apply(lambda x: eq_ci(x, 'Not Applicable'))
+gsc_df.loc[mask, 'Observations'] = 'Ok'
+
+# i.2 → Lookup for Billed CC is N/A → Ok
+mask = cond_i & (gsc_df['Lookup for Billed CC'].str.upper() == "N/A")
+gsc_df.loc[mask, 'Observations'] = 'Ok'
+
+# ---- Condition group ii ----
+cond_ii = (
+    (gsc_df['Lookup from Master File'].str.upper() == "N/A") &
+    gsc_df['BF Level 2 Name'].apply(
+        lambda x: in_list_ci(x, [
+            'Finance Function', 'Global Sustainanility',
+            'Group External Communication', 'Grp Chief Cntrl Oversight Off'
+        ])
+    )
+)
+
+# ii.1 → Manager Ops not in either list → Invalid Inputter
+mask = cond_ii & ~gsc_df['Manager Ops'].apply(lambda x: in_list_ci(x, manager_ops_others_list) or in_list_ci(x, manager_ops_list))
+gsc_df.loc[mask, 'Invalid Inputter'] = gsc_df.loc[mask, 'Manager Ops']
+
+# ii.2 → Manager Ops = N/A and Cost Center starts with '9'
+mask_ii2 = cond_ii & (gsc_df['Manager Ops'].str.upper() == "N/A") & \
+            gsc_df['Cost Centre'].astype(str).str.startswith('9')
+mask_exclude = mask_ii2 & (gsc_df['Lookup for Billed CC'].str.upper() != "N/A")
+mask_ok = mask_ii2 & (gsc_df['Lookup for Billed CC'].str.upper() == "N/A")
+gsc_df.loc[mask_exclude, 'Observations'] = 'Exclude'
+gsc_df.loc[mask_ok, 'Observations'] = 'Ok'
+
+# ---- Condition group iii ----
+cond_iii = gsc_df['Lookup from Master File'].str.upper() == "N/A"
+
+# iii.1 → Manager Ops in mapping list + BF Level 2 Name not in finance list
+cond_iii1 = cond_iii & gsc_df['Manager Ops'].apply(lambda x: in_list_ci(x, manager_ops_list)) & \
+            ~gsc_df['BF Level 2 Name'].apply(
+                lambda x: in_list_ci(x, [
+                    'Finance Function', 'Global Sustainanility',
+                    'Group External Communication', 'Grp Chief Cntrl Oversight Off'
+                ])
+            )
+
+# a. Department Name contains Project MIMOSA or Deveron → Change Inputter name
+mask = cond_iii1 & gsc_df['Department Name'].str.contains('Project MIMOSA|Deveron', case=False, na=False)
+gsc_df.loc[mask, 'Observations'] = 'Change Inputter name for these non Finance AIDs'
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+import pandas as pd
+
 input_file = 'your_file.xlsx'
 output_file = 'cleaned_file.xlsx'
 
