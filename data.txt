@@ -1,4 +1,89 @@
 import pandas as pd
+from datetime import datetime
+
+# Example: assume base_updated_df and gsc_df are already loaded
+# base_updated_df = pd.read_excel("base_updated.xlsx")
+# gsc_df = pd.read_excel("gsc.xlsx")
+
+# --- Step 1: File naming ---
+month_input = input("Enter current month (1-12 or name): ").strip()
+year_input = input("Enter year (YYYY): ").strip()
+
+# Convert month to Mmm format
+try:
+    month_num = int(month_input) if month_input.isdigit() else datetime.strptime(month_input, "%B").month
+except ValueError:
+    month_num = datetime.now().month  # default to current month if invalid
+
+month_abbr = datetime(1900, month_num, 1).strftime("%b")
+year_short = year_input[-2:]
+
+filename = f"Change Request_{month_abbr}’{year_short}.xlsx"
+
+# --- Step 2: Change sheet ---
+change_a = (
+    base_updated_df[base_updated_df["Observation"] == "Change CC & Dept id"]
+    .drop_duplicates(subset=["PSID", "Cost center", "Depart ID", "AID"])
+    .assign(Update="Change CC & Dept id")[["PSID", "Cost center", "Depart ID", "AID", "Update"]]
+)
+
+change_b = (
+    base_updated_df[base_updated_df["Observation"] == "update FTE value to 1"]
+    .drop_duplicates(subset=["PSID", "Cost center", "Depart ID", "AID"])
+    .assign(Update="update FTE value to 1")[["PSID", "Cost center", "Depart ID", "AID", "Update"]]
+)
+
+change_df = pd.concat([change_a, change_b], ignore_index=True)
+
+# --- Step 3: Exclude sheet ---
+exclude_a = (
+    base_updated_df[base_updated_df["Observation"] == "Exclude"]
+    .drop_duplicates(subset=["PSID"])
+    .assign(Update="Exclude")[["PSID", "Update"]]
+)
+
+exclude_b = (
+    gsc_df[gsc_df["Observation"] == "Exclude"]
+    .drop_duplicates(subset=["Employee ID"])
+    .rename(columns={"Employee ID": "PSID"})
+    .assign(Update="Exclude")[["PSID", "Update"]]
+)
+
+exclude_df = pd.concat([exclude_a, exclude_b], ignore_index=True)
+
+# --- Step 4: GCB3 & Above ---
+gcb3_df = (
+    base_updated_df[
+        (base_updated_df["GCB Grade"].astype(str).isin(["3", "MD"])) &
+        (base_updated_df["Category for Static"] == "Billed")
+    ]
+    .drop_duplicates(subset=["PSID"])
+    .assign(**{"GCB Band": 5, "Update": "Update GCB Band"})[["PSID", "GCB Band", "Update"]]
+)
+
+# --- Step 5: Contractors ---
+contractors_df = (
+    base_updated_df[
+        (base_updated_df["GCB Grade"] == "Not Applicable") &
+        (base_updated_df["Category for Static"] == "Billed") &
+        (base_updated_df["Employee Class"] == "External")
+    ]
+    .drop_duplicates(subset=["PSID"])
+    .assign(**{"GCB Band": 7, "Update": "Update GCB Band"})[["PSID", "GCB Band", "Update"]]
+)
+
+# --- Step 6: Save all to Excel ---
+with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+    change_df.to_excel(writer, sheet_name="Change", index=False)
+    exclude_df.to_excel(writer, sheet_name="Exclude", index=False)
+    gcb3_df.to_excel(writer, sheet_name="GCB3 & Above", index=False)
+    contractors_df.to_excel(writer, sheet_name="Contractors", index=False)
+
+print(f"File saved: {filename}")
+
+
+......................................
+import pandas as pd
 # Ensure both are strings and case-insensitive
 gsc_df['Employee ID'] = gsc_df['Employee ID'].astype(str).str.strip().str.lower()
 base_df_updated['PSID'] = base_df_updated['PSID'].astype(str).str.strip().str.lower()
