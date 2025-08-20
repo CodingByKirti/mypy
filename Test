@@ -1,3 +1,37 @@
+# --- Conditions for billed employees (do not filter out 0 or 1 yet) ---
+cond_billed = d1['Category for Static'].eq('Billed')
+cond_empclass = d1['Employee Class'].eq('Employee')
+
+df_billed = d1[cond_billed & cond_empclass]
+
+# --- Case a: Exact match of FTEs ---
+match_fte = df_billed['Employee FTE'] == df_billed['No. of FTE']
+d1.loc[df_billed[match_fte].index, 'Observation'] = 'Ok'
+
+# --- Case b1: No. of FTE = 1 but mismatch with Employee FTE ---
+cond_b1 = (df_billed['No. of FTE'] == 1) & (df_billed['Employee FTE'] != 1)
+d1.loc[df_billed[cond_b1].index, 'Observation'] = 'Update FTE to 1'
+
+# --- Case b2: Sum(No. of FTE) per PSID = 1 but Employee FTE sum != 1 ---
+fte_group = df_billed.groupby('PSID').agg({
+    'No. of FTE': 'sum',
+    'Employee FTE': 'sum'
+}).reset_index()
+
+problem_psids = fte_group[
+    (fte_group['No. of FTE'] == 1) & (fte_group['Employee FTE'] != 1)
+]['PSID']
+
+cond_b2 = df_billed['PSID'].isin(problem_psids)
+d1.loc[df_billed[cond_b2].index, 'Observation'] = 'Update FTE to 1'
+
+
+
+
+
+
+
+
 ActiveSheet.ChartObjects
 Sub FixLabelPosition()
     Dim s As Series
