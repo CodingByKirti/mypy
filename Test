@@ -1,3 +1,20 @@
+(
+  Sum({
+    < Date = {'$(=vActual)'}, 
+      [Actual /Forecast] = {'Actuals'} 
+  >} [FTE])
+)
++
+(
+  Sum({
+    < Date = {">=$(=Date#('$(vActual)','M/D/YYYY'))<=$(=Date#('1/31/2026','M/D/YYYY'))"},
+      [Actual /Forecast] = {'Forecast'},
+      Type -= {'One-offs'}
+  >} [FTE])
+)
+
+
+
 # --- Conditions for billed employees (do not filter out 0 or 1 yet) ---
 cond_billed = d1['Category for Static'].eq('Billed')
 cond_empclass = d1['Employee Class'].eq('Employee')
