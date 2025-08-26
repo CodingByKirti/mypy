@@ -1,3 +1,31 @@
+import os
+import calendar
+
+# Take user input for year
+year = input("Enter the current year (e.g., 2025): ").strip()
+
+# Create year folder if not exists
+if not os.path.exists(year):
+    os.mkdir(year)
+    print(f"Created folder: {year}")
+else:
+    print(f"Folder '{year}' already exists.")
+
+# Create 12 month folders inside the year folder
+for month in range(1, 13):
+    month_name = calendar.month_abbr[month]  # Jan, Feb, Mar, etc.
+    folder_name = f"{month_name} {year}"
+    folder_path = os.path.join(year, folder_name)
+
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+        print(f"  Created subfolder: {folder_name}")
+    else:
+        print(f"  Subfolder '{folder_name}' already exists.")
+
+print("\n✅ Folder structure setup complete!")
+
+
 (
   Sum({
     < Date = {'$(=vActual)'}, 
