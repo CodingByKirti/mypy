@@ -1,3 +1,6 @@
+=IF(AND([@[BF Level 1]]="FS",OR([@[Employee Type]]="Salaried",[@[Employee Type]]="Contractor")),[@[Position ID]],"")
+
+
 import os
 import calendar
 
