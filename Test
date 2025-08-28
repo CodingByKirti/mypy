@@ -1,3 +1,44 @@
+import os
+import time
+import gc
+
+def cleanup_files(files, retries=5, delay=1):
+    """
+    Safely delete a list of files after making sure they are closed.
+
+    Args:
+        files (list): list of file paths
+        retries (int): how many times to retry if locked
+        delay (int/float): seconds to wait between retries
+    """
+    # cleanup any references still held in memory
+    gc.collect()
+
+    for f in files:
+        deleted = False
+        for attempt in range(retries):
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+                    print(f"✅ Deleted: {f}")
+                deleted = True
+                break
+            except PermissionError:
+                print(f"⚠ {f} in use, retrying {attempt+1}/{retries}...")
+                time.sleep(delay)
+        if not deleted:
+            print(f"❌ Could not delete {f}, still in use.")
+
+
+files_to_delete = [
+    "temp1.xlsx",
+    "temp2.csv",
+    r"C:\Users\...\AppData\Local\Temp\somefile.tmp"
+]
+
+cleanup_files(files_to_delete)
+
+
 =IF(AND([@[BF Level 1]]="FS",OR([@[Employee Type]]="Salaried",[@[Employee Type]]="Contractor")),[@[Position ID]],"")
 
 
