@@ -1,3 +1,27 @@
+import tkinter as tk
+from tkinter import filedialog
+import sys
+
+# Create Tkinter root window (hidden)
+root = tk.Tk()
+root.withdraw()
+root.title("Excel File Selector")
+
+print("=== Excel File Selector ===")
+
+# Ask user to select an Excel file
+file_path = filedialog.askopenfilename(
+    title="Select an Excel File",
+    filetypes=[("Excel Files", "*.xlsx *.xls")]
+)
+
+# Validate selection
+if not file_path:
+    print("No file selected. Program will exit now.")
+    sys.exit(0)
+
+print(f"File selected: {file_path}")
+
 import os
 import time
 import gc
