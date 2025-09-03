@@ -1,27 +1,58 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import sys
 
-# Create Tkinter root window (hidden)
-root = tk.Tk()
-root.withdraw()
-root.title("Excel File Selector")
+def browse_file():
+    """Open file dialog and update entry field"""
+    file_path = filedialog.askopenfilename(
+        title="Select GIRS Excel File",
+        filetypes=[("Excel Files", "*.xlsx *.xls")]
+    )
+    if file_path:
+        entry_var.set(file_path)
 
-print("=== Excel File Selector ===")
+def on_ok():
+    """Check if file is selected and close"""
+    file_path = entry_var.get()
+    if not file_path:
+        messagebox.showwarning("No File", "No file selected. Program will exit now.")
+        root.destroy()
+        sys.exit(0)
+    else:
+        print(f"File selected: {file_path}")
+        root.destroy()
 
-# Ask user to select an Excel file
-file_path = filedialog.askopenfilename(
-    title="Select an Excel File",
-    filetypes=[("Excel Files", "*.xlsx *.xls")]
-)
-
-# Validate selection
-if not file_path:
+def on_cancel():
+    """Exit when user cancels"""
     print("No file selected. Program will exit now.")
+    root.destroy()
     sys.exit(0)
 
-print(f"File selected: {file_path}")
+# Main window
+root = tk.Tk()
+root.title("Excel File Selector")
 
+# Label
+label = tk.Label(root, text="Select GIRS File:")
+label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+# Entry to show file path
+entry_var = tk.StringVar()
+entry = tk.Entry(root, textvariable=entry_var, width=50)
+entry.grid(row=0, column=1, padx=10, pady=10)
+
+# Browse button
+browse_btn = tk.Button(root, text="Browse", command=browse_file)
+browse_btn.grid(row=0, column=2, padx=10, pady=10)
+
+# OK and Cancel buttons
+ok_btn = tk.Button(root, text="OK", width=10, command=on_ok)
+ok_btn.grid(row=1, column=1, sticky="e", pady=10, padx=5)
+
+cancel_btn = tk.Button(root, text="Cancel", width=10, command=on_cancel)
+cancel_btn.grid(row=1, column=2, sticky="w", pady=10, padx=5)
+
+root.mainloop()
 import os
 import time
 import gc
