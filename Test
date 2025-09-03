@@ -1,20 +1,26 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import sys
-import os
 
 def browse_file():
     """Open file dialog and update label with file path"""
+    # create a temporary hidden root for the file dialog
+    temp_root = tk.Tk()
+    temp_root.withdraw()
+    
     file_path = filedialog.askopenfilename(
+        parent=temp_root,
         title="Select GIRS Excel File",
         filetypes=[("Excel Files", "*.xlsx *.xls")]
     )
+    temp_root.destroy()  # cleanly close temp root
+
     if file_path:
         selected_file.set(file_path)
-        file_label.config(fg="blue")  # make it look active
+        file_label.config(fg="blue")
     else:
         selected_file.set("No file selected")
-        file_label.config(fg="red")   # warn user
+        file_label.config(fg="red")
 
 def on_ok():
     """Check if file is selected and close"""
@@ -45,7 +51,7 @@ label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 browse_btn = tk.Button(root, text="Browse", command=browse_file)
 browse_btn.grid(row=0, column=1, padx=10, pady=10)
 
-# Label to show selected file path (default message first)
+# Label to show selected file path
 selected_file = tk.StringVar(value="No file selected")
 file_label = tk.Label(root, textvariable=selected_file, fg="red", wraplength=400, justify="left")
 file_label.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="w")
