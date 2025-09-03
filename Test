@@ -5,6 +5,7 @@ import sys
 def browse_file():
     """Open file dialog and update label with file path"""
     file_path = filedialog.askopenfilename(
+        parent=root,   # tie dialog to main window
         title="Select GIRS Excel File",
         filetypes=[("Excel Files", "*.xlsx *.xls")]
     )
@@ -18,12 +19,12 @@ def on_ok():
         messagebox.showwarning("Warning", "You must select a file.\nIf you want to quit, click Cancel.")
     else:
         print(f"File selected: {file_path}")
-        root.destroy()
+        root.quit()   # stop mainloop safely
 
 def on_cancel():
     """Exit program"""
     print("Program exited. No file selected.")
-    root.destroy()
+    root.quit()
     sys.exit(0)
 
 # Main window
@@ -55,7 +56,15 @@ cancel_btn.grid(row=2, column=2, sticky="w", pady=15, padx=5)
 # Adjust column weights so label expands nicely
 root.grid_columnconfigure(1, weight=1)
 
+# Run app
 root.mainloop()
+
+# After window closes, check final result
+file_path = selected_file.get()
+if file_path and file_path != "No file selected":
+    print("Final file path:", file_path)
+else:
+    print("No file chosen.")
 ====================
 import os
 import time
