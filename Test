@@ -65,6 +65,77 @@ if file_path and file_path != "No file selected":
     print("Final file path:", file_path)
 else:
     print("No file chosen.")
+
+
+
+...............
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import sys
+
+def browse_file():
+    """Open file dialog and update label with file path"""
+    file_path = filedialog.askopenfilename(
+        parent=root,   # tie dialog to main window
+        title="Select GIRS Excel File",
+        filetypes=[("Excel Files", "*.xlsx *.xls")]
+    )
+    if file_path:
+        selected_file.set(file_path)
+
+def on_ok():
+    """Check if file is selected and proceed"""
+    file_path = selected_file.get()
+    if not file_path or file_path == "No file selected":
+        messagebox.showwarning("Warning", "You must select a file.\nIf you want to quit, click Cancel.")
+    else:
+        print(f"File selected: {file_path}")
+        root.quit()   # stop mainloop safely
+
+def on_cancel():
+    """Exit program"""
+    print("Program exited. No file selected.")
+    root.quit()
+    sys.exit(0)
+
+# Main window
+root = tk.Tk()
+root.title("GIRS File Selector")
+
+# === Row 0: Big Title ===
+title_label = tk.Label(root, text="GIRS File Selector", font=("Arial", 16, "bold"))
+title_label.grid(row=0, column=0, columnspan=3, padx=10, pady=15)
+
+# === Row 1: Instruction + File path + Browse button ===
+instr_label = tk.Label(root, text="Select GIRS File:")
+instr_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+
+selected_file = tk.StringVar(value="No file selected")
+file_display = tk.Label(root, textvariable=selected_file, width=50, anchor="w", relief="sunken", bg="white")
+file_display.grid(row=1, column=1, padx=10, pady=10, sticky="we")
+
+browse_btn = tk.Button(root, text="Browse", command=browse_file)
+browse_btn.grid(row=1, column=2, padx=10, pady=10)
+
+# === Row 2: OK and Cancel buttons ===
+ok_btn = tk.Button(root, text="OK", width=12, command=on_ok)
+ok_btn.grid(row=2, column=1, sticky="e", pady=15, padx=5)
+
+cancel_btn = tk.Button(root, text="Cancel", width=12, command=on_cancel)
+cancel_btn.grid(row=2, column=2, sticky="w", pady=15, padx=5)
+
+# Adjust column weights so label expands nicely
+root.grid_columnconfigure(1, weight=1)
+
+# Run app
+root.mainloop()
+
+# After window closes, check final result
+file_path = selected_file.get()
+if file_path and file_path != "No file selected":
+    print("Final file path:", file_path)
+else:
+    print("No file chosen.")
 ====================
 import os
 import time
