@@ -1,3 +1,43 @@
+for suffix in sheet_suffix_order:
+    for sheet in wb.Sheets:
+        if sheet.Name.endswith(suffix):
+            key = sheet.Name.split("_")[0]
+            pivot_table_sheet_name = f"{key}"
+
+            if key in pivot_sheets:
+                pivot_ws = pivot_sheets[key]
+            else:
+                pivot_ws = wb.Worksheets.Add()
+                pivot_ws.Name = pivot_table_sheet_name
+                pivot_sheets[key] = pivot_ws
+
+            last_row = pivot_ws.Cells(pivot_ws.Rows.Count, 1).End(-4162).Row
+            start_cell = pivot_ws.Cells(last_row + 7, 1)
+            pivot_ws.Cells(last_row + 3, 1).Value = str(sheet.Name.split("_")[1])
+            pivot_ws.Cells(last_row + 3, 1).Interior.ColorIndex = 6
+
+            pt_cache = wb.PivotCaches().Create(1, sheet.UsedRange)
+            pivot_table = pivot_ws.PivotTables().Add(pt_cache, start_cell)
+
+            # Configure pivot table fields
+            pivot_table.PivotFields("14").Orientation = 1
+            pivot_table.PivotFields("Account_Mapping").Orientation = 1
+            pivot_table.PivotFields("13").Orientation = 3
+            pivot_table.PivotFields("Category").Orientation = 3
+            pivot_table.PivotFields("Entity").Orientation = 2
+            pivot_table.PivotFields("Year").Orientation = 2
+            pivot_table.PivotFields("Month").Orientation = 2
+            pivot_table.PivotFields("Amount USD").Orientation = 4
+
+            pivot_table.ColumnGrand = True
+            pivot_table.RowGrand = False
+            pivot_table.SubtotalLocation(2)  # bottom
+            pivot_table.RowAxisLayout(1)  # Tabular
+            pivot_table.TableStyle2 = "PivotStyleMedium9"
+
+
+
+
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import sys
