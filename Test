@@ -1,3 +1,21 @@
+orphans = []
+for _, row in enriched.iterrows():
+    emp_id = row[EMP_ID_COL]
+    # skip MDs
+    if row[GCB_COL] == "MD":
+        continue
+    if emp_id not in hierarchy_df[EMP_ID_COL].values and emp_id not in exceptions_df[EMP_ID_COL].values:
+        row_dict = row.to_dict()
+        row_dict["Issue"] = "Not connected to any MD, no missing manager found"
+        orphans.append(row_dict)
+
+orphans_df = pd.DataFrame(orphans)
+
+
+
+
+
+
 for suffix in sheet_suffix_order:
     for sheet in wb.Sheets:
         if sheet.Name.endswith(suffix):
