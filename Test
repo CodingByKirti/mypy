@@ -1,3 +1,39 @@
+def extract_weeks_per_month(df, month_col="Month", weeks_col="Weeks_in_Month"):
+    """
+    Extracts a unique mapping of Month → Weeks_in_Month from the input DataFrame.
+    Removes the weeks column from the main DataFrame to avoid duplication during flattening.
+
+    Parameters:
+    - df (pd.DataFrame): Monthly-level DataFrame with 'Month' and 'Weeks_in_Month'
+    - month_col (str): Name of the month column (e.g., 'Apr-25')
+    - weeks_col (str): Name of the weeks count column
+
+    Returns:
+    - tuple: (cleaned_df, weeks_lookup_df)
+        - cleaned_df: original df without the weeks column
+        - weeks_lookup_df: unique Month → Weeks_in_Month mapping
+    """
+    # Extract unique month-week mapping
+    weeks_lookup = df[[month_col, weeks_col]].drop_duplicates().reset_index(drop=True)
+
+    # Drop weeks column from main df
+    df_cleaned = df.drop(columns=[weeks_col])
+
+    return df_cleaned, weeks_lookup
+
+
+monthly, weeks_lookup = extract_weeks_per_month(monthly)
+
+
+
+
+
+
+
+
+
+
+
 orphans = []
 for _, row in enriched.iterrows():
     emp_id = row[EMP_ID_COL]
