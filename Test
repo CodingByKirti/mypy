@@ -2,6 +2,68 @@
 def calculate_workstyle_compliance(flattened_df, weeks_lookup, month_list, expected_prefix="Expected Workstyle Days", actual_prefix="Days at Any Office"):
     """
     Adds 'Workstyle Met? (Mm-YY)' columns to flattened_df for each month in month_list.
+    Uses updated logic:
+    - Met: 85% to 100%
+    - Partially Met: <85% but >0
+    - Exceeding: >100%
+    - Defaulted: 0
+    """
+    weeks_dict = dict(zip(weeks_lookup["Month"], weeks_lookup["Weeks_in_Month"]))
+
+    for month in month_list:
+        expected_col = f"{expected_prefix} {month}"
+        actual_col = f"{actual_prefix} {month}"
+        status_col = f"Workstyle Met? {month}"
+
+        if expected_col not in flattened_df.columns or actual_col not in flattened_df.columns:
+            continue
+
+        expected_total = flattened_df[expected_col] * weeks_dict.get(month, 0)
+        actual_total = flattened_df[actual_col]
+
+        def get_status(expected, actual):
+            if expected == 0:
+                return "No Expectation"
+            if actual == 0:
+                return "Defaulted"
+            ratio = actual / expected
+            if 0.85 <= ratio <= 1.00:
+                return "Met"
+            elif ratio < 0.85:
+                return "Partially Met"
+            elif ratio > 1.00:
+                return "Exceeding"
+            else:
+                return "Unknown"
+
+        flattened_df[status_col] = [
+            get_status(e, a) for e, a in zip(expected_total, actual_total)
+        ]
+
+    return flattened_df
+
+# after flattening monthly data
+
+
+# Step 1: Get list of months from weeks_lookup
+month_list = weeks_lookup["Month"].tolist()
+
+# Step 2: Call the compliance function
+flattened_df = calculate_workstyle_compliance(
+    flattened_df,
+    weeks_lookup,
+    month_list,
+    expected_prefix="Expected Workstyle Days",
+    actual_prefix="Days at Any Office"
+)
+
+
+
+
+
+def calculate_workstyle_compliance(flattened_df, weeks_lookup, month_list, expected_prefix="Expected Workstyle Days", actual_prefix="Days at Any Office"):
+    """
+    Adds 'Workstyle Met? (Mm-YY)' columns to flattened_df for each month in month_list.
     
     Parameters:
     - flattened_df (pd.DataFrame): Pivoted monthly data with expected and actual office days
