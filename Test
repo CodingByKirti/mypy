@@ -1,3 +1,63 @@
+
+def calculate_workstyle_compliance(flattened_df, weeks_lookup, month_list, expected_prefix="Expected Workstyle Days", actual_prefix="Days at Any Office"):
+    """
+    Adds 'Workstyle Met? (Mm-YY)' columns to flattened_df for each month in month_list.
+    
+    Parameters:
+    - flattened_df (pd.DataFrame): Pivoted monthly data with expected and actual office days
+    - weeks_lookup (pd.DataFrame): DataFrame with columns ['Month', 'Weeks_in_Month']
+    - month_list (list): List of month strings like ['Apr-25', 'May-25']
+    - expected_prefix (str): Prefix for expected workstyle column names
+    - actual_prefix (str): Prefix for actual office days column names
+    
+    Returns:
+    - pd.DataFrame: Updated flattened_df with compliance columns added
+    """
+    # Create a lookup dictionary for weeks per month
+    weeks_dict = dict(zip(weeks_lookup["Month"], weeks_lookup["Weeks_in_Month"]))
+
+    for month in month_list:
+        expected_col = f"{expected_prefix} {month}"
+        actual_col = f"{actual_prefix} {month}"
+        status_col = f"Workstyle Met? {month}"
+
+        if expected_col not in flattened_df.columns or actual_col not in flattened_df.columns:
+            continue  # Skip if required columns are missing
+
+        # Calculate thresholds
+        expected_total = flattened_df[expected_col] * weeks_dict.get(month, 0)
+        actual_total = flattened_df[actual_col]
+
+        def get_status(expected, actual):
+            if expected == 0:
+                return "No Expectation"
+            ratio = actual / expected if expected else 0
+            if actual == 0:
+                return "Defaulted"
+            elif 0.85 <= ratio <= 1.08:
+                return "Met"
+            elif ratio < 0.85:
+                return "Partially Met"
+            elif ratio > 1.08:
+                return "Exceeding"
+            else:
+                return "Unknown"
+
+        flattened_df[status_col] = [
+            get_status(e, a) for e, a in zip(expected_total, actual_total)
+        ]
+
+    return flattened_df
+
+
+#after flatenning
+month_list = weeks_lookup["Month"].tolist()
+flattened_df = calculate_workstyle_compliance(flattened_df, weeks_lookup, month_list)
+
+
+
+
+
 def extract_weeks_lookup_table(df, month_col="Month", weeks_col="Weeks_in_Month"):
     """
     Extracts a unique Month → Weeks_in_Month mapping from the monthly DataFrame.
