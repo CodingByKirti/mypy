@@ -1,3 +1,25 @@
+def extract_weeks_lookup_table(df, month_col="Month", weeks_col="Weeks_in_Month"):
+    """
+    Extracts a unique Month → Weeks_in_Month mapping from the monthly DataFrame.
+
+    Parameters:
+    - df (pd.DataFrame): Monthly-level DataFrame with 'Month' and 'Weeks_in_Month'
+    - month_col (str): Name of the month column (e.g., 'Apr-25')
+    - weeks_col (str): Name of the weeks count column
+
+    Returns:
+    - weeks_lookup_df (pd.DataFrame): Unique Month → Weeks_in_Month mapping
+    """
+    return df[[month_col, weeks_col]].drop_duplicates().reset_index(drop=True)
+
+
+weeks_lookup = extract_weeks_lookup_table(monthly)
+monthly = monthly.drop(columns=["Weeks_in_Month"])
+
+
+
+
+
 def extract_weeks_per_month(df, month_col="Month", weeks_col="Weeks_in_Month"):
     """
     Extracts a unique mapping of Month → Weeks_in_Month from the input DataFrame.
