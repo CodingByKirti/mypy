@@ -1,3 +1,12 @@
+import pyautogui
+import time
+
+while True:
+    pyautogui.moveRel(0, 1, duration=0.1)  # Move mouse slightly
+    pyautogui.moveRel(0, -1, duration=0.1)
+    time.sleep(300)  # Wait 5 minutes
+
+
 
 def calculate_workstyle_compliance(flattened_df, weeks_lookup, month_list, expected_prefix="Expected Workstyle Days", actual_prefix="Days at Any Office"):
     """
