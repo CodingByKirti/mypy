@@ -1,3 +1,19 @@
+Sum({
+    <Date = {"$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
+}[FTE]) +
+
+Sum({
+    <Date = {">=$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
+}[FTE]) +
+
+Sum({
+    <Date = {"=$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
+}[FTE]) +
+
+Sum({
+    <Date = {">$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
+}[FTE])
+
 import ctypes
 import time
 
