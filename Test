@@ -1,15 +1,9 @@
 Sum({
-    <Date = {"$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
+    <Date = {"<=$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
 }[FTE]) +
-
-Sum({
-    <Date = {">=$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
-}[FTE]) +
-
 Sum({
     <Date = {"=$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
 }[FTE]) +
-
 Sum({
     <Date = {">$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
 }[FTE])
