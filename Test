@@ -1,4 +1,8 @@
-def format_outdf_to_text(out_df, level4_name="Vikram Sarma"):
+import pandas as pd
+import win32com.client
+
+# Function 1: Export indented hierarchy to Excel
+def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_name="Vikram Sarma"):
     lines = [level4_name]  # Level 4 header
 
     # Group by Level 5
@@ -15,10 +19,16 @@ def format_outdf_to_text(out_df, level4_name="Vikram Sarma"):
                 # Add count as a separate indented line (pseudo-Level 7)
                 lines.append(f"            Reports: {count}")
 
-    return "\n".join(lines)
-import win32com.client
+    # Save to Excel
+    df_out = pd.DataFrame({"Hierarchy": lines})
+    df_out.to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to {excel_path}")
 
-def write_lines_to_ppt(lines, ppt_path="OrgChart_Vikram.pptx"):
+    return lines  # return lines for reuse
+
+
+# Function 2: Write indented hierarchy into PowerPoint
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Vikram.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
@@ -27,15 +37,17 @@ def write_lines_to_ppt(lines, ppt_path="OrgChart_Vikram.pptx"):
     textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
     tr = textbox.TextFrame.TextRange
 
-    # Join all lines into one string with proper newlines
+    # Join all lines with carriage returns (PowerPoint expects \r)
     text_content = "\r".join(lines)
     tr.Text = text_content
 
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
+# Assuming you already built out_df with Vikram’s subtree
+lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", "Vikram Sarma")
 
-
-
+# Write same lines into PPT
+write_indented_to_ppt(lines, "OrgChart_Vikram.pptx")
 ;;;;;;;;;
 
 def format_lines_from_outdf(out_df, level4_name="Vikram Sarma"):
