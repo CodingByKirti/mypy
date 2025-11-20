@@ -1,127 +1,84 @@
-Here is the updated email **including the line about the code taking a name as input and generating that person’s org structure**, written professionally and suitable for a senior leader:
-
----
-
-### **Email Draft (Final Version)**
-
-**Subject:** Sample Org Chart – Proof of Concept for Vikram Sarma’s Organisation
-
-Hi [Name],
-
-I’m sharing a sample organisational chart prepared as a proof of concept for Vikram Sarma’s area. The underlying hierarchy has been generated using a Python script based on the Anaplan LBL extract.
-The script takes a name as input and automatically builds the full org structure for that individual.
-
-The attached deck includes the raw Python-generated structure along with two PowerPoint views created for better interpretation.
-
-Please share any feedback or suggestions—happy to refine further or explore additional possibilities based on feasibility.
-
-Thanks & Regards,
-**Kirti**
-
----
-
-If you want, I can also include a one-line “Next Steps” or make it slightly more formal.
 
 
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
 
-Here is a polished email version that matches **exactly** what you described, keeping it senior-friendly and concise.
-I also clearly separate what should go in the **email** vs **what should go inside the slides**.
+# Step 1: Read Excel
+df = pd.read_excel("org_data.xlsx")
+df["Employee Name"] = df["Employee Name"].str.strip()
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].str.strip()
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
 
----
+# Step 2: Traverse Level 5/6
+output_rows = []
 
-## **Email Draft (Professional & Senior-Friendly)**
+def traverse_level5(level4_id, level4_name):
+    level5_reports = df[df["Functional Manager Employee ID"] == level4_id]
+    for _, l5 in level5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        l5_name = l5["Employee Name"]
 
-**Subject:** Sample Org Chart – Proof of Concept for Vikram Sarma’s Organisation
+        level6_reports = df[df["Functional Manager Employee ID"] == l5_id]
+        if level6_reports.empty:
+            output_rows.append([level4_name, l5_name, "", 0])
+        else:
+            for _, l6 in level6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                l6_name = l6["Employee Name"]
+                count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+                output_rows.append([level4_name, l5_name, l6_name, count])
 
-Hi [Name],
+# Step 3: Export indented hierarchy
+def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_name="Manager"):
+    lines = [level4_name]
+    for l5_name, group in out_df.groupby("Level 5 Employee"):
+        lines.append(f"\t{l5_name}")
+        for _, row in group.iterrows():
+            l6_name = row["Level 6 Employee"]
+            count = row["Count of Direct Reports"]
+            if l6_name:
+                lines.append(f"\t\t{l6_name}")
+                lines.append(f"\t\t\tReports: {count}")
+    df_out = pd.DataFrame({"Hierarchy": lines})
+    df_out.to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to {excel_path}")
+    return lines
 
-I’m sharing a sample organisational chart prepared as a proof of concept for Vikram Sarma’s area. The underlying data was generated using a Python script based on the Anaplan LBL extract.
+# Step 4: Write to PowerPoint
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    text_content = "\r".join(lines)
+    tr.Text = text_content
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
 
-The deck includes the raw Python-generated structure, along with two visual representations created in PowerPoint for easier interpretation.
+# Step 5: GUI to get manager name
+root = tk.Tk()
+root.withdraw()  # hide main window
+manager_name = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Name:")
 
-Please share any feedback or suggestions—happy to refine or explore full automation if required.
+if manager_name:
+    try:
+        manager_id = df.loc[df["Employee Name"] == manager_name, "Employee ID"].iloc[0]
+        traverse_level5(manager_id, manager_name)
+        out_df = pd.DataFrame(output_rows, columns=["Level 4 Manager","Level 5 Employee","Level 6 Employee","Count of Direct Reports"])
+        out_df.to_excel("OrgChart_Flat.xlsx", index=False)
 
-Thanks & Regards,
-**Kirti**
-
----
-
-## **What to include in the slides (not in the email)**
-
-### **Slide 1 – Full Org View (Manual PPT Diagram)**
-
-* Org chart created directly from the full dataset
-* Converted to PPT using PowerPoint’s hierarchy tool (2-click process)
-* Shows complete structure without modifications
-
-### **Slide 2 – Sample / Truncated View**
-
-* A simplified version for better readability
-* Some names removed only for sample presentation
-* Helps show how the final output could look
-
-### **Slide 3 – Python Output**
-
-* Raw hierarchical data generated via Python
-* Pulled from Anaplan LBL Extract
-* This data is what feeds the org chart
-* Note: Org chart currently created manually in PPT; can be automated via Python if needed
-
----
-
-If you want, I can also draft the exact text for each slide or refine the email tone (more formal, more crisp, or more detailed).
+        lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", manager_name)
+        write_indented_to_ppt(lines, f"OrgChart_{manager_name.replace(' ','_')}.pptx")
+    except IndexError:
+        print(f"Manager '{manager_name}' not found in data.")
 
 
-
-Below is clean, crisp, senior-friendly **slide text** you can directly paste into your PPT.
-
----
-
-# **Slide 1 – Full Org View (Complete Structure)**
-
-**Title:** *Full Organisational Chart – Vikram Sarma’s Area*
-
-**Body Text:**
-
-* This chart represents the complete organisational structure.
-* Diagram generated in PowerPoint using the full dataset.
-* No modifications or name removals have been made.
-* This view demonstrates how the final hierarchy appears end-to-end.
-
----
-
-# **Slide 2 – Sample / Truncated View**
-
-**Title:** *Sample View – Simplified for Readability*
-
-**Body Text:**
-
-* This is a truncated version created only for sample presentation.
-* A few names have been removed to improve visibility.
-* Intended to showcase how the chart can be represented in a cleaner, more readable format.
-* Final output can be customised based on preferred layout or depth level.
-
----
-
-# **Slide 3 – Python-Generated Structure (Source Data)**
-
-**Title:** *Python Output – Data Extract from Anaplan (LBL)*
-
-**Body Text:**
-
-* The hierarchical data shown here is generated using a Python script.
-* Source: Anaplan LBL Extract.
-* This output forms the basis for the org chart visuals.
-* Current process: converting this data into the PowerPoint diagram manually (two-click method).
-* Can be further automated to generate diagrams directly via Python if required.
-
----
-
-If you want, I can also craft short footnotes, slide titles in alternate styles, or a final slide with “Next Steps / Recommendations.”
-
-You said:
-exact text for ppt
-
+:::::::::::::::::::::::
 
 
 def format_full_hierarchy_with_tabs(df):
