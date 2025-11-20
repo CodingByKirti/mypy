@@ -1,71 +1,34 @@
 import win32com.client
+import win32com.client
 
-def create_org_chart_win32(data, ppt_path="OrgChart_SmartArt.pptx"):
-    """
-    Create a SmartArt Org Chart in PowerPoint using win32com.client.
-    
-    Parameters
-    ----------
-    data : dict
-        Nested dictionary representing hierarchy.
-        Example:
-        {
-            "GE": {
-                "PK": {
-                    "Abhishek Jain": {
-                        "Vikram Sarma": {
-                            "L5 Person A": {
-                                "L6 Person A1 (Reports: 2)": {},
-                                "L6 Person A2 (Reports: 1)": {}
-                            },
-                            "L5 Person B": {
-                                "L6 Person B1 (Reports: 1)": {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    ppt_path : str
-        Path to save the PowerPoint file.
-    """
-
-    # Launch PowerPoint
+def create_org_chart_win32(hierarchy, ppt_path="OrgChart_SmartArt.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)  # blank layout
 
-    # Add a blank slide
-    slide = pres.Slides.Add(1, 12)  # 12 = ppLayoutBlank
-
-    # Add SmartArt (Org Chart)
-    # Layout ID 1 = Hierarchy (Org Chart)
+    # Add SmartArt (Org Chart layout)
     smart_art = slide.Shapes.AddSmartArt(
         Layout=1,  # Hierarchy layout
         Left=50, Top=50, Width=600, Height=400
     )
 
-    # Access SmartArt nodes
-    nodes = smart_art.SmartArt.AllNodes
+    root_node = smart_art.SmartArt.AllNodes.Item(1)
+    root_node.TextFrame2.TextRange.Text = list(hierarchy.keys())[0]
 
     def add_nodes(parent_node, children_dict):
+        if not isinstance(children_dict, dict):
+            return
         for name, sub in children_dict.items():
             new_node = parent_node.AddNode()
-            new_node.TextFrame2.TextRange.Text = name
-            if isinstance(sub, dict) and sub:
-                add_nodes(new_node, sub)
+            new_node.TextFrame2.TextRange.Text = str(name)
+            add_nodes(new_node, sub)
 
-    # Root node
-    root = nodes.Item(1)
-    root.TextFrame2.TextRange.Text = list(data.keys())[0]
+    # Traverse your hierarchy dict
+    add_nodes(root_node, list(hierarchy.values())[0])
 
-    # Add children recursively
-    add_nodes(root, list(data.values())[0])
-
-    # Save
     pres.SaveAs(ppt_path)
     print(f"Org chart saved to {ppt_path}")
-
 -----------------------------
 
 import pandas as pd
