@@ -16,7 +16,27 @@ def format_outdf_to_text(out_df, level4_name="Vikram Sarma"):
                 lines.append(f"            Reports: {count}")
 
     return "\n".join(lines)
+import win32com.client
 
+def write_lines_to_ppt(lines, ppt_path="OrgChart_Vikram.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)  # blank layout
+
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+
+    # Join all lines into one string with proper newlines
+    text_content = "\r".join(lines)
+    tr.Text = text_content
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+
+
+
+;;;;;;;;;
 
 def format_lines_from_outdf(out_df, level4_name="Vikram Sarma"):
     lines = [level4_name]  # Level 4 header
