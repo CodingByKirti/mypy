@@ -1,3 +1,77 @@
+def format_vikram_lines(df):
+    lines = []
+
+    # Resolve Vikram ID
+    vikram_id = df.loc[df["Employee Name"] == "Vikram Sarma", "Employee ID"].iloc[0]
+    lines.append("Vikram Sarma")  # Level 4 title line
+
+    # Level 5 under Vikram
+    l5_reports = df[df["Functional Manager Employee ID"] == vikram_id].copy()
+
+    # Ensure stable ordering (optional)
+    l5_reports = l5_reports.sort_values(by=["Employee Name"])
+
+    for _, l5 in l5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        l5_name = l5["Employee Name"]
+        lines.append(f"    {l5_name}")  # indent one level (Level 5)
+
+        # Level 6 under this L5
+        l6_reports = df[df["Functional Manager Employee ID"] == l5_id].copy().sort_values(by=["Employee Name"])
+
+        if l6_reports.empty:
+            # No Level 6 → just show L5 as a leaf; no counts needed at L5
+            continue
+
+        for _, l6 in l6_reports.iterrows():
+            l6_id = l6["Employee ID"]
+            l6_name = l6["Employee Name"]
+
+            # Count direct reports under Level 6 (Level 7)
+            l7_count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+
+            # Only show counts for below Level 6
+            lines.append(f"        {l6_name} (Reports: {l7_count})")
+
+    return lines
+
+import win32com.client
+
+def write_indented_lines_to_ppt(lines, ppt_path="VikramOrgChart_Indented.pptx",
+                                left=50, top=50, width=600, height=400):
+    # Launch PowerPoint
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)  # 12 = ppLayoutBlank
+
+    # Add textbox (Orientation: 1 = msoTextOrientationHorizontal)
+    textbox = slide.Shapes.AddTextbox(1, left, top, width, height)
+    tr = textbox.TextFrame.TextRange
+
+    # Clear any default content
+    tr.Text = ""
+
+    # Insert lines safely, one by one (pass only strings to COM)
+    for i, line in enumerate(lines):
+        if i == 0:
+            tr.Text = line
+        else:
+            tr.InsertAfter("\r" + line)
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+
+
+# 1) Build the lines for Vikram's subtree
+lines = format_vikram_lines(df)
+
+# 2) Write them to PPT
+write_indented_lines_to_ppt(lines, ppt_path="VikramOrgChart_Indented.pptx")
+
+
+
+**********************
 import win32com.client
 import win32com.client
 
