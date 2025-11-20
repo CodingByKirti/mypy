@@ -1,3 +1,73 @@
+import win32com.client
+
+def create_org_chart_win32(data, ppt_path="OrgChart_SmartArt.pptx"):
+    """
+    Create a SmartArt Org Chart in PowerPoint using win32com.client.
+    
+    Parameters
+    ----------
+    data : dict
+        Nested dictionary representing hierarchy.
+        Example:
+        {
+            "GE": {
+                "PK": {
+                    "Abhishek Jain": {
+                        "Vikram Sarma": {
+                            "L5 Person A": {
+                                "L6 Person A1 (Reports: 2)": {},
+                                "L6 Person A2 (Reports: 1)": {}
+                            },
+                            "L5 Person B": {
+                                "L6 Person B1 (Reports: 1)": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ppt_path : str
+        Path to save the PowerPoint file.
+    """
+
+    # Launch PowerPoint
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    # Add a blank slide
+    slide = pres.Slides.Add(1, 12)  # 12 = ppLayoutBlank
+
+    # Add SmartArt (Org Chart)
+    # Layout ID 1 = Hierarchy (Org Chart)
+    smart_art = slide.Shapes.AddSmartArt(
+        Layout=1,  # Hierarchy layout
+        Left=50, Top=50, Width=600, Height=400
+    )
+
+    # Access SmartArt nodes
+    nodes = smart_art.SmartArt.AllNodes
+
+    def add_nodes(parent_node, children_dict):
+        for name, sub in children_dict.items():
+            new_node = parent_node.AddNode()
+            new_node.TextFrame2.TextRange.Text = name
+            if isinstance(sub, dict) and sub:
+                add_nodes(new_node, sub)
+
+    # Root node
+    root = nodes.Item(1)
+    root.TextFrame2.TextRange.Text = list(data.keys())[0]
+
+    # Add children recursively
+    add_nodes(root, list(data.values())[0])
+
+    # Save
+    pres.SaveAs(ppt_path)
+    print(f"Org chart saved to {ppt_path}")
+
+-----------------------------
+
 import pandas as pd
 from pptx import Presentation
 from pptx.util import Inches
