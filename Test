@@ -3,37 +3,13 @@ from pptx import Presentation
 from pptx.util import Inches
 from pptx import Presentation
 from pptx.util import Inches, Pt
+from pptx import Presentation
+from pptx.util import Inches, Pt
 
 def create_org_chart_slide(hierarchy, ppt_path="OrgChart_POC.pptx", title="Organisation Chart"):
     """
     Creates a PowerPoint file with a single slide showing an org chart hierarchy.
-    
-    Parameters:
-    -----------
-    hierarchy : dict
-        Nested dictionary representing the org chart.
-        Example:
-        {
-            "GE": {
-                "PK": {
-                    "Abhishek Jain": {
-                        "Vikram Sarma": {
-                            "L5 Person A": {
-                                "L6 Person A1 (Reports: 2)": {},
-                                "L6 Person A2 (Reports: 1)": {}
-                            },
-                            "L5 Person B": {
-                                "L6 Person B1 (Reports: 1)": {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    ppt_path : str
-        Path to save the PowerPoint file.
-    title : str
-        Title text for the slide.
+    Accepts a nested structure where leaf nodes can be dict, list, str, int, or None.
     """
 
     prs = Presentation()
@@ -42,18 +18,43 @@ def create_org_chart_slide(hierarchy, ppt_path="OrgChart_POC.pptx", title="Organ
     tf = txBox.text_frame
     tf.text = title
 
-    def write_level(h, indent=0):
-        for k, v in h.items():
-            p = tf.add_paragraph()
-            p.text = ("    " * indent) + str(k)
-            p.font.size = Pt(14)
-            write_level(v, indent+1)
+    def add_line(text, indent):
+        p = tf.add_paragraph()
+        p.text = ("    " * indent) + str(text)
+        p.font.size = Pt(14)
 
-    write_level(hierarchy)
+    def write_level(node, indent=0, label=None):
+        # Print the label for this node if provided
+        if label is not None:
+            add_line(label, indent)
+
+        # Dict: recurse over key/value pairs
+        if isinstance(node, dict):
+            for k, v in node.items():
+                write_level(v, indent + 1, k)
+
+        # List/tuple: each element is a child
+        elif isinstance(node, (list, tuple)):
+            for i, child in enumerate(node, start=1):
+                # If child is a primitive, label it; otherwise recurse
+                if isinstance(child, (dict, list, tuple)):
+                    write_level(child, indent + 1, f"Item {i}")
+                else:
+                    add_line(child, indent + 1)
+
+        # Primitive leaf: int/str/float/bool/None
+        else:
+            if label is None:
+                # If no label, just print the primitive
+                add_line(node, indent)
+            # If label already printed, nothing more to do
+
+    # Normalize top-level: if not dict, wrap as {"Root": hierarchy}
+    top = hierarchy if isinstance(hierarchy, dict) else {"Root": hierarchy}
+    write_level(top, indent=0)
+
     prs.save(ppt_path)
     print(f"Org chart saved to {ppt_path}")
-
-
 # Step 1: Read Excel
 df = pd.read_excel("org_data.xlsx")
 import pandas as pd
