@@ -1,6 +1,58 @@
 import pandas as pd
 from pptx import Presentation
 from pptx.util import Inches
+from pptx import Presentation
+from pptx.util import Inches, Pt
+
+def create_org_chart_slide(hierarchy, ppt_path="OrgChart_POC.pptx", title="Organisation Chart"):
+    """
+    Creates a PowerPoint file with a single slide showing an org chart hierarchy.
+    
+    Parameters:
+    -----------
+    hierarchy : dict
+        Nested dictionary representing the org chart.
+        Example:
+        {
+            "GE": {
+                "PK": {
+                    "Abhishek Jain": {
+                        "Vikram Sarma": {
+                            "L5 Person A": {
+                                "L6 Person A1 (Reports: 2)": {},
+                                "L6 Person A2 (Reports: 1)": {}
+                            },
+                            "L5 Person B": {
+                                "L6 Person B1 (Reports: 1)": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ppt_path : str
+        Path to save the PowerPoint file.
+    title : str
+        Title text for the slide.
+    """
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(9), Inches(6))
+    tf = txBox.text_frame
+    tf.text = title
+
+    def write_level(h, indent=0):
+        for k, v in h.items():
+            p = tf.add_paragraph()
+            p.text = ("    " * indent) + str(k)
+            p.font.size = Pt(14)
+            write_level(v, indent+1)
+
+    write_level(hierarchy)
+    prs.save(ppt_path)
+    print(f"Org chart saved to {ppt_path}")
+
 
 # Step 1: Read Excel
 df = pd.read_excel("org_data.xlsx")
