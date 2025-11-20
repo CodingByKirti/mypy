@@ -1,3 +1,23 @@
+def format_outdf_to_text(out_df, level4_name="Vikram Sarma"):
+    lines = [level4_name]  # Level 4 header
+
+    # Group by Level 5
+    for l5_name, group in out_df.groupby("Level 5 Employee"):
+        lines.append(f"    {l5_name}")  # indent for Level 5
+
+        for _, row in group.iterrows():
+            l6_name = row["Level 6 Employee"]
+            count = row["Count of Direct Reports"]
+
+            if l6_name:  # non-empty
+                # Add Level 6 name
+                lines.append(f"        {l6_name}")
+                # Add count as a separate indented line (pseudo-Level 7)
+                lines.append(f"            Reports: {count}")
+
+    return "\n".join(lines)
+
+
 def format_lines_from_outdf(out_df, level4_name="Vikram Sarma"):
     lines = [level4_name]  # Level 4 header
 
