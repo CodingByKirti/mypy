@@ -4,6 +4,21 @@ from pptx.util import Inches
 
 # Step 1: Read Excel
 df = pd.read_excel("org_data.xlsx")
+import pandas as pd
+
+# Read Excel
+df = pd.read_excel("org_data.xlsx")
+
+# Strip spaces from names (optional but recommended)
+df["Employee Name"] = df["Employee Name"].str.strip()
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].str.strip()
+
+# Convert IDs to integers (handle NaN safely)
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+
+# Now both columns are Int64 dtype (nullable integer)
+print(df.dtypes)
 
 # Step 2: Recursive function to build hierarchy
 def build_hierarchy(manager_id, level, max_level=6):
