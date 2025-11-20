@@ -55,6 +55,27 @@ root_hierarchy = {
     }
 }
 
+output_rows = []
+
+def traverse(manager_id, manager_name, level):
+    reports = df[df["Functional Manager Employee ID"] == manager_id]
+    for _, row in reports.iterrows():
+        emp_id = row["Employee ID"]
+        emp_name = row["Employee Name"]
+
+        if level == 6:
+            count = df[df["Functional Manager Employee ID"] == emp_id].shape[0]
+            output_rows.append([manager_name, row["Functional Manager Employee Name"], emp_name, count])
+        else:
+            traverse(emp_id, emp_name, level+1)
+
+# Example: start from Vikram Sarma (Level 4)
+vikram_id = df.loc[df["Employee Name"]=="Vikram Sarma","Employee ID"].iloc[0]
+traverse(vikram_id, "Vikram Sarma", 5)
+
+# Convert to DataFrame for Excel
+out_df = pd.DataFrame(output_rows, columns=["Level 4 Manager","Level 5 Employee","Level 6 Employee","Count of Direct Reports"])
+out_df.to_excel("OrgChart_Flat.xlsx", index=False)
 # Step 4: Create PPT
 prs = Presentation()
 slide = prs.slides.add_slide(prs.slide_layouts[5])
