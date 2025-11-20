@@ -1,35 +1,53 @@
-Here is the **combined, polished email** with your new point added smoothly and professionally:
+import pandas as pd
+from pptx import Presentation
+from pptx.util import Inches
 
----
+# Step 1: Read Excel
+df = pd.read_excel("org_data.xlsx")
 
-Hi Team,
+# Step 2: Recursive function to build hierarchy
+def build_hierarchy(manager_id, level, max_level=6):
+    if level > max_level:
+        return None
+    
+    reports = df[df["Functional Manager Employee ID"] == manager_id]
+    hierarchy = {}
+    
+    for _, row in reports.iterrows():
+        emp_id = row["Employee ID"]
+        emp_name = row["Employee Name"]
+        
+        if level == max_level:
+            # Count direct reports instead of expanding
+            count = df[df["Functional Manager Employee ID"] == emp_id].shape[0]
+            hierarchy[emp_name] = {"count": count}
+        else:
+            hierarchy[emp_name] = build_hierarchy(emp_id, level+1, max_level)
+    
+    return hierarchy
 
-While downloading this month’s weekly report (based on 17 Nov data), we noticed that the dataset structure has changed compared to previous months. Several new columns have appeared (e.g., *Workstyle Met (days at any office), Max. Enabled Workstyle, Max. Submitted Workstyle, Max. Week*), while some earlier fields such as *Employee Category, Employee Status,* and *BF Levels 2–5* are no longer present. Additionally, *Days at Contracted Office* now appears as *Days at Home Office* — please confirm if this is the same field renamed.
+# Step 3: Build starting hierarchy
+root_hierarchy = {
+    "GE": {
+        "PK": {
+            "Abhishek Jain": {
+                "Vikram Sarma": build_hierarchy(
+                    manager_id=df.loc[df["Employee Name"]=="Vikram Sarma","Employee ID"].iloc[0],
+                    level=5
+                )
+            }
+        }
+    }
+}
 
-Could you please help us understand the relevance and definitions of these new columns, and whether further structural changes are expected in upcoming weekly/monthly downloads? This will help us align and adjust our automation code accordingly.
+# Step 4: Create PPT
+prs = Presentation()
+slide = prs.slides.add_slide(prs.slide_layouts[5])
+txBox = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(5))
+tf = txBox.text_frame
+tf.text = str(root_hierarchy)  # For POC, just dump hierarchy text
+prs.save("OrgChart_POC.pptx")
 
-Also, thank you for sending the data we had requested earlier — we appreciate your prompt support. We will now explore and analyze the current dataset, and if we require more data or additional months, we will let you know.
-
-Thank you for your guidance.
-
----
-
-If you want, I can also make the email more formal, concise, or add section headers.
-
-
-
-
-
-
-Sum({
-    <Date = {"<=$(=vActual)"}, [Actual /Forecast] = {'Actuals'}>
-}[FTE]) +
-Sum({
-    <Date = {"=$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
-}[FTE]) +
-Sum({
-    <Date = {">$(=vActual)"}, [Actual /Forecast] = {'Forecast'}, Type -= {'One-offs'}>
-}[FTE])
 
 import ctypes
 import time
