@@ -1,3 +1,52 @@
+Here is a polished email version that matches **exactly** what you described, keeping it senior-friendly and concise.
+I also clearly separate what should go in the **email** vs **what should go inside the slides**.
+
+---
+
+## **Email Draft (Professional & Senior-Friendly)**
+
+**Subject:** Sample Org Chart – Proof of Concept for Vikram Sarma’s Organisation
+
+Hi [Name],
+
+I’m sharing a sample organisational chart prepared as a proof of concept for Vikram Sarma’s area. The underlying data was generated using a Python script based on the Anaplan LBL extract.
+
+The deck includes the raw Python-generated structure, along with two visual representations created in PowerPoint for easier interpretation.
+
+Please share any feedback or suggestions—happy to refine or explore full automation if required.
+
+Thanks & Regards,
+**Kirti**
+
+---
+
+## **What to include in the slides (not in the email)**
+
+### **Slide 1 – Full Org View (Manual PPT Diagram)**
+
+* Org chart created directly from the full dataset
+* Converted to PPT using PowerPoint’s hierarchy tool (2-click process)
+* Shows complete structure without modifications
+
+### **Slide 2 – Sample / Truncated View**
+
+* A simplified version for better readability
+* Some names removed only for sample presentation
+* Helps show how the final output could look
+
+### **Slide 3 – Python Output**
+
+* Raw hierarchical data generated via Python
+* Pulled from Anaplan LBL Extract
+* This data is what feeds the org chart
+* Note: Org chart currently created manually in PPT; can be automated via Python if needed
+
+---
+
+If you want, I can also draft the exact text for each slide or refine the email tone (more formal, more crisp, or more detailed).
+
+
+
 Below is clean, crisp, senior-friendly **slide text** you can directly paste into your PPT.
 
 ---
