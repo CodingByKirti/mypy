@@ -1,34 +1,49 @@
 import win32com.client
 import win32com.client
 
-def create_org_chart_win32(hierarchy, ppt_path="OrgChart_SmartArt.pptx"):
+import win32com.client
+
+def vikram_org_chart(df, ppt_path="VikramOrgChart.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
     slide = pres.Slides.Add(1, 12)  # blank layout
 
-    # Add SmartArt (Org Chart layout)
-    smart_art = slide.Shapes.AddSmartArt(
-        Layout=1,  # Hierarchy layout
-        Left=50, Top=50, Width=600, Height=400
-    )
+    # Add a text box
+    textbox = slide.Shapes.AddTextbox(Orientation=1, Left=50, Top=50, Width=600, Height=400)
+    tf = textbox.TextFrame.TextRange
 
-    root_node = smart_art.SmartArt.AllNodes.Item(1)
-    root_node.TextFrame2.TextRange.Text = list(hierarchy.keys())[0]
+    def write_level(node, indent=0):
+        for name, sub in node.items():
+            tf.InsertAfter(("    " * indent) + str(name) + "\r")
+            if isinstance(sub, dict):
+                write_level(sub, indent+1)
 
-    def add_nodes(parent_node, children_dict):
-        if not isinstance(children_dict, dict):
-            return
-        for name, sub in children_dict.items():
-            new_node = parent_node.AddNode()
-            new_node.TextFrame2.TextRange.Text = str(name)
-            add_nodes(new_node, sub)
+    # Build Vikram’s subtree
+    vikram_id = df.loc[df["Employee Name"]=="Vikram Sarma","Employee ID"].iloc[0]
 
-    # Traverse your hierarchy dict
-    add_nodes(root_node, list(hierarchy.values())[0])
+    def build_hierarchy(manager_id, level, max_level=6):
+        if level > max_level:
+            return {}
+        reports = df[df["Functional Manager Employee ID"] == manager_id]
+        hierarchy = {}
+        for _, row in reports.iterrows():
+            emp_id = row["Employee ID"]
+            emp_name = row["Employee Name"]
+            if level == max_level:
+                count = df[df["Functional Manager Employee ID"] == emp_id].shape[0]
+                hierarchy[f"{emp_name} (Reports: {count})"] = {}
+            else:
+                hierarchy[emp_name] = build_hierarchy(emp_id, level+1, max_level)
+        return hierarchy
+
+    vikram_hierarchy = {"Vikram Sarma": build_hierarchy(vikram_id, 5)}
+
+    # Write indented text into PPT
+    write_level(vikram_hierarchy)
 
     pres.SaveAs(ppt_path)
-    print(f"Org chart saved to {ppt_path}")
+    print(f"Indented org chart for Vikram saved to {ppt_path}")
 -----------------------------
 
 import pandas as pd
