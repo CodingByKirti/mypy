@@ -1,3 +1,29 @@
+Here is the updated email **including the line about the code taking a name as input and generating that person’s org structure**, written professionally and suitable for a senior leader:
+
+---
+
+### **Email Draft (Final Version)**
+
+**Subject:** Sample Org Chart – Proof of Concept for Vikram Sarma’s Organisation
+
+Hi [Name],
+
+I’m sharing a sample organisational chart prepared as a proof of concept for Vikram Sarma’s area. The underlying hierarchy has been generated using a Python script based on the Anaplan LBL extract.
+The script takes a name as input and automatically builds the full org structure for that individual.
+
+The attached deck includes the raw Python-generated structure along with two PowerPoint views created for better interpretation.
+
+Please share any feedback or suggestions—happy to refine further or explore additional possibilities based on feasibility.
+
+Thanks & Regards,
+**Kirti**
+
+---
+
+If you want, I can also include a one-line “Next Steps” or make it slightly more formal.
+
+
+
 Here is a polished email version that matches **exactly** what you described, keeping it senior-friendly and concise.
 I also clearly separate what should go in the **email** vs **what should go inside the slides**.
 
