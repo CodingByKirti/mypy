@@ -1,3 +1,46 @@
+def format_full_hierarchy_with_tabs(df):
+    lines = []
+
+    # Level 1 (GE)
+    ge_id = df.loc[df["Employee Name"]=="GE","Employee ID"].iloc[0]
+    lines.append("GE")
+
+    # Level 2 (PK under GE)
+    pk_id = df.loc[df["Employee Name"]=="PK","Employee ID"].iloc[0]
+    lines.append("\tPK")
+
+    # Level 3 (Abhishek Jain under PK)
+    aj_id = df.loc[df["Employee Name"]=="Abhishek Jain","Employee ID"].iloc[0]
+    lines.append("\t\tAbhishek Jain")
+
+    # Level 4 (Vikram Sarma under Abhishek Jain)
+    vikram_id = df.loc[df["Employee Name"]=="Vikram Sarma","Employee ID"].iloc[0]
+    lines.append("\t\t\tVikram Sarma")
+
+    # Level 5 employees under Vikram
+    l5_reports = df[df["Functional Manager Employee ID"] == vikram_id].sort_values("Employee Name")
+    for _, l5 in l5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        l5_name = l5["Employee Name"]
+        lines.append(f"\t\t\t\t{l5_name}")  # 4 tabs
+
+        # Level 6 employees under this L5
+        l6_reports = df[df["Functional Manager Employee ID"] == l5_id].sort_values("Employee Name")
+        for _, l6 in l6_reports.iterrows():
+            l6_id = l6["Employee ID"]
+            l6_name = l6["Employee Name"]
+            count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+
+            # Level 6 name
+            lines.append(f"\t\t\t\t\t{l6_name}")  # 5 tabs
+            # Reports count as pseudo-Level 7
+            lines.append(f"\t\t\t\t\t\tReports: {count}")  # 6 tabs
+
+    return "\r".join(lines)  # carriage returns for PowerPoint
+
+
+
+
 import pandas as pd
 import win32com.client
 
