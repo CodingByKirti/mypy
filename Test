@@ -1,3 +1,54 @@
+Below is clean, crisp, senior-friendly **slide text** you can directly paste into your PPT.
+
+---
+
+# **Slide 1 – Full Org View (Complete Structure)**
+
+**Title:** *Full Organisational Chart – Vikram Sarma’s Area*
+
+**Body Text:**
+
+* This chart represents the complete organisational structure.
+* Diagram generated in PowerPoint using the full dataset.
+* No modifications or name removals have been made.
+* This view demonstrates how the final hierarchy appears end-to-end.
+
+---
+
+# **Slide 2 – Sample / Truncated View**
+
+**Title:** *Sample View – Simplified for Readability*
+
+**Body Text:**
+
+* This is a truncated version created only for sample presentation.
+* A few names have been removed to improve visibility.
+* Intended to showcase how the chart can be represented in a cleaner, more readable format.
+* Final output can be customised based on preferred layout or depth level.
+
+---
+
+# **Slide 3 – Python-Generated Structure (Source Data)**
+
+**Title:** *Python Output – Data Extract from Anaplan (LBL)*
+
+**Body Text:**
+
+* The hierarchical data shown here is generated using a Python script.
+* Source: Anaplan LBL Extract.
+* This output forms the basis for the org chart visuals.
+* Current process: converting this data into the PowerPoint diagram manually (two-click method).
+* Can be further automated to generate diagrams directly via Python if required.
+
+---
+
+If you want, I can also craft short footnotes, slide titles in alternate styles, or a final slide with “Next Steps / Recommendations.”
+
+You said:
+exact text for ppt
+
+
+
 def format_full_hierarchy_with_tabs(df):
     """
     Build full hierarchy from raw org chart df (Employee ID, Employee Name, Functional Manager Employee ID).
