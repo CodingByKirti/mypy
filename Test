@@ -57,23 +57,32 @@ root_hierarchy = {
 
 output_rows = []
 
-def traverse(manager_id, manager_name, level):
-    reports = df[df["Functional Manager Employee ID"] == manager_id]
-    for _, row in reports.iterrows():
-        emp_id = row["Employee ID"]
-        emp_name = row["Employee Name"]
-
-        if level == 6:
-            count = df[df["Functional Manager Employee ID"] == emp_id].shape[0]
-            output_rows.append([manager_name, row["Functional Manager Employee Name"], emp_name, count])
+def traverse_level5(level4_id, level4_name):
+    # Find all Level 5 employees under Level 4
+    level5_reports = df[df["Functional Manager Employee ID"] == level4_id]
+    
+    for _, l5 in level5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        l5_name = l5["Employee Name"]
+        
+        # Find Level 6 employees under this Level 5
+        level6_reports = df[df["Functional Manager Employee ID"] == l5_id]
+        
+        if level6_reports.empty:
+            # No Level 6 → still include Level 5 with blank Level 6 and count=0
+            output_rows.append([level4_name, l5_name, "", 0])
         else:
-            traverse(emp_id, emp_name, level+1)
+            for _, l6 in level6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                l6_name = l6["Employee Name"]
+                # Count direct reports under Level 6
+                count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+                output_rows.append([level4_name, l5_name, l6_name, count])
 
-# Example: start from Vikram Sarma (Level 4)
+# Example: start from Vikram Sarma
 vikram_id = df.loc[df["Employee Name"]=="Vikram Sarma","Employee ID"].iloc[0]
-traverse(vikram_id, "Vikram Sarma", 5)
+traverse_level5(vikram_id, "Vikram Sarma")
 
-# Convert to DataFrame for Excel
 out_df = pd.DataFrame(output_rows, columns=["Level 4 Manager","Level 5 Employee","Level 6 Employee","Count of Direct Reports"])
 out_df.to_excel("OrgChart_Flat.xlsx", index=False)
 # Step 4: Create PPT
