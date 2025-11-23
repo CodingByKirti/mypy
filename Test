@@ -1,3 +1,39 @@
+
+import win32com.client
+
+def write_to_smartart(lines, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+
+    # Find Organization Chart layout
+    org_layout = None
+    for i in range(1, ppt.SmartArtLayouts.Count + 1):
+        layout = ppt.SmartArtLayouts(i)
+        if "Organization" in layout.Name:  # look for Organization Chart
+            org_layout = layout
+            break
+
+    if org_layout is None:
+        print("Organization Chart layout not found, using default SmartArt layout")
+        org_layout = ppt.SmartArtLayouts(1)
+
+    # Add SmartArt directly
+    smartart = slide.Shapes.AddSmartArt(org_layout)
+
+    # Fill SmartArt nodes with hierarchy text
+    nodes = smartart.SmartArt.AllNodes
+    for i, line in enumerate(lines):
+        if i+1 <= nodes.Count:
+            nodes(i+1).TextFrame2.TextRange.Text = line
+        else:
+            new_node = nodes(1).AddNode()
+            new_node.TextFrame2.TextRange.Text = line
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved with SmartArt Org Chart: {ppt_path}")
+//////////////////////////
 import pandas as pd
 import win32com.client
 import tkinter as tk
