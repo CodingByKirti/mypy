@@ -4,6 +4,30 @@ import win32com.client
 import tkinter as tk
 from tkinter import simpledialog
 
+import win32com.client
+
+def convert_textbox_to_orgchart(ppt_path):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+
+    # Open the presentation you created earlier
+    pres = ppt.Presentations.Open(ppt_path)
+
+    # Assume first slide and first shape is the textbox
+    sld = pres.Slides(1)
+    shp = sld.Shapes(1)
+
+    # Convert textbox to SmartArt
+    shp.ConvertToSmartArt()
+
+    # Apply Organization Chart layout
+    shp.SmartArt.Layout = ppt.SmartArtLayouts("urn:microsoft.com/office/officeart/2005/8/layout/OrganizationChart")
+
+    pres.Save()
+    print("Org chart SmartArt created successfully!")
+
+# Example usage
+convert_textbox_to_orgchart(r"C:\Path\To\OrgChart_Output.pptx")
 # Step 1: Read base org data
 df = pd.read_excel("org_data.xlsx")
 df["Employee Name"] = df["Employee Name"].str.strip()
