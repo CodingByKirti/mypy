@@ -1,4 +1,24 @@
+import win32com.client
 
+def convert_textbox_to_orgchart(ppt_path):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+
+    pres = ppt.Presentations.Open(ppt_path)
+    sld = pres.Slides(1)
+
+    # Loop through shapes to find a textbox
+    for shp in sld.Shapes:
+        if shp.Type == 17:  # msoTextBox
+            print(f"Converting shape: {shp.Name}")
+            shp.ConvertToSmartArt()
+            shp.SmartArt.Layout = ppt.SmartArtLayouts("urn:microsoft.com/office/officeart/2005/8/layout/OrganizationChart")
+            break
+    else:
+        print("No textbox found on slide 1")
+
+    pres.Save()
+    print("Org chart SmartArt created successfully!")
 import pandas as pd
 import win32com.client
 import tkinter as tk
