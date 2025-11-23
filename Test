@@ -1,3 +1,132 @@
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
+
+# Step 1: Read base org data
+df = pd.read_excel("org_data.xlsx")
+df["Employee Name"] = df["Employee Name"].str.strip()
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].str.strip()
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+
+# Step 1b: Read lookup file for Position Title
+lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
+lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
+
+# Merge Position Title into df
+df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
+
+# Step 2: Traverse Level 5/6
+output_rows = []
+
+def traverse_level5(level4_id, level4_name):
+    level5_reports = df[df["Functional Manager Employee ID"] == level4_id]
+    for _, l5 in level5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        l5_name = l5["Employee Name"]
+
+        level6_reports = df[df["Functional Manager Employee ID"] == l5_id]
+        if level6_reports.empty:
+            output_rows.append([level4_name, l5_name, "", 0])
+        else:
+            for _, l6 in level6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                l6_name = l6["Employee Name"]
+                count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+                output_rows.append([level4_name, l5_name, l6_name, count])
+
+# Step 3: Build hierarchy lines
+def build_lines(out_df, level4_name="Manager"):
+    lines = [level4_name]
+
+    for l5_name, group in out_df.groupby("Level 5 Employee"):
+        l5_row = df[df["Employee Name"] == l5_name].iloc[0]
+        l5_text = f"{l5_name} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+        lines.append(f"\t{l5_text}")
+
+        for _, row in group.iterrows():
+            l6_name = row["Level 6 Employee"]
+            count = row["Count of Direct Reports"]
+            if l6_name:
+                l6_row = df[df["Employee Name"] == l6_name].iloc[0]
+                l6_text = (
+                    f"{l6_name} | {l6_row.get('Position Title','')}\n"
+                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
+                    f"→ Reports: {count}"
+                )
+                lines.append(f"\t\t{l6_text}")
+
+    return lines
+
+# Step 4: Write hierarchy into SmartArt Org Chart
+def write_hierarchy_to_smartart(manager_name, out_df, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+
+    # Find Organization Chart layout
+    org_layout = None
+    for i in range(1, ppt.SmartArtLayouts.Count + 1):
+        layout = ppt.SmartArtLayouts(i)
+        if "Organization" in layout.Name:
+            org_layout = layout
+            break
+    if org_layout is None:
+        org_layout = ppt.SmartArtLayouts(1)
+
+    # Add SmartArt Org Chart
+    smartart = slide.Shapes.AddSmartArt(org_layout)
+    root_node = smartart.SmartArt.AllNodes(1)
+    root_node.TextFrame2.TextRange.Text = manager_name
+
+    # Add Level 5 and Level 6 nodes properly
+    for l5_name, group in out_df.groupby("Level 5 Employee"):
+        l5_row = df[df["Employee Name"] == l5_name].iloc[0]
+        l5_text = f"{l5_name} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+
+        # Add Level 5 under root
+        l5_node = root_node.AddNode(2)  # 2 = msoSmartArtNodeBelow
+        l5_node.TextFrame2.TextRange.Text = l5_text
+
+        for _, row in group.iterrows():
+            l6_name = row["Level 6 Employee"]
+            count = row["Count of Direct Reports"]
+            if l6_name:
+                l6_row = df[df["Employee Name"] == l6_name].iloc[0]
+                l6_text = (
+                    f"{l6_name} | {l6_row.get('Position Title','')}\n"
+                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
+                    f"→ Reports: {count}"
+                )
+
+                # Add Level 6 under Level 5
+                l6_node = l5_node.AddNode(2)
+                l6_node.TextFrame2.TextRange.Text = l6_text
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved with proper hierarchy: {ppt_path}")
+
+# Step 5: GUI to get manager name
+root = tk.Tk()
+root.withdraw()  # hide main window
+manager_name = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Name:")
+
+if manager_name:
+    try:
+        manager_id = df.loc[df["Employee Name"] == manager_name, "Employee ID"].iloc[0]
+        traverse_level5(manager_id, manager_name)
+        out_df = pd.DataFrame(output_rows, columns=["Level 4 Manager","Level 5 Employee","Level 6 Employee","Count of Direct Reports"])
+        out_df.to_excel("OrgChart_Flat.xlsx", index=False)
+
+        lines = build_lines(out_df, manager_name)
+        write_hierarchy_to_smartart(manager_name, out_df, f"OrgChart_{manager_name.replace(' ','_')}.pptx")
+    except IndexError:
+        print(f"Manager '{manager_name}' not found in data.")
+
+
+
 
 import win32com.client
 
