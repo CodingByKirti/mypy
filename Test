@@ -37,12 +37,10 @@ def traverse_level5(level4_id, level4_name):
                 count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
                 output_rows.append([level4_name, l5_name, l6_name, count])
 
-# Step 3: Export indented hierarchy with details
 def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_name="Manager"):
     lines = [level4_name]
 
     for l5_name, group in out_df.groupby("Level 5 Employee"):
-        # Get details for L5
         l5_row = df[df["Employee Name"] == l5_name].iloc[0]
         l5_details = f"{l5_name} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
         lines.append(f"\t{l5_details}")
@@ -51,16 +49,19 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
             l6_name = row["Level 6 Employee"]
             count = row["Count of Direct Reports"]
 
-            if l6_name:  # only for Level 6
+            if l6_name:
                 l6_row = df[df["Employee Name"] == l6_name].iloc[0]
-                l6_details = f"{l6_name} | {l6_row.get('Position Title','')}\n{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n→ Reports: {count}"
+                l6_details = (
+                    f"{l6_name} | {l6_row.get('Position Title','')}\n"
+                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
+                    f"→ Reports: {count}"
+                )
                 lines.append(f"\t\t{l6_details}")
 
     df_out = pd.DataFrame({"Hierarchy": lines})
     df_out.to_excel(excel_path, index=False)
     print(f"Indented hierarchy exported to {excel_path}")
-    return lines
-# Step 4: Write to PowerPoint
+    return lines# Step 4: Write to PowerPoint
 def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
