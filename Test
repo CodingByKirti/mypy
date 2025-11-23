@@ -44,10 +44,8 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
     for l5_name, group in out_df.groupby("Level 5 Employee"):
         # Get details for L5
         l5_row = df[df["Employee Name"] == l5_name].iloc[0]
-        l5_details = f"{l5_name} | {l5_row.get('Position Title','')}"
-        l5_band_loc = f"{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+        l5_details = f"{l5_name} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
         lines.append(f"\t{l5_details}")
-        lines.append(f"\t{l5_band_loc}")
 
         for _, row in group.iterrows():
             l6_name = row["Level 6 Employee"]
@@ -55,19 +53,13 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
 
             if l6_name:  # only for Level 6
                 l6_row = df[df["Employee Name"] == l6_name].iloc[0]
-                l6_details = f"{l6_name} | {l6_row.get('Position Title','')}"
-                l6_band_loc = f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}"
+                l6_details = f"{l6_name} | {l6_row.get('Position Title','')}\n{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n→ Reports: {count}"
                 lines.append(f"\t\t{l6_details}")
-                lines.append(f"\t\t{l6_band_loc}")
-
-                # Reports line ONLY for Level 6
-                lines.append(f"\t\t\t→ Reports: {count}")
 
     df_out = pd.DataFrame({"Hierarchy": lines})
     df_out.to_excel(excel_path, index=False)
     print(f"Indented hierarchy exported to {excel_path}")
     return lines
-
 # Step 4: Write to PowerPoint
 def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
