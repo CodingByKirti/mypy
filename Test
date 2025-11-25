@@ -1,4 +1,108 @@
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
 
+# Step 1: Read base org data
+df = pd.read_excel("org_data.xlsx")
+df["Employee Name"] = df["Employee Name"].astype(str).str.strip()
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str).str.strip()
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+
+# Step 1b: Read lookup file for Position Title
+lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
+lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
+
+# Merge Position Title into df
+df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
+
+# Step 2: Traverse Level 5/6 using IDs
+output_rows = []
+
+def traverse_level5(level4_id):
+    level5_reports = df[df["Functional Manager Employee ID"] == level4_id]
+    for _, l5 in level5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+
+        level6_reports = df[df["Functional Manager Employee ID"] == l5_id]
+        if level6_reports.empty:
+            output_rows.append([level4_id, l5_id, None, 0])
+        else:
+            for _, l6 in level6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                count = df[df["Functional Manager Employee ID"] == l6_id].shape[0]
+                output_rows.append([level4_id, l5_id, l6_id, count])
+
+# Step 3: Export indented hierarchy with details (ID‑based)
+def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_id=None):
+    lines = []
+    # Root manager details
+    if level4_id is not None:
+        mgr_row = df[df["Employee ID"] == level4_id].iloc[0]
+        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
+        lines.append(mgr_details)
+
+    for l5_id, group in out_df.groupby("Level 5 Employee ID"):
+        l5_row = df[df["Employee ID"] == l5_id].iloc[0]
+        l5_details = f"{l5_row['Employee Name']} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+        lines.append(f"\t{l5_details}")
+
+        for _, row in group.iterrows():
+            l6_id = row["Level 6 Employee ID"]
+            count = row["Count of Direct Reports"]
+
+            if pd.notna(l6_id):
+                l6_row = df[df["Employee ID"] == l6_id].iloc[0]
+                l6_details = (
+                    f"{l6_row['Employee Name']} | {l6_row.get('Position Title','')}\n"
+                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
+                    f"→ Reports: {count}"
+                )
+                lines.append(f"\t\t{l6_details}")
+
+    df_out = pd.DataFrame({"Hierarchy": lines})
+    df_out.to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to {excel_path}")
+    return lines
+
+# Step 4: Write to PowerPoint (plain indented text, no SmartArt)
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    text_content = "\r".join(lines)
+    tr.Text = text_content
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+
+# Step 5: GUI to get manager ID
+root = tk.Tk()
+root.withdraw()  # hide main window
+manager_id_str = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Employee ID:")
+
+if manager_id_str:
+    try:
+        manager_id = int(manager_id_str)
+        if manager_id not in df["Employee ID"].values:
+            print(f"Manager ID {manager_id} not found in data.")
+        else:
+            traverse_level5(manager_id)
+            out_df = pd.DataFrame(output_rows, columns=["Level 4 Manager ID","Level 5 Employee ID","Level 6 Employee ID","Count of Direct Reports"])
+            out_df.to_excel("OrgChart_Flat.xlsx", index=False)
+
+            lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", manager_id)
+            write_indented_to_ppt(lines, f"OrgChart_{manager_id}.pptx")
+    except Exception as e:
+        print(f"Error: {e}")
+
+================================
+-- based on names- (prob with ambuiguoty in names of employees--
 import pandas as pd
 import win32com.client
 import tkinter as tk
