@@ -1,4 +1,37 @@
 import pandas as pd
+from tkinter import Tk, filedialog
+import os
+
+# Hide the root Tk window
+Tk().withdraw()
+
+# Ask user to select a .txt file
+txt_file = filedialog.askopenfilename(
+    title="Select attendance TXT file",
+    filetypes=[("Text files", "*.txt")]
+)
+
+if txt_file:
+    # Read the TXT file (assuming tab or comma separated)
+    df = pd.read_csv(txt_file, sep="\t", engine="python")
+
+    # Create CSV filename in same folder
+    csv_file = os.path.splitext(txt_file)[0] + ".csv"
+
+    # Save as CSV
+    df.to_csv(csv_file, index=False)
+
+    # Load back the CSV for weekly data usage
+    weekly_df = pd.read_csv(csv_file)
+
+    print("File converted and loaded successfully!")
+    print(weekly_df.head())
+else:
+    print("No file selected.")
+
+
+
+import pandas as pd
 from datetime import datetime
 
 # Example: assume base_updated_df and gsc_df are already loaded
