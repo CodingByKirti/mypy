@@ -8,34 +8,32 @@ df = pd.read_excel("org_data.xlsx")
 df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
 df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
 
-# Optional cleanup for text fields
 for col in ["Employee Name", "Functional Manager Employee Name", "Country R3", "GCB"]:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip()
 
-# Merge Position Title from lookup file
 lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
 lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
-df = df.merge(lookup[["Employee ID", "Position Title"]], on="Employee ID", how="left")
+df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
 
 # --- Step 2: Build ID-indexed maps ---
 row_by_id = {int(r["Employee ID"]): r for _, r in df.dropna(subset=["Employee ID"]).iterrows()}
 reports_by_manager = {}
-for _, r in df.dropna(subset=["Employee ID", "Functional Manager Employee ID"]).iterrows():
+for _, r in df.dropna(subset=["Employee ID","Functional Manager Employee ID"]).iterrows():
     mid = int(r["Functional Manager Employee ID"])
     eid = int(r["Employee ID"])
     reports_by_manager.setdefault(mid, []).append(eid)
 
-# --- Step 3: Safe detail fetcher (ID-only) ---
+# --- Step 3: Format employee details ---
 def get_emp_text(emp_id: int, include_reports_count=False) -> str:
     row = row_by_id.get(emp_id)
     if not row:
         return f"Employee ID: {emp_id}\nDetails unavailable"
 
-    name = str(row.get("Employee Name", "")).strip()
-    title = str(row.get("Position Title", "")).strip()
-    gcb = str(row.get("GCB", "")).strip()
-    country = str(row.get("Country R3", "")).strip()
+    name = str(row.get("Employee Name","")).strip()
+    title = str(row.get("Position Title","")).strip()
+    gcb = str(row.get("GCB","")).strip()
+    country = str(row.get("Country R3","")).strip()
 
     lines = [f"{name} | {title}", f"{gcb} | {country}"]
     if include_reports_count:
@@ -43,53 +41,34 @@ def get_emp_text(emp_id: int, include_reports_count=False) -> str:
         lines.append(f"→ Reports: {count}")
     return "\n".join(lines)
 
-# --- Step 4: Build hierarchy by IDs ---
-def build_hierarchy_ids(level4_id: int):
-    hierarchy = {}
-    l5_ids = reports_by_manager.get(level4_id, [])
+# --- Step 4: Build indented hierarchy lines ---
+def build_lines(manager_id: int):
+    lines = [get_emp_text(manager_id, include_reports_count=True)]
+    l5_ids = reports_by_manager.get(manager_id, [])
     for l5_id in l5_ids:
+        l5_text = get_emp_text(l5_id)
+        lines.append(f"\t{l5_text}")
         l6_ids = reports_by_manager.get(l5_id, [])
-        hierarchy[l5_id] = {"text": get_emp_text(l5_id), "children": l6_ids}
-    return hierarchy
+        for l6_id in l6_ids:
+            l6_text = get_emp_text(l6_id, include_reports_count=True)
+            lines.append(f"\t\t{l6_text}")
+    return lines
 
-# --- Step 5: Write SmartArt Org Chart ---
-def write_smartart(manager_id: int, ppt_path="OrgChart_Output.pptx"):
+# --- Step 5: Write to PPT as plain indented text ---
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Indented.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
     slide = pres.Slides.Add(1, 12)
 
-    # Find Organization Chart layout
-    org_layout = None
-    for i in range(1, ppt.SmartArtLayouts.Count + 1):
-        layout = ppt.SmartArtLayouts(i)
-        if "Organization" in layout.Name:
-            org_layout = layout
-            break
-    if org_layout is None:
-        org_layout = ppt.SmartArtLayouts(1)
-
-    smartart = slide.Shapes.AddSmartArt(org_layout)
-
-    # Root node = Level 4 manager
-    root = smartart.SmartArt.AllNodes(1)
-    root.TextFrame2.TextRange.Text = get_emp_text(manager_id, include_reports_count=True)
-
-    CHILD = 2  # msoSmartArtNodeBelow
-
-    hierarchy = build_hierarchy_ids(manager_id)
-    for l5_id, data in hierarchy.items():
-        l5_node = root.Children.AddNode(CHILD)
-        l5_node.TextFrame2.TextRange.Text = data["text"]
-
-        for l6_id in data["children"]:
-            l6_node = l5_node.Children.AddNode(CHILD)
-            l6_node.TextFrame2.TextRange.Text = get_emp_text(l6_id, include_reports_count=True)
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)   # carriage return = new line in PPT
 
     pres.SaveAs(ppt_path)
-    print(f"PPT saved with correct ID-based hierarchy: {ppt_path}")
+    print(f"PPT saved with indented hierarchy: {ppt_path}")
 
-# --- Step 6: GUI to input Employee ID directly ---
+# --- Step 6: GUI to input Employee ID ---
 root = tk.Tk()
 root.withdraw()
 manager_id_str = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Employee ID:")
@@ -100,11 +79,10 @@ if manager_id_str:
         if manager_id not in row_by_id:
             print(f"Employee ID {manager_id} not found in data.")
         else:
-            write_smartart(manager_id, f"OrgChart_{manager_id}.pptx")
+            lines = build_lines(manager_id)
+            write_indented_to_ppt(lines, f"OrgChart_{manager_id}.pptx")
     except ValueError:
-        print("Invalid Employee ID entered.")
-
----------------------
+        print("Invalid Employee ID entered.")---------------------
 import pandas as pd
 import win32com.client
 import tkinter as tk
