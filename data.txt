@@ -1,3 +1,267 @@
+# include open pos
+
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
+
+# ---------------------------
+# Config (hardcode for now)
+# ---------------------------
+ACTUAL_MONTH = "Oct 25"  # format: Mmm YY, e.g., "Jan 25"
+
+BASE_ORG_FILE = "org_data.xlsx"
+HEADCOUNT_LOOKUP_FILE = "ghaOct.xlsx"  # Position Title for existing employees
+HEADCOUNT_SHEET = "Headcount - Employee Detail"
+
+OPEN_POS_FILE = "open_position_report.xlsx"  # new input for PID enrichment
+# Expected columns in Open Position Report:
+# - Position Number (matches PID in base org)
+# - Position Title
+# - Functional Manager Position Level Employee Name
+# - Functional Manager Position Level Employee ID
+
+# ---------------------------
+# Utilities
+# ---------------------------
+def norm_str(s):
+    return "" if pd.isna(s) else str(s).strip()
+
+def safe_get(d, k):
+    v = d.get(k, "")
+    return "" if pd.isna(v) else str(v).strip()
+
+# ---------------------------
+# Step 1: Load and normalize base org data
+# ---------------------------
+df = pd.read_excel(BASE_ORG_FILE)
+
+# Normalize key columns to strings for consistent matching
+for col in [
+    "Employee Name",
+    "Functional Manager Employee Name",
+    "Country R3",
+    "GCB",
+    "Stack Column",
+    "Period Month",
+    "PID",
+]:
+    if col in df.columns:
+        df[col] = df[col].astype(str).str.strip()
+
+# Keep IDs as strings to avoid type mismatches and preserve leading zeros
+for col in ["Employee ID", "Functional Manager Employee ID"]:
+    if col in df.columns:
+        df[col] = df[col].astype(str).str.strip()
+
+# Merge Position Title for existing employees from headcount lookup
+lookup = pd.read_excel(HEADCOUNT_LOOKUP_FILE, sheet_name=HEADCOUNT_SHEET)
+lookup["Employee ID"] = lookup["Employee ID"].astype(str).str.strip()
+df = df.merge(lookup[["Employee ID", "Position Title"]], on="Employee ID", how="left")
+
+# ---------------------------
+# Step 2: Phase 1 – Actuals for the chosen month
+# ---------------------------
+actuals = df[
+    (df["Stack Column"] == "ACTUALS") &
+    (df["Period Month"] == ACTUAL_MONTH)
+].copy()
+
+# ---------------------------
+# Step 3: Phase 2 – Forecast rows
+# ---------------------------
+# FTE FCST may be numeric or string; coerce to float safely
+df["FTE FCST"] = pd.to_numeric(df.get("FTE FCST", 0), errors="coerce").fillna(0.0)
+fcst = df[df["FTE FCST"] > 0].copy()
+
+# ---------------------------
+# Step 4: Phase 3 – PID filter (only forecasts with PID present)
+# ---------------------------
+# Normalize PID dtype to string and non-empty
+fcst["PID"] = fcst["PID"].astype(str).str.strip()
+fcst_pid = fcst[(fcst["PID"] != "")].copy()
+
+# ---------------------------
+# Step 5: Enrichment from Open Position Report (PID-based, dtype-aligned)
+# ---------------------------
+open_pos = pd.read_excel(OPEN_POS_FILE)
+open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
+open_pos["Position Title"] = open_pos["Position Title"].astype(str).str.strip()
+open_pos["Functional Manager Position Level Employee Name"] = open_pos[
+    "Functional Manager Position Level Employee Name"
+].astype(str).str.strip()
+open_pos["Functional Manager Position Level Employee ID"] = open_pos[
+    "Functional Manager Position Level Employee ID"
+].astype(str).str.strip()
+
+# Left-join forecasts-with-PID to open position details
+fcst_enriched = fcst_pid.merge(
+    open_pos[
+        [
+            "Position Number",
+            "Position Title",
+            "Functional Manager Position Level Employee Name",
+            "Functional Manager Position Level Employee ID",
+        ]
+    ],
+    left_on="PID",
+    right_on="Position Number",
+    how="left",
+)
+
+# Fill only where Employee ID/Name are missing (open positions)
+mask_open = (fcst_enriched["Employee ID"].astype(str).str.strip() == "") & (
+    fcst_enriched["Employee Name"].astype(str).str.strip() == ""
+)
+
+# Position Title: prefer existing Position Title from base; if missing, use open position title
+fcst_enriched.loc[mask_open, "Position Title"] = fcst_enriched.loc[
+    mask_open, "Position Title"
+].fillna(fcst_enriched.loc[mask_open, "Position Title"])
+
+# Manager linkage for open positions: use Functional Manager Position Level fields where base is missing
+fm_name_base_missing = fcst_enriched["Functional Manager Employee Name"].astype(str).str.strip() == ""
+fcst_enriched.loc[mask_open & fm_name_base_missing, "Functional Manager Employee Name"] = fcst_enriched.loc[
+    mask_open & fm_name_base_missing, "Functional Manager Position Level Employee Name"
+]
+fm_id_base_missing = fcst_enriched["Functional Manager Employee ID"].astype(str).str.strip() == ""
+fcst_enriched.loc[mask_open & fm_id_base_missing, "Functional Manager Employee ID"] = fcst_enriched.loc[
+    mask_open & fm_id_base_missing, "Functional Manager Position Level Employee ID"
+]
+
+# Note: If PID not found in Open Position Report, we leave the row as-is (no error)
+
+# ---------------------------
+# Step 6: Working dataset = Actuals (month) + Forecasts with PID (enriched)
+# ---------------------------
+# We only keep the actuals snapshot for the month and the relevant forecasts with PID (enriched or not)
+working_df = pd.concat([actuals, fcst_enriched], ignore_index=True)
+
+# ---------------------------
+# Step 7: Build maps (ID-based) and classify open positions
+# ---------------------------
+# Normalize again to ensure no stray NaNs/spaces
+for col in ["Employee ID", "Functional Manager Employee ID", "Employee Name", "Position Title", "GCB", "Country R3"]:
+    if col in working_df.columns:
+        working_df[col] = working_df[col].astype(str).str.strip()
+
+# Distinguish actual employees vs open positions
+working_df["is_open_position"] = (working_df["Employee ID"] == "") | (working_df["Employee Name"] == "")
+
+# Fast lookup by Employee ID for details
+row_by_id = {
+    r["Employee ID"]: r.to_dict()
+    for _, r in working_df[working_df["Employee ID"] != ""].iterrows()
+}
+
+# Reports mapping (actual employees only)
+reports_by_manager_actual = {}
+for _, r in working_df[working_df["Employee ID"] != ""].iterrows():
+    mid = r["Functional Manager Employee ID"]
+    eid = r["Employee ID"]
+    if mid != "":
+        reports_by_manager_actual.setdefault(mid, []).append(eid)
+
+# Open positions mapping (counts by manager)
+open_pos_by_manager = {}
+for _, r in working_df[working_df["is_open_position"]].iterrows():
+    mid = r["Functional Manager Employee ID"]
+    if mid != "":
+        open_pos_by_manager.setdefault(mid, []).append(r.to_dict())
+
+# ---------------------------
+# Step 8: Formatting helpers for PPT text
+# ---------------------------
+def emp_text_by_id(emp_id: str, include_counts=False) -> str:
+    """Formatted text for a real employee by ID."""
+    row = row_by_id.get(emp_id)
+    if row is None:
+        return f"Employee ID: {emp_id}\nDetails unavailable"
+    name = safe_get(row, "Employee Name")
+    title = safe_get(row, "Position Title")
+    gcb = safe_get(row, "GCB")
+    country = safe_get(row, "Country R3")
+
+    lines = [f"{name} | {title}", f"{gcb} | {country}"]
+    if include_counts:
+        reports = len(reports_by_manager_actual.get(emp_id, []))
+        open_cnt = len(open_pos_by_manager.get(emp_id, []))
+        lines.append(f"→ Reports: {reports}")
+        lines.append(f"→ Open Pos: {open_cnt}")
+    return "\n".join(lines)
+
+def open_position_text(row_dict: dict) -> str:
+    """Formatted text for an open position (no employee assigned)."""
+    title = safe_get(row_dict, "Position Title")
+    gcb = safe_get(row_dict, "GCB")
+    country = safe_get(row_dict, "Country R3")
+    # Show PID if available to aid traceability
+    pid = safe_get(row_dict, "PID")
+    label = "Open Position" if pid == "" else f"Open Position ({pid})"
+    return f"{label} | {title}\n{gcb} | {country}"
+
+# ---------------------------
+# Step 9: Hierarchy builder (Level 4 → Level 5 → Level 6) with open positions
+# ---------------------------
+def build_lines_for_manager(manager_id: str):
+    lines = []
+    # Root (Level 4)
+    lines.append(emp_text_by_id(manager_id, include_counts=True))
+
+    # Level 5: direct reports (actual employees) to Level 4
+    l5_ids = reports_by_manager_actual.get(manager_id, [])
+    for l5_id in l5_ids:
+        lines.append(f"\t{emp_text_by_id(l5_id, include_counts=False)}")
+
+        # Level 6: direct reports (actual employees) to Level 5
+        l6_ids = reports_by_manager_actual.get(l5_id, [])
+        for l6_id in l6_ids:
+            lines.append(f"\t\t{emp_text_by_id(l6_id, include_counts=True)}")
+
+        # Level 6: open positions under Level 5
+        for op in open_pos_by_manager.get(l5_id, []):
+            lines.append(f"\t\t{open_position_text(op)}")
+
+    # Level 5: open positions reporting directly to Level 4
+    for op in open_pos_by_manager.get(manager_id, []):
+        lines.append(f"\t{open_position_text(op)}")
+
+    return lines
+
+# ---------------------------
+# Step 10: Write to PPT as indented text (no SmartArt)
+# ---------------------------
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Indented.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)  # 12 = ppLayoutBlank
+
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 800, 500)  # msoTextOrientationHorizontal=1
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)  # PowerPoint uses carriage return for new lines
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+
+# ---------------------------
+# Step 11: GUI and run (ask for Level 4 Manager Employee ID)
+# ---------------------------
+root = tk.Tk()
+root.withdraw()
+manager_id = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Employee ID:")
+
+if manager_id:
+    manager_id = manager_id.strip()
+    if manager_id == "" or manager_id not in row_by_id:
+        print(f"Manager Employee ID '{manager_id}' not found in the working dataset.")
+    else:
+        lines = build_lines_for_manager(manager_id)
+        # Optional: export lines to Excel for validation
+        pd.DataFrame({"Hierarchy": lines}).to_excel("OrgChart_Indented.xlsx", index=False)
+        write_indented_to_ppt(lines, f"OrgChart_{manager_id}.pptx")
+.........................
+
 import pandas as pd
 from tkinter import Tk, filedialog
 import os
