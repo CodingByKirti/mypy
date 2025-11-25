@@ -1,3 +1,4 @@
+
 import pandas as pd
 import win32com.client
 import tkinter as tk
@@ -5,27 +6,30 @@ from tkinter import simpledialog
 
 # --- Step 1: Load and clean data ---
 df = pd.read_excel("org_data.xlsx")
-df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
-df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+
+# Keep IDs as strings to avoid mismatch (leading zeros, spaces)
+df["Employee ID"] = df["Employee ID"].astype(str).str.strip()
+df["Functional Manager Employee ID"] = df["Functional Manager Employee ID"].astype(str).str.strip()
 
 for col in ["Employee Name", "Functional Manager Employee Name", "Country R3", "GCB"]:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip()
 
+# Merge Position Title from lookup file
 lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
-lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
+lookup["Employee ID"] = lookup["Employee ID"].astype(str).str.strip()
 df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
 
 # --- Step 2: Build ID-indexed maps ---
-row_by_id = {int(r["Employee ID"]): r for _, r in df.dropna(subset=["Employee ID"]).iterrows()}
+row_by_id = {r["Employee ID"]: r for _, r in df.dropna(subset=["Employee ID"]).iterrows()}
 reports_by_manager = {}
 for _, r in df.dropna(subset=["Employee ID","Functional Manager Employee ID"]).iterrows():
-    mid = int(r["Functional Manager Employee ID"])
-    eid = int(r["Employee ID"])
+    mid = r["Functional Manager Employee ID"]
+    eid = r["Employee ID"]
     reports_by_manager.setdefault(mid, []).append(eid)
 
 # --- Step 3: Format employee details ---
-def get_emp_text(emp_id: int, include_reports_count=False) -> str:
+def get_emp_text(emp_id: str, include_reports_count=False) -> str:
     row = row_by_id.get(emp_id)
     if not row:
         return f"Employee ID: {emp_id}\nDetails unavailable"
@@ -42,7 +46,7 @@ def get_emp_text(emp_id: int, include_reports_count=False) -> str:
     return "\n".join(lines)
 
 # --- Step 4: Build indented hierarchy lines ---
-def build_lines(manager_id: int):
+def build_lines(manager_id: str):
     lines = [get_emp_text(manager_id, include_reports_count=True)]
     l5_ids = reports_by_manager.get(manager_id, [])
     for l5_id in l5_ids:
@@ -71,18 +75,16 @@ def write_indented_to_ppt(lines, ppt_path="OrgChart_Indented.pptx"):
 # --- Step 6: GUI to input Employee ID ---
 root = tk.Tk()
 root.withdraw()
-manager_id_str = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Employee ID:")
+manager_id = simpledialog.askstring("Org Chart Builder", "Enter Level 4 Manager Employee ID:")
 
-if manager_id_str:
-    try:
-        manager_id = int(manager_id_str)
-        if manager_id not in row_by_id:
-            print(f"Employee ID {manager_id} not found in data.")
-        else:
-            lines = build_lines(manager_id)
-            write_indented_to_ppt(lines, f"OrgChart_{manager_id}.pptx")
-    except ValueError:
-        print("Invalid Employee ID entered.")---------------------
+if manager_id:
+    manager_id = manager_id.strip()
+    if manager_id not in row_by_id:
+        print(f"Employee ID {manager_id} not found in data.")
+    else:
+        lines = build_lines(manager_id)
+        write_indented_to_ppt(lines, f"OrgChart_{manager_id}.pptx")
+____________________________
 import pandas as pd
 import win32com.client
 import tkinter as tk
