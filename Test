@@ -18,30 +18,31 @@ lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").as
 # Merge Position Title into df
 df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
 
-# --- New helper function for open position enrichment ---
+# --- Helper function for open position enrichment ---
 def enrich_open_positions(base_df, open_pos_file="open_position_report.xlsx"):
     """
     Enrich base_df with open position details using PID.
-    - Normalizes PID dtype
-    - Left-joins with Open Position Report
-    - Fills missing Employee ID/Name with manager linkage from open pos file
-    - Combines Position Title_x and Position Title_y into Position Title
+    Treat 'Unspecified' as missing.
     """
     if "PID" not in base_df.columns:
-        return base_df  # nothing to do
+        return base_df
 
     base_df["PID"] = base_df["PID"].astype(str).str.strip()
 
     # Load open position report
     open_pos = pd.read_excel(open_pos_file)
-    open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
-    open_pos["Position Title"] = open_pos["Position Title"].astype(str).str.strip()
-    open_pos["Functional Manager Position Level Employee Name"] = open_pos[
-        "Functional Manager Position Level Employee Name"
-    ].astype(str).str.strip()
-    open_pos["Functional Manager Position Level Employee ID"] = open_pos[
-        "Functional Manager Position Level Employee ID"
-    ].astype(str).str.strip()
+
+    # Normalize and replace 'Unspecified' with ''
+    for col in [
+        "Position Number",
+        "Position Title",
+        "Functional Manager Position Level Employee Name",
+        "Functional Manager Position Level Employee ID",
+    ]:
+        if col in open_pos.columns:
+            open_pos[col] = (
+                open_pos[col].astype(str).str.strip().replace("Unspecified", "")
+            )
 
     # Merge
     df_enriched = base_df.merge(
@@ -60,17 +61,22 @@ def enrich_open_positions(base_df, open_pos_file="open_position_report.xlsx"):
 
     # Combine Position Title_x and Position Title_y
     if "Position Title_x" in df_enriched.columns and "Position Title_y" in df_enriched.columns:
-        df_enriched["Position Title"] = df_enriched["Position Title_x"].fillna(df_enriched["Position Title_y"])
+        df_enriched["Position Title"] = df_enriched["Position Title_x"].replace("Unspecified","").fillna(
+            df_enriched["Position Title_y"].replace("Unspecified","")
+        )
         df_enriched = df_enriched.drop(columns=["Position Title_x", "Position Title_y"])
 
     # Fill missing Employee ID/Name with open pos manager linkage
-    mask_open = (df_enriched["Employee ID"].isna()) | (df_enriched["Employee Name"].astype(str).str.strip() == "")
+    mask_open = (
+        df_enriched["Employee ID"].isna()
+        | (df_enriched["Employee Name"].astype(str).str.strip().replace("Unspecified","") == "")
+    )
     df_enriched.loc[mask_open, "Employee Name"] = df_enriched.loc[
         mask_open, "Functional Manager Position Level Employee Name"
-    ]
+    ].replace("Unspecified","")
     df_enriched.loc[mask_open, "Employee ID"] = df_enriched.loc[
         mask_open, "Functional Manager Position Level Employee ID"
-    ]
+    ].replace("Unspecified","")
 
     return df_enriched
 
