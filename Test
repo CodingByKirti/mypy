@@ -1,3 +1,72 @@
+# Keep track of managers needing extra slides
+overflow_managers = []
+
+def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_id=None):
+    lines = []
+    if level4_id is not None:
+        mgr_row = df_final[df_final["Employee ID"] == level4_id].iloc[0]
+        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
+        lines.append(mgr_details)
+
+    for l5_id, group in out_df.groupby("Level 5 Employee ID"):
+        if pd.notna(l5_id):
+            l5_row = df_final[df_final["Employee ID"] == l5_id].iloc[0]
+            l5_details = f"{l5_row['Employee Name']} | {l5_row.get('Position Title','')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+            count_reports = direct_counts.get(l5_id, 0)
+            if count_reports > 10:
+                l5_details += f"\n→ Direct Reports: {count_reports} (see next slide)"
+                overflow_managers.append(l5_id)
+            lines.append(f"\t{l5_details}")
+
+        for _, row in group.iterrows():
+            l6_id = row["Level 6 Employee ID"]
+            count = row["Count of Direct Reports"]
+
+            if pd.notna(l6_id):
+                l6_row = df_final[df_final["Employee ID"] == l6_id].iloc[0]
+                l6_details = (
+                    f"{l6_row['Employee Name']} | {l6_row.get('Position Title','')}\n"
+                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
+                    f"→ Reports: {count}"
+                )
+                count_reports = direct_counts.get(l6_id, 0)
+                if count_reports > 10:
+                    l6_details += f"\n→ Direct Reports: {count_reports} (see next slide)"
+                    overflow_managers.append(l6_id)
+                lines.append(f"\t\t{l6_details}")
+
+    pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to {excel_path}")
+    return lines
+
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)
+
+    # Add extra slides for overflow managers
+    for mgr_id in overflow_managers:
+        mgr_reports = df_final[df_final["Functional Manager Employee ID"] == mgr_id]
+        mgr_row = df_final[df_final["Employee ID"] == mgr_id].iloc[0]
+        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
+        report_lines = [mgr_details]
+        for _, rep in mgr_reports.iterrows():
+            if pd.notna(rep["Employee ID"]):
+                rep_details = f"{rep['Employee Name']} | {rep.get('Position Title','')}\n{rep.get('GCB','')} | {rep.get('Country R3','')}"
+                report_lines.append(f"\t{rep_details}")
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+        textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+        textbox.TextFrame.TextRange.Text = "\r".join(report_lines)
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # Step: Aggregate open positions by manager
 open_pos_counts = (
     df_open_enriched.groupby("Functional Manager Position Level Employee ID")
