@@ -43,13 +43,11 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
     return lines
 
 
-# Step 4: Write to PowerPoint with batching + overflow
-def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx", level4_id=None):
+def write_indented_to_ppt(level4_id):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
-    # Helper to create slides in batches of 7
     def create_batched_slides(header, report_lines):
         chunks = [report_lines[i:i+7] for i in range(0, len(report_lines), 7)]
         for chunk in chunks:
@@ -57,37 +55,49 @@ def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx", level4_id=None
             textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
             textbox.TextFrame.TextRange.Text = "\r".join([header] + chunk)
 
-    # Level-4 batching
-    mgr_header = lines[0]
-    report_lines = lines[1:]
-    create_batched_slides(mgr_header, report_lines)
+    # --- Level-4 manager header ---
+    mgr_row = df_final[df_final["Employee ID"] == level4_id].iloc[0]
+    mgr_header = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}"
 
-    # Add overflow slides for managers (Level-5 or Level-6 with >7 reports)
-    for mgr_id in overflow_managers:
-        mgr_row = df_final[df_final["Employee ID"] == mgr_id].iloc[0]
-        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
-        count_open = open_pos_counts.get(mgr_id, 0)
-        if count_open > 0:
-            mgr_details += f"\n→ Open Positions: {count_open}"
+    # --- Get all L5 employees ---
+    l5_reports = df_final[df_final["Functional Manager Employee ID"] == level4_id]
 
-        # Collect all direct reports of this overflow manager
-        mgr_reports = df_final[df_final["Functional Manager Employee ID"] == mgr_id].drop_duplicates(subset=["Employee ID","PID"])
+    # Split into batches of 7 for slides
+    l5_chunks = [l5_reports.iloc[i:i+7] for i in range(0, len(l5_reports), 7)]
+
+    for chunk in l5_chunks:
         report_lines = []
-        for _, rep in mgr_reports.iterrows():
-            count_reports = direct_counts.get(rep["Employee ID"], 0)
-            rep_line = f"→ Reports: {count_reports}"
-            count_open = open_pos_counts.get(rep["Employee ID"], 0)
-            if count_open > 0:
-                rep_line += f"\n→ Open Positions: {count_open}"
-            report_lines.append(f"\t{rep_line}")
+        for _, l5 in chunk.iterrows():
+            l5_id = l5["Employee ID"]
+            l5_line = f"{l5['Employee Name']} | {l5.get('Position Title','<blank>')}"
+            l6_reports = df_final[df_final["Functional Manager Employee ID"] == l5_id]
 
-        # Batch these reportees into slides of 7
-        create_batched_slides(mgr_details, report_lines)
+            if len(l6_reports) == 0:
+                # No L6 → single box
+                report_lines.append(l5_line)
+            elif len(l6_reports) <= 7:
+                # Inline all L6
+                l6_lines = []
+                for _, l6 in l6_reports.iterrows():
+                    count_l7 = direct_counts.get(l6["Employee ID"], 0)
+                    l6_line = f"→ Reports: {count_l7}"
+                    l6_lines.append("\t" + l6_line)
+                report_lines.append(l5_line + "\n" + "\n".join(l6_lines))
+            else:
+                # Overflow → only one box in main slide
+                report_lines.append(l5_line + f"\n→ Direct Reports: {len(l6_reports)}")
+                # Create separate slide for this L5
+                l6_lines = []
+                for _, l6 in l6_reports.iterrows():
+                    count_l7 = direct_counts.get(l6["Employee ID"], 0)
+                    l6_lines.append(f"→ Reports: {count_l7}")
+                create_batched_slides(l5_line, l6_lines)
 
-    pres.SaveAs(ppt_path)
-    print(f"PPT saved: {ppt_path}")
-    return pres
+        # Create VG slide with this batch of L5s
+        create_batched_slides(mgr_header, report_lines)
 
+    pres.SaveAs("OrgChart_Output.pptx")
+    print("PPT saved.")
 
 # --- Ask user for Level 4 Manager Employee ID ---
 root = tk.Tk()
