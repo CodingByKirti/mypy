@@ -185,6 +185,26 @@ def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
     return pres
+#write_indented_to_ppt(lines, "OrgChart_Output.pptx")
+
+# --- Ask user for Level 4 Manager Employee ID ---
+root = tk.Tk()
+root.withdraw()  # hide Tkinter main window
+level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
+
+# --- Traverse hierarchy for that manager ---
+traverse_level5(level4_id)
+
+# --- Build DataFrame from collected rows ---
+out_df = pd.DataFrame(output_rows, columns=[
+    "Level 4 Employee ID","Level 5 Employee ID","Level 6 Employee ID",
+    "Count of Direct Reports","PID","Position Title"
+])
+
+# --- Export hierarchy to Excel and capture lines ---
+lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", level4_id=level4_id)
+
+# --- Write those lines to PowerPoint ---
 write_indented_to_ppt(lines, "OrgChart_Output.pptx")
 >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
