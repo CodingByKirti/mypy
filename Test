@@ -1,3 +1,187 @@
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def safe_str(x):
+    return "" if pd.isna(x) else str(x).strip()
+
+def is_missing(val):
+    if pd.isna(val):
+        return True
+    s = str(val).strip()
+    return s == "" or s.lower() == "unspecified"
+
+# -----------------------------
+# Step 1: Read org_data.xlsx
+# -----------------------------
+df = pd.read_excel("org_data.xlsx", sheet_name="Data", skiprows=1)
+
+# Clean text
+for col in ["Employee Name","Functional Manager Employee Name","Country R3","GCB","Position Title"]:
+    if col in df.columns:
+        df[col] = df[col].astype(str).str.strip().replace("Unspecified","")
+
+# Coerce IDs
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+if "PID" in df.columns:
+    df["PID"] = pd.to_numeric(df["PID"], errors="coerce").astype("Int64")
+else:
+    df["PID"] = pd.NA
+
+# -----------------------------
+# Step 2: Merge Position Title from gha
+# -----------------------------
+lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail",
+                       usecols=["Employee ID","Position Title"])
+lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
+lookup["Position Title"] = lookup["Position Title"].astype(str).str.strip().replace("Unspecified","")
+
+# Rename to avoid clash
+lookup = lookup.rename(columns={"Position Title":"Position_Title_gha"})
+
+# Merge
+df = df.merge(lookup, on="Employee ID", how="left")
+df["Position Title"] = df["Position_Title_gha"].fillna(df["Position Title"])
+df.drop(columns=["Position_Title_gha"], inplace=True)
+df["Position Title"] = df["Position Title"].fillna("<blank>")
+
+# -----------------------------
+# Step 3: Append open positions
+# -----------------------------
+open_pos = pd.read_excel("open_position.xlsx",
+                         usecols=["Position Number","Position Title",
+                                  "Functional Manager Position Level Employee ID",
+                                  "Functional Manager Position Level Employee Name"])
+open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
+open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(open_pos["Functional Manager Position Level Employee ID"], errors="coerce").astype("Int64")
+
+df_open = open_pos.rename(columns={
+    "Position Number":"PID",
+    "Functional Manager Position Level Employee ID":"Functional Manager Employee ID",
+    "Functional Manager Position Level Employee Name":"Functional Manager Employee Name"
+})
+df_open["Employee ID"] = pd.NA
+df_open["Employee Name"] = ""
+df_open = df_open[["Employee ID","Employee Name","Functional Manager Employee ID",
+                   "Functional Manager Employee Name","PID","Position Title"]]
+
+df_final = pd.concat([df, df_open], ignore_index=True)
+df_final = df_final.drop_duplicates(subset=["Employee ID","PID","Functional Manager Employee ID"], keep="first")
+
+# -----------------------------
+# Step 4: Precompute counts
+# -----------------------------
+direct_counts = df_final.groupby("Functional Manager Employee ID").size().to_dict()
+open_pos_counts = df_open.groupby("Functional Manager Employee ID").size().to_dict()
+
+# -----------------------------
+# Step 5: Helpers for hierarchy
+# -----------------------------
+def get_direct_reports(manager_id):
+    return df_final[df_final["Functional Manager Employee ID"] == manager_id].drop_duplicates(subset=["Employee ID","PID"]).copy()
+
+def box_text(emp_id, is_l6=False):
+    row = df_final[df_final["Employee ID"] == emp_id]
+    if row.empty:
+        return "<unknown>"
+    r = row.iloc[0]
+    lines = [
+        f"{safe_str(r.get('Employee Name'))}",
+        f"{safe_str(r.get('Position Title'))}",
+        f"{safe_str(r.get('GCB'))} | {safe_str(r.get('Country R3'))}"
+    ]
+    if is_l6:
+        l7_count = direct_counts.get(emp_id, 0)
+        lines.append(f"Reports: {int(l7_count)}")
+    op = open_pos_counts.get(emp_id, 0)
+    if op > 0:
+        lines.append(f"Open Positions: {op}")
+    return "\n".join(lines)
+
+# -----------------------------
+# Step 6: PowerPoint generation
+# -----------------------------
+def draw_orgchart(level4_id, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    L4_W,L4_H = 320,110
+    L5_W,L5_H = 280,100
+    L6_W,L6_H = 240,90
+    TOP_MARGIN = 30
+    L5_TOP = 180
+    L6_TOP_BASE = 320
+    COL_GAP = 50
+    ROW_GAP = 20
+
+    def add_box(slide,left,top,w,h,text):
+        shape = slide.Shapes.AddShape(1,left,top,w,h)
+        shape.TextFrame.TextRange.Text = text
+        shape.TextFrame.TextRange.ParagraphFormat.Alignment = 1
+        return shape
+
+    def connect(slide,parent,child):
+        conn = slide.Shapes.AddConnector(1,0,0,0,0)
+        conn.ConnectorFormat.BeginConnect(parent,3)
+        conn.ConnectorFormat.EndConnect(child,1)
+
+    def place_row(sw,n,box_w):
+        total_w = n*box_w+(n-1)*COL_GAP
+        start_left = max(20,(sw-total_w)/2)
+        return [start_left+i*(box_w+COL_GAP) for i in range(n)]
+
+    def add_l4_slide(l4_id,l5_rows):
+        slide = pres.Slides.Add(pres.Slides.Count+1,12)
+        sw = pres.PageSetup.SlideWidth
+        l4_left = (sw-L4_W)/2
+        l4_box = add_box(slide,l4_left,TOP_MARGIN,L4_W,L4_H,box_text(l4_id))
+        l5_positions = place_row(sw,len(l5_rows),L5_W)
+        for i,l5_row in enumerate(l5_rows):
+            l5_id = l5_row["Employee ID"]
+            if pd.isna(l5_id): continue
+            left = l5_positions[i]
+            l5_box = add_box(slide,left,L5_TOP,L5_W,L5_H,box_text(l5_id))
+            connect(slide,l4_box,l5_box)
+            l6_reports = get_direct_reports(l5_id)
+            l6_rows = [row for _,row in l6_reports.iterrows() if pd.notna(row["Employee ID"])]
+            if len(l6_rows)==0: continue
+            if len(l6_rows)>10:
+                # Show L5 details on main slide
+                info_box = add_box(slide,left+(L5_W-L6_W)/2,L6_TOP_BASE,L6_W,L6_H,f"Direct Reports: {len(l6_rows)}")
+                connect(slide,l5_box,info_box)
+                # Overflow slides for this L5
+                batch=[]
+                for idx,l6_row in enumerate(l6_rows):
+                    batch.append(l6_row)
+                    if len(batch)==10 or idx==len(l6_rows)-1:
+                        ov_slide = pres.Slides.Add(pres.Slides.Count+1,12)
+                        sw2 = pres.PageSetup.SlideWidth
+                        l5_left = (sw2-L5_W)/2
+                        ov_l5_box = add_box(ov_slide,l5_left,TOP_MARGIN,L5_W,L5_H,box_text(l5_id))
+                        l6_positions = place_row(sw2,len(batch),L6_W)
+                        for j,b in enumerate(batch):
+                            l6_id = b["Employee ID"]
+                            l6_box = add_box(ov_slide,l6_positions[j],L6_TOP_BASE,L6_W,L6_H,box_text(l6_id,is_l6=True))
+                            connect(ov_slide,ov_l5_box,l6_box)
+                        batch=[]
+            else:
+                for j,l6_row in enumerate(l6_rows):
+                    l6_id = l6_row["Employee ID"]
+                    l6_left = left+(L5_W-L6_W)/2
+                    l6_top = L6_TOP_BASE+j*(L6_H+ROW_GAP)
+                    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text(l6_id,is_l6=True))
+                    connect(slide,l5_box,l6_box)
+
+    # Build slides for L4
+    l5_reports = get
+
+
 def export_indented_text_full(level4_id, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
     """
     Export indented hierarchy lines (with open positions and direct reports counts) to Excel and PowerPoint.
