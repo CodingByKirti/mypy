@@ -237,10 +237,9 @@ if __name__ == "__main__":
         print("Workflow complete. PPT generated.")
 import pandas as pd
 import win32com.client
-
-def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
+def export_indented_text_full(level4_id, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
     """
-    Export indented hierarchy lines (with open positions) to Excel and PowerPoint.
+    Export indented hierarchy lines (with open positions and direct reports counts) to Excel and PowerPoint.
     """
 
     lines = []
@@ -251,6 +250,9 @@ def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.x
     count_open = open_pos_counts.get(level4_id, 0)
     if count_open > 0:
         mgr_details += f"\n→ Open Positions: {count_open}"
+    count_reports = direct_counts.get(level4_id, 0)
+    if count_reports > 0:
+        mgr_details += f"\n→ Direct Reports: {count_reports}"
     lines.append(mgr_details)
 
     # --- L5 reports ---
@@ -264,6 +266,9 @@ def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.x
         count_open = open_pos_counts.get(l5_id, 0)
         if count_open > 0:
             l5_details += f"\n→ Open Positions: {count_open}"
+        count_reports = direct_counts.get(l5_id, 0)
+        if count_reports > 0:
+            l5_details += f"\n→ Direct Reports: {count_reports}"
         lines.append(f"\t{l5_details}")
 
         # --- L6 reports ---
@@ -277,6 +282,9 @@ def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.x
             count_open = open_pos_counts.get(l6_id, 0)
             if count_open > 0:
                 l6_details += f"\n→ Open Positions: {count_open}"
+            count_reports = direct_counts.get(l6_id, 0)
+            if count_reports > 0:
+                l6_details += f"\n→ Direct Reports: {count_reports}"
             lines.append(f"\t\t{l6_details}")
 
     # --- Write to Excel ---
@@ -296,7 +304,6 @@ def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.x
     print(f"Indented hierarchy exported to PPT: {ppt_path}")
 
     return lines
-
 lines = export_indented_text_with_openpos(level4_id)
 ____________________
 
