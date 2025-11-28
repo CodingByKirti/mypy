@@ -234,7 +234,44 @@ if __name__ == "__main__":
         print("No Level 4 ID entered. Exiting.")
     else:
         draw_orgchart(level4_id, "OrgChart_Output.pptx")
-        print("Workflow complete. PPT generated.")____________________
+        print("Workflow complete. PPT generated.")
+import pandas as pd
+import win32com.client
+
+def export_indented_text(lines, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
+    """
+    Export indented hierarchy lines to Excel and PowerPoint.
+    - lines: list of strings with indentation (e.g. tabs for levels)
+    - excel_path: output Excel file
+    - ppt_path: output PowerPoint file
+    """
+
+    # --- Write to Excel ---
+    df_out = pd.DataFrame({"Hierarchy": lines})
+    df_out.to_excel(excel_path, index=False)
+    print(f"Indented text exported to Excel: {excel_path}")
+
+    # --- Write to PowerPoint ---
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    slide = pres.Slides.Add(1, 12)  # blank slide
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)
+    tr.Font.Size = 8  # keep compact font size
+
+    pres.SaveAs(ppt_path)
+    print(f"Indented text exported to PPT: {ppt_path}")
+
+    return excel_path, ppt_path
+
+export_indented_text(lines, "OrgChart_Indented.xlsx", "OrgChart_Indented.pptx")
+
+
+
+____________________
 
 
 import pandas as pd
