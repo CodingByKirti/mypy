@@ -238,39 +238,66 @@ if __name__ == "__main__":
 import pandas as pd
 import win32com.client
 
-def export_indented_text(lines, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
+def export_indented_text_with_openpos(level4_id, excel_path="OrgChart_Indented.xlsx", ppt_path="OrgChart_Indented.pptx"):
     """
-    Export indented hierarchy lines to Excel and PowerPoint.
-    - lines: list of strings with indentation (e.g. tabs for levels)
-    - excel_path: output Excel file
-    - ppt_path: output PowerPoint file
+    Export indented hierarchy lines (with open positions) to Excel and PowerPoint.
     """
 
+    lines = []
+
+    # --- L4 manager details ---
+    mgr_row = df_final[df_final["Employee ID"] == level4_id].iloc[0]
+    mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
+    count_open = open_pos_counts.get(level4_id, 0)
+    if count_open > 0:
+        mgr_details += f"\n→ Open Positions: {count_open}"
+    lines.append(mgr_details)
+
+    # --- L5 reports ---
+    l5_reports = get_direct_reports(level4_id)
+    for _, l5 in l5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        if pd.isna(l5_id):
+            continue
+        l5_row = df_final[df_final["Employee ID"] == l5_id].iloc[0]
+        l5_details = f"{l5_row.get('Employee Name','')} | {l5_row.get('Position Title','<blank>')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+        count_open = open_pos_counts.get(l5_id, 0)
+        if count_open > 0:
+            l5_details += f"\n→ Open Positions: {count_open}"
+        lines.append(f"\t{l5_details}")
+
+        # --- L6 reports ---
+        l6_reports = get_direct_reports(l5_id)
+        for _, l6 in l6_reports.iterrows():
+            l6_id = l6["Employee ID"]
+            if pd.isna(l6_id):
+                continue
+            l6_row = df_final[df_final["Employee ID"] == l6_id].iloc[0]
+            l6_details = f"{l6_row.get('Employee Name','')} | {l6_row.get('Position Title','<blank>')}\n{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}"
+            count_open = open_pos_counts.get(l6_id, 0)
+            if count_open > 0:
+                l6_details += f"\n→ Open Positions: {count_open}"
+            lines.append(f"\t\t{l6_details}")
+
     # --- Write to Excel ---
-    df_out = pd.DataFrame({"Hierarchy": lines})
-    df_out.to_excel(excel_path, index=False)
-    print(f"Indented text exported to Excel: {excel_path}")
+    pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to Excel: {excel_path}")
 
     # --- Write to PowerPoint ---
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
-
-    slide = pres.Slides.Add(1, 12)  # blank slide
+    slide = pres.Slides.Add(1, 12)
     textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
     tr = textbox.TextFrame.TextRange
     tr.Text = "\r".join(lines)
-    tr.Font.Size = 8  # keep compact font size
-
+    tr.Font.Size = 4  # compact font
     pres.SaveAs(ppt_path)
-    print(f"Indented text exported to PPT: {ppt_path}")
+    print(f"Indented hierarchy exported to PPT: {ppt_path}")
 
-    return excel_path, ppt_path
+    return lines
 
-export_indented_text(lines, "OrgChart_Indented.xlsx", "OrgChart_Indented.pptx")
-
-
-
+lines = export_indented_text_with_openpos(level4_id)
 ____________________
 
 
