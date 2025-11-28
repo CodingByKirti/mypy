@@ -31,11 +31,16 @@ lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail",
                        usecols=["Employee ID","Position Title"])
 lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
 lookup["Position Title"] = lookup["Position Title"].astype(str).str.strip().replace("Unspecified","")
-lookup = lookup.rename(columns={"Position Title":"Position Title_gha"})
 
+# Rename to avoid clash
+lookup = lookup.rename(columns={"Position Title":"Position_Title_gha"})
+
+# Merge
 df = df.merge(lookup, on="Employee ID", how="left")
-df["Position Title"] = df["Position Title_gha"].fillna(df["Position Title"])
-df.drop(columns=["Position Title_gha"], inplace=True)
+
+# Prefer gha Position Title if available
+df["Position Title"] = df["Position_Title_gha"].fillna(df["Position Title"])
+df.drop(columns=["Position_Title_gha"], inplace=True)
 df["Position Title"] = df["Position Title"].fillna("<blank>")
 
 # -----------------------------
@@ -140,9 +145,10 @@ def draw_orgchart(level4_id, ppt_path="OrgChart_Output.pptx"):
             l6_rows = [row for _,row in l6_reports.iterrows() if pd.notna(row["Employee ID"])]
             if len(l6_rows)==0: continue
             if len(l6_rows)>10:
+                # Show L5 details on main slide
                 info_box = add_box(slide,left+(L5_W-L6_W)/2,L6_TOP_BASE,L6_W,L6_H,f"Direct Reports: {len(l6_rows)}")
                 connect(slide,l5_box,info_box)
-                # Overflow slide for this L5
+                # Overflow slides for this L5
                 batch=[]
                 for idx,l6_row in enumerate(l6_rows):
                     batch.append(l6_row)
@@ -176,20 +182,3 @@ def draw_orgchart(level4_id, ppt_path="OrgChart_Output.pptx"):
 
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
-    return pres
-
-# -----------------------------
-# Run workflow
-# -----------------------------
-if __name__ == "__main__":
-    # Create a small Tkinter dialog to ask for Level 4 Manager Employee ID
-    root = tk.Tk()
-    root.withdraw()  # hide the main Tk window
-    level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
-
-    if level4_id is None:
-        print("No Level 4 ID entered. Exiting.")
-    else:
-        # Call the org chart drawing function
-        draw_orgchart(level4_id, "OrgChart_Output.pptx")
-        print("Workflow complete. PPT generated.")
