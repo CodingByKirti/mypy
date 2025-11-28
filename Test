@@ -1,3 +1,92 @@
+def write_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
+    """
+    Generate PPT slides:
+    - Level 4 manager header repeated on each slide.
+    - L5 employees batched into groups of 7 per slide.
+    - For each L5:
+        * If ≤7 L6 → show inline under L5, each with "Reports: N" (+ open positions).
+        * If >7 L6 → show only "Direct Reports: N" in main slide, then create separate slide(s)
+          for that L5 with all their L6 (batched into 7).
+    - L6 lines show only counts (no names/titles).
+    """
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    def add_slide(header_text, block_lines):
+        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)  # Title-only layout
+        shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
+        shape.TextFrame.TextRange.Text = "\r".join([header_text] + block_lines)
+
+    def batch_list(items, size=7):
+        return [items[i:i+size] for i in range(0, len(items), size)]
+
+    # Level 4 header
+    level4_header = person_header(level4_id)
+
+    # Get all L5 employees under Level 4
+    l5_reports = get_direct_reports(level4_id)
+
+    # Build structured blocks for each L5
+    overflow_l5_ids = []
+    l5_structs = []
+
+    for _, l5 in l5_reports.iterrows():
+        l5_id = l5["Employee ID"]
+        if pd.isna(l5_id):
+            continue
+
+        l5_header = person_header(l5_id)
+        l6_reports = get_direct_reports(l5_id)
+        l6_count = l6_reports.shape[0]
+
+        if l6_count == 0:
+            # Just L5 header
+            l5_structs.append([l5_header])
+        elif l6_count <= 7:
+            # L5 header + inline L6 counts
+            block = [l5_header]
+            for _, l6 in l6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                if pd.isna(l6_id):
+                    continue
+                block.append("\t" + l6_line(l6_id))
+            l5_structs.append(block)
+        else:
+            # Overflow case: only L5 header + DR count in main slide
+            l5_structs.append([l5_header, f"\t→ Direct Reports: {l6_count}"])
+            overflow_l5_ids.append(l5_id)
+
+    # Batch L5 structs into groups of 7 for Level 4 slides
+    for chunk in batch_list(l5_structs, size=7):
+        # Flatten each L5 struct into a block of lines
+        block_lines = []
+        for block in chunk:
+            block_lines.extend(block)
+        add_slide(level4_header, block_lines)
+
+    # Create overflow slides for each L5 with >7 L6
+    for l5_id in overflow_l5_ids:
+        l5_header = person_header(l5_id)
+        l6_reports = get_direct_reports(l5_id)
+
+        l6_lines = []
+        for _, l6 in l6_reports.iterrows():
+            l6_id = l6["Employee ID"]
+            if pd.isna(l6_id):
+                continue
+            l6_lines.append(l6_line(l6_id))
+
+        for chunk in batch_list(l6_lines, size=7):
+            add_slide(l5_header, chunk)
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+    return pres
+
+...................................................................
+............................................
+
 import pandas as pd
 import win32com.client
 import tkinter as tk
