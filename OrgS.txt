@@ -181,6 +181,15 @@ def draw_orgchart(level4_id, ppt_path="OrgChart_Output.pptx"):
 # -----------------------------
 # Run workflow
 # -----------------------------
-if __name__=="__main__":
-    root=tk.Tk(); root.withdraw()
-    level4_id=simpledialog.askinteger("Input","
+if __name__ == "__main__":
+    # Create a small Tkinter dialog to ask for Level 4 Manager Employee ID
+    root = tk.Tk()
+    root.withdraw()  # hide the main Tk window
+    level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
+
+    if level4_id is None:
+        print("No Level 4 ID entered. Exiting.")
+    else:
+        # Call the org chart drawing function
+        draw_orgchart(level4_id, "OrgChart_Output.pptx")
+        print("Workflow complete. PPT generated.")
