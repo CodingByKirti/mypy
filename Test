@@ -150,38 +150,57 @@ def export_indented_to_excel(level4_id, excel_path="OrgChart_Indented.xlsx"):
 # -----------------------------
 # Step 4: PowerPoint generation
 # -----------------------------
-def write_indented_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
+def write_outline_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
-    # Get indented lines for this Level 4
-    lines, overflow_l5_ids = build_indented_lines_for_level4(level4_id)
+    def add_outline_slide(lines):
+        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+        shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
+        shape.TextFrame.TextRange.Text = "\r".join(lines)
 
-    # Add main slide with all lines
-    slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
-    shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
-    shape.TextFrame.TextRange.Text = "\r".join(lines)
+    # Build main outline for Level 4
+    l5_reports = get_direct_reports(level4_id)
+    l5_rows = [row for _, row in l5_reports.iterrows()]
+
+    outline_lines = [person_header(level4_id)]
+    overflow_l5_ids = []
+
+    for l5_row in l5_rows:
+        l5_id = l5_row["Employee ID"]
+        if pd.isna(l5_id):
+            continue
+        outline_lines.append("\t" + person_header(l5_id))
+
+        l6_reports = get_direct_reports(l5_id)
+        l6_count = l6_reports.shape[0]
+
+        if l6_count == 0:
+            continue
+        elif l6_count <= 7:
+            for _, l6 in l6_reports.iterrows():
+                l6_id = l6["Employee ID"]
+                if pd.isna(l6_id):
+                    continue
+                outline_lines.append("\t\t" + l6_text(l6_id))
+        else:
+            outline_lines.append("\t\tDirect Reports: " + str(l6_count))
+            overflow_l5_ids.append(l5_id)
+
+    # Add Level 4 slide
+    add_outline_slide(outline_lines)
 
     # Add overflow slides for each L5 with >7 L6
     for l5_id in overflow_l5_ids:
         l5_header = person_header(l5_id)
         l6_reports = get_direct_reports(l5_id)
-        l6_lines = [l6_text(l6_id) for l6_id in l6_reports["Employee ID"] if pd.notna(l6_id)]
-
-        # First line is the L5 header, then indented L6 lines
-        lines_for_slide = [l5_header] + [f"\t{line}" for line in l6_lines]
-
-        ov_slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
-        ov_shape = ov_slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
-        ov_shape.TextFrame.TextRange.Text = "\r".join(lines_for_slide)
+        l6_lines = [f"\t{l6_text(l6_id)}" for l6_id in l6_reports["Employee ID"] if pd.notna(l6_id)]
+        add_outline_slide([l5_header] + l6_lines)
 
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
     return pres
-# -----------------------------
-# Run the workflow
-## -----------------------------
 # Run the Workflow
 # -----------------------------
 
