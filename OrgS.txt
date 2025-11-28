@@ -1,3 +1,4 @@
+
 import pandas as pd
 import win32com.client
 import tkinter as tk
@@ -113,13 +114,16 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
     for l5_id, group in out_df.groupby("Level 5 Employee ID"):
         if pd.notna(l5_id):
             l5_row = df_final[df_final["Employee ID"] == l5_id].iloc[0]
-            l5_details = f"{l5_row.get('Position Title','<blank>')}\n{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+            l5_details = (
+                f"{l5_row.get('Employee Name','')} | {l5_row.get('Position Title','<blank>')}\n"
+                f"{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
+            )
             count_open = open_pos_counts.get(l5_id, 0)
             if count_open > 0:
                 l5_details += f"\n→ Open Positions: {count_open}"
             count_reports = direct_counts.get(l5_id, 0)
-            if count_reports > 10:
-                l5_details += f"\n→ Direct Reports: {count_reports} (see next slide)"
+            if count_reports > 7:   # overflow rule for Level-5
+                l5_details += f"\n→ Direct Reports: {count_reports}"
                 overflow_managers.append(l5_id)
             lines.append(f"\t{l5_details}")
 
@@ -129,16 +133,14 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
             if pd.notna(l6_id):
                 l6_row = df_final[df_final["Employee ID"] == l6_id].iloc[0]
                 l6_details = (
-                    f"{l6_row.get('Position Title','<blank>')}\n"
+                    f"{l6_row.get('Employee Name','')} | {l6_row.get('Position Title','<blank>')}\n"
                     f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
                     f"→ Reports: {count}"
                 )
                 count_open = open_pos_counts.get(l6_id, 0)
                 if count_open > 0:
                     l6_details += f"\n→ Open Positions: {count_open}"
-                count_reports = direct_counts.get(l6_id, 0)
-                if count_reports > 10:
-                    l6_details += f"\n→ Direct Reports: {count_reports} (see next slide)"
+                if count > 7:   # overflow rule for Level-6
                     overflow_managers.append(l6_id)
                 lines.append(f"\t\t{l6_details}")
 
@@ -146,56 +148,64 @@ def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4
     print(f"Indented hierarchy exported to {excel_path}")
     return lines
 
-# Step 4: Write to PowerPoint
-def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx"):
+
+# Step 4: Write to PowerPoint with batching + overflow
+def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx", level4_id=None):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
-    slide = pres.Slides.Add(1, 12)
 
-    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
-    tr = textbox.TextFrame.TextRange
-    tr.Text = "\r".join(lines)
+    # Helper to create slides in batches of 7
+    def create_batched_slides(header, report_lines):
+        chunks = [report_lines[i:i+7] for i in range(0, len(report_lines), 7)]
+        for chunk in chunks:
+            slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+            textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+            textbox.TextFrame.TextRange.Text = "\r".join([header] + chunk)
 
-    # Add extra slides for overflow managers
+    # Level-4 batching
+    mgr_header = lines[0]
+    report_lines = lines[1:]
+    create_batched_slides(mgr_header, report_lines)
+
+    # Add overflow slides for managers (Level-5 or Level-6 with >7 reports)
     for mgr_id in overflow_managers:
-        mgr_reports = df_final[df_final["Functional Manager Employee ID"] == mgr_id].drop_duplicates(subset=["Employee ID","PID"])
         mgr_row = df_final[df_final["Employee ID"] == mgr_id].iloc[0]
         mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
-        report_lines = [mgr_details]
+        count_open = open_pos_counts.get(mgr_id, 0)
+        if count_open > 0:
+            mgr_details += f"\n→ Open Positions: {count_open}"
 
+        # Collect all direct reports of this overflow manager
+        mgr_reports = df_final[df_final["Functional Manager Employee ID"] == mgr_id].drop_duplicates(subset=["Employee ID","PID"])
+        report_lines = []
         for _, rep in mgr_reports.iterrows():
-            if pd.notna(rep["Employee ID"]):
-                rep_id = rep["Employee ID"]
-                rep_details = f"{rep.get('Position Title','<blank>')}\n{rep.get('GCB','')} | {rep.get('Country R3','')}"
-                # Add direct reports count
-                count_reports = df_final[df_final["Functional Manager Employee ID"] == rep_id].drop_duplicates(subset=["Employee ID","PID"]).shape[0]
-                if count_reports > 0:
-                    rep_details += f"\n→ Reports: {count_reports}"
-                # Add open positions count
-                count_open = open_pos_counts.get(rep_id, 0)
-                if count_open > 0:
-                    rep_details += f"\n→ Open Positions: {count_open}"
-                report_lines.append(f"\t{rep_details}")
+            rep_details = f"{rep.get('Employee Name','')} | {rep.get('Position Title','<blank>')}\n{rep.get('GCB','')} | {rep.get('Country R3','')}"
+            count_reports = direct_counts.get(rep["Employee ID"], 0)
+            if count_reports > 0:
+                rep_details += f"\n→ Reports: {count_reports}"
+            count_open = open_pos_counts.get(rep["Employee ID"], 0)
+            if count_open > 0:
+                rep_details += f"\n→ Open Positions: {count_open}"
+            report_lines.append(f"\t{rep_details}")
 
-        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
-        textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
-        textbox.TextFrame.TextRange.Text = "\r".join(report_lines)
+        # Batch these reportees into slides of 7
+        create_batched_slides(mgr_details, report_lines)
 
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
     return pres
-#write_indented_to_ppt(lines, "OrgChart_Output.pptx")
+
 
 # --- Ask user for Level 4 Manager Employee ID ---
 root = tk.Tk()
-root.withdraw()  # hide Tkinter main window
+root.withdraw()
 level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
 
-# --- Traverse hierarchy for that manager ---
+# --- Traverse hierarchy ---
 traverse_level5(level4_id)
 
-# --- Build DataFrame from collected rows ---
+# --- Build DataFrame ---
 out_df = pd.DataFrame(output_rows, columns=[
     "Level 4 Employee ID","Level 5 Employee ID","Level 6 Employee ID",
     "Count of Direct Reports","PID","Position Title"
@@ -205,4 +215,4 @@ out_df = pd.DataFrame(output_rows, columns=[
 lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", level4_id=level4_id)
 
 # --- Write those lines to PowerPoint ---
-write_indented_to_ppt(lines, "OrgChart_Output.pptx")
+write_indented_to_ppt(lines, "OrgChart_Output.pptx", level4_id=level4_id)
