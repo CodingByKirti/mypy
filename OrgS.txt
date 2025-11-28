@@ -1,0 +1,139 @@
+import pandas as pd
+import win32com.client
+import tkinter as tk
+from tkinter import simpledialog
+
+# -----------------------------
+# Step 1: Read and clean org data
+# -----------------------------
+def is_missing(val):
+    if pd.isna(val):
+        return True
+    s = str(val).strip()
+    return s == "" or s.lower() == "unspecified"
+
+# Read org_data.xlsx
+df = pd.read_excel("org_data.xlsx", skiprows=1, sheet_name="Data")
+df["Employee Name"] = df["Employee Name"].astype(str).str.strip().replace("Unspecified","")
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str).str.strip().replace("Unspecified","")
+df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
+df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
+
+# Read ghaOct.xlsx for Position Title
+lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
+lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
+df = df.merge(lookup[["Employee ID","Position Title","GCB","Country R3"]], on="Employee ID", how="left")
+df["Position Title"] = df["Position Title"].fillna("<blank>")
+
+# Read open_position.xlsx
+open_pos = pd.read_excel("open_position.xlsx",
+                         usecols=["Position Number","Position Title",
+                                  "Functional Manager Position Level Employee ID",
+                                  "Functional Manager Position Level Employee Name"])
+for col in open_pos.columns:
+    open_pos[col] = open_pos[col].astype(str).str.strip().replace("Unspecified","")
+
+open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
+open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(open_pos["Functional Manager Position Level Employee ID"], errors="coerce").astype("Int64")
+
+# Merge open positions into df
+df_open = df.merge(open_pos, left_on="PID", right_on="Position Number", how="left")
+
+# Final combined dataset
+df_final = df.copy()
+
+# -----------------------------
+# Step 2: Precompute counts
+# -----------------------------
+direct_counts = df_final.groupby("Functional Manager Employee ID").size().to_dict()
+
+# -----------------------------
+# Step 3: Helpers
+# -----------------------------
+def get_direct_reports(manager_id):
+    return (
+        df_final[df_final["Functional Manager Employee ID"] == manager_id]
+        .drop_duplicates(subset=["Employee ID","PID"])
+        .copy()
+    )
+
+def person_header(emp_id):
+    row = df_final[df_final["Employee ID"] == emp_id]
+    if row.empty:
+        return "<unknown>"
+    r = row.iloc[0]
+    return f"{r.get('Employee Name','')} | {r.get('Position Title','<blank>')}"
+
+def l6_text(emp_id):
+    count = direct_counts.get(emp_id, 0)
+    return f"Reports: {count}"
+
+# -----------------------------
+# Step 4: PPT Export (Outline with overflow rule)
+# -----------------------------
+def write_outline_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    def add_outline_slide(lines):
+        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+        shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
+        shape.TextFrame.TextRange.Text = "\r".join(lines)
+
+    # Build Level 4 outline
+    l5_reports = get_direct_reports(level4_id)
+    l5_rows = [row for _, row in l5_reports.iterrows()]
+
+    outline_lines = [person_header(level4_id)]
+    overflow_l5_ids = []
+
+    # If L4 has >10 direct reports → show count only
+    if len(l5_rows) > 10:
+        outline_lines.append("\tDirect Reports: " + str(len(l5_rows)))
+        # Create overflow slide with L4 as Layer 1, L5 as Layer 2
+        l5_lines = [f"\t{person_header(l5['Employee ID'])}" for l5 in l5_rows if pd.notna(l5["Employee ID"])]
+        add_outline_slide([person_header(level4_id)] + l5_lines)
+    else:
+        for l5_row in l5_rows:
+            l5_id = l5_row["Employee ID"]
+            if pd.isna(l5_id):
+                continue
+            outline_lines.append("\t" + person_header(l5_id))
+            l6_reports = get_direct_reports(l5_id)
+            if len(l6_reports) > 10:
+                outline_lines.append("\t\tDirect Reports: " + str(len(l6_reports)))
+                overflow_l5_ids.append(l5_id)
+            else:
+                for _, l6 in l6_reports.iterrows():
+                    l6_id = l6["Employee ID"]
+                    if pd.notna(l6_id):
+                        outline_lines.append("\t\t" + l6_text(l6_id))
+
+    # Add main Level 4 slide
+    add_outline_slide(outline_lines)
+
+    # Overflow slides for L5 with >10 L6
+    for l5_id in overflow_l5_ids:
+        l5_header = person_header(l5_id)
+        l6_reports = get_direct_reports(l5_id)
+        l6_lines = [f"\t{l6_text(l6_id)}" for l6_id in l6_reports["Employee ID"] if pd.notna(l6_id)]
+        add_outline_slide([l5_header] + l6_lines)
+
+    pres.SaveAs(ppt_path)
+    print(f"PPT saved: {ppt_path}")
+    return pres
+
+# -----------------------------
+# Run the Workflow
+# -----------------------------
+if __name__ == "__main__":
+    root = tk.Tk()
+    root.withdraw()
+    level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
+
+    if level4_id is None:
+        print("No Level 4 ID entered. Exiting.")
+    else:
+        write_outline_to_ppt(level4_id, "OrgChart_Output.pptx")
+        print("Workflow complete. PPT generated.")
