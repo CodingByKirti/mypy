@@ -1,3 +1,75 @@
+# -----------------------------
+# Step 3: Append open positions (strict filtering)
+# -----------------------------
+needed_cols = ["Employee ID","Employee Name","Functional Manager Employee ID",
+               "Functional Manager Employee Name","Stack","FTE FCST","PID",
+               "Country R3","GCB","Position Title"]
+df_base = pd.read_excel("org_data.xlsx", skiprows=1, sheet_name="Data", usecols=needed_cols)
+
+# Clean and coerce
+df_base["PID"] = pd.to_numeric(df_base["PID"], errors="coerce").astype("Int64")
+df_base["FTE FCST"] = pd.to_numeric(df_base["FTE FCST"], errors="coerce")
+df_base["Stack"] = df_base["Stack"].astype(str).str.strip()
+
+# Filter: non-actuals, FTE FCST > 0, PID present
+mask_candidates = (
+    (df_base["Stack"] != "ACTUALS") &
+    (df_base["FTE FCST"] > 0) &
+    (df_base["PID"].notna())
+)
+df_open_candidates = (
+    df_base.loc[mask_candidates, ["PID","Functional Manager Employee ID","Functional Manager Employee Name"]]
+    .drop_duplicates(subset=["PID"])
+    .copy()
+)
+
+# Load open_position.xlsx
+open_pos = pd.read_excel(
+    "open_position.xlsx",
+    usecols=[
+        "Position Number","Position Title",
+        "Functional Manager Position Level Employee ID",
+        "Functional Manager Position Level Employee Name"
+    ]
+)
+open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
+open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(
+    open_pos["Functional Manager Position Level Employee ID"], errors="coerce"
+).astype("Int64")
+for col in ["Position Title","Functional Manager Position Level Employee Name"]:
+    open_pos[col] = open_pos[col].astype(str).str.strip().replace("Unspecified","")
+
+# Inner join: only open positions whose Position Number matches a PID in org_data
+df_open_enriched = df_open_candidates.merge(
+    open_pos,
+    left_on="PID",
+    right_on="Position Number",
+    how="inner"
+)
+
+# Prepare placeholder rows
+df_open_enriched["Employee ID"] = pd.NA
+df_open_enriched["Employee Name"] = ""
+df_open_enriched.rename(columns={
+    "Functional Manager Position Level Employee ID": "Functional Manager Employee ID",
+    "Functional Manager Position Level Employee Name": "Functional Manager Employee Name"
+}, inplace=True)
+df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("<blank>")
+df_open_enriched = df_open_enriched[[
+    "Employee ID","Employee Name","Functional Manager Employee ID",
+    "Functional Manager Employee Name","PID","Position Title"
+]]
+
+# Combine ACTUALS + filtered open positions
+df_final = pd.concat([df, df_open_enriched], ignore_index=True)
+df_final = df_final.drop_duplicates(subset=["Employee ID","PID","Functional Manager Employee ID"], keep="first")
+
+# Recompute counts
+direct_counts = df_final.groupby("Functional Manager Employee ID").size().to_dict()
+open_pos_counts = df_open_enriched.groupby("Functional Manager Employee ID").size().to_dict()
+
+
+
 ______________
 import pandas as pd
 import win32com.client
