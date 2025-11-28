@@ -150,69 +150,35 @@ def export_indented_to_excel(level4_id, excel_path="OrgChart_Indented.xlsx"):
 # -----------------------------
 # Step 4: PowerPoint generation
 # -----------------------------
-def write_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
+def write_indented_to_ppt(level4_id, ppt_path="OrgChart_Output.pptx"):
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
-    def add_slide(header_text, block_lines):
-        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
-        shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
-        shape.TextFrame.TextRange.Text = "\r".join([header_text] + block_lines)
+    # Get indented lines for this Level 4
+    lines, overflow_l5_ids = build_indented_lines_for_level4(level4_id)
 
-    def batch_list(items, size=7):
-        return [items[i:i+size] for i in range(0, len(items), size)]
+    # Add main slide with all lines
+    slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+    shape = slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
+    shape.TextFrame.TextRange.Text = "\r".join(lines)
 
-    level4_header = person_header(level4_id)
-    l5_reports = get_direct_reports(level4_id)
-
-    l5_structs = []
-    overflow_l5_ids = []
-
-    for _, l5 in l5_reports.iterrows():
-        l5_id = l5["Employee ID"]
-        if pd.isna(l5_id):
-            continue
-        l5_header = person_header(l5_id)
-        l6_reports = get_direct_reports(l5_id)
-        l6_count = l6_reports.shape[0]
-
-        if l6_count == 0:
-            l5_structs.append([l5_header])
-        elif l6_count <= 7:
-            block = [l5_header]
-            for _, l6 in l6_reports.iterrows():
-                l6_id = l6["Employee ID"]
-                if pd.isna(l6_id):
-                    continue
-                block.append("\t" + l6_line(l6_id))
-            l5_structs.append(block)
-        else:
-            l5_structs.append([l5_header, f"\t→ Direct Reports: {l6_count}"])
-            overflow_l5_ids.append(l5_id)
-
-    for chunk in batch_list(l5_structs, size=7):
-        block_lines = []
-        for block in chunk:
-            block_lines.extend(block)
-        add_slide(level4_header, block_lines)
-
+    # Add overflow slides for each L5 with >7 L6
     for l5_id in overflow_l5_ids:
         l5_header = person_header(l5_id)
         l6_reports = get_direct_reports(l5_id)
-        l6_lines = []
-        for _, l6 in l6_reports.iterrows():
-            l6_id = l6["Employee ID"]
-            if pd.isna(l6_id):
-                continue
-            l6_lines.append(l6_line(l6_id))
-        for chunk in batch_list(l6_lines, size=7):
-            add_slide(l5_header, chunk)
+        l6_lines = [l6_text(l6_id) for l6_id in l6_reports["Employee ID"] if pd.notna(l6_id)]
+
+        # First line is the L5 header, then indented L6 lines
+        lines_for_slide = [l5_header] + [f"\t{line}" for line in l6_lines]
+
+        ov_slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+        ov_shape = ov_slide.Shapes.AddTextbox(1, 50, 50, 820, 420)
+        ov_shape.TextFrame.TextRange.Text = "\r".join(lines_for_slide)
 
     pres.SaveAs(ppt_path)
     print(f"PPT saved: {ppt_path}")
     return pres
-
 # -----------------------------
 # Run the workflow
 ## -----------------------------
