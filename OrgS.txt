@@ -1,5 +1,5 @@
 # -----------------------------
-# Step 3: Append open positions (constraints from org_data)
+# Step 3: Append open positions (constraints + update logic)
 # -----------------------------
 
 # Re-read org_data with needed cols for filtering
@@ -16,7 +16,7 @@ mask = (
     (pd.to_numeric(df_base["FTE FCST"], errors="coerce") > 0) &
     df_base["PID"].notna()
 )
-valid_pids = df_base.loc[mask, "PID"].dropna().unique()
+valid_pids = df_base.loc[mask, "PID"].dropna().astype(str).unique()
 
 # Load open positions
 open_pos = pd.read_excel(
@@ -27,7 +27,9 @@ open_pos = pd.read_excel(
         "Functional Manager Position Level Employee Name"
     ]
 )
-open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
+
+# Convert Position Number to string to match PID dtype
+open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
 
 # Keep only open positions whose Position Number is in valid PIDs
 open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
@@ -39,18 +41,27 @@ df_open = open_pos.rename(columns={
     "Functional Manager Position Level Employee Name":"Functional Manager Employee Name"
 })
 
-# Add placeholders
+# Add placeholders for employee fields
 df_open["Employee ID"] = pd.NA
 df_open["Employee Name"] = ""
 df_open["Position Title"] = df_open["Position Title"].fillna("<blank>")
-df_open = df_open[[
-    "Employee ID","Employee Name","Functional Manager Employee ID",
-    "Functional Manager Employee Name","PID","Position Title"
+
+# --- Update org_data with manager info from df_open instead of concat ---
+mgr_map = df_open.set_index("PID")[[
+    "Functional Manager Employee ID","Functional Manager Employee Name"
 ]]
 
-# Combine ACTUALS + Open Positions
-df_final = pd.concat([df, df_open], ignore_index=True)
-df_final = df_final.drop_duplicates(subset=["Employee ID","PID","Functional Manager Employee ID"], keep="first")
+# Ensure PID dtype matches
+df["PID"] = df["PID"].astype(str).str.strip()
+mgr_map.index = mgr_map.index.astype(str).str.strip()
+
+# Update df in place
+df["Functional Manager Employee ID"].update(df["PID"].map(mgr_map["Functional Manager Employee ID"]))
+df["Functional Manager Employee Name"].update(df["PID"].map(mgr_map["Functional Manager Employee Name"]))
+
+# Final dataframe includes updated manager info
+df_final = df.copy()
+
 ------------------
 import pandas as pd
 import win32com.client
