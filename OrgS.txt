@@ -1,7 +1,4 @@
 # -----------------------------
-# Step 3: Append open positions (string-safe)
-# -----------------------------
-# -----------------------------
 # Step 3: Append open positions (constraints + update logic)
 # -----------------------------
 
@@ -27,6 +24,8 @@ def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path
     )
     valid_pids = df_base.loc[mask, "PID"].dropna().astype(str).str.strip().unique()
 
+    print("Valid PIDs after constraints:", len(valid_pids))
+
     # --- Load open positions ---
     open_pos = pd.read_excel(
         open_pos_path,
@@ -42,6 +41,7 @@ def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path
 
     # Keep only valid PIDs
     open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
+    print("Open positions matched:", len(open_pos))
 
     # Rename to match schema
     df_open = open_pos.rename(columns={
@@ -72,11 +72,16 @@ def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path
         df["PID"].map(mgr_map["Functional Manager Employee Name"].astype(str))
     )
 
+    # Diagnostics: show updated rows
+    updated_rows = df[df["PID"].isin(mgr_map.index)]
+    print("Rows updated with manager info:", len(updated_rows))
+
     # Return updated dataframe
     return df.copy()
 
-df_final = step3_append_open_positions(df)
-------------------
+
+# --- Usage ---
+df_final = step3_append_open_positions(df)------------------
 import pandas as pd
 import win32com.client
 import tkinter as tk
