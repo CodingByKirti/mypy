@@ -1,38 +1,104 @@
-# After your merge, you have both sets of manager columns
-# Let's coalesce them into one clean set
+# -----------------------------
+# Step 3: Append open positions (strict filtering + update)
+# -----------------------------
 
-# Prefer enriched values from open_pos, else fall back to df_open_candidates
-df_open_enriched["Manager_ID_Final"] = df_open_enriched["Functional Manager Position Level Employee ID"].fillna(
-    df_open_enriched["Functional Manager Employee ID"]
-)
-df_open_enriched["Manager_Name_Final"] = df_open_enriched["Functional Manager Position Level Employee Name"].replace("", pd.NA).fillna(
-    df_open_enriched["Functional Manager Employee Name"]
-)
+def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path="open_position.xlsx"):
+    """
+    Fetches open positions, applies org_data constraints, coalesces manager info,
+    and updates df_final in place. Returns df_final and df_open_enriched.
+    """
 
-# Prepare placeholder rows
-df_open_enriched["Employee ID"] = pd.NA
-df_open_enriched["Employee Name"] = ""
-df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("<blank>")
+    # --- Load org_data for constraints ---
+    needed_cols = [
+        "Employee ID","Employee Name","Functional Manager Employee ID",
+        "Functional Manager Employee Name","Stack","FTE FCST","PID",
+        "Country R3","GCB","Position Title"
+    ]
+    df_base = pd.read_excel(org_data_path, skiprows=1, sheet_name="Data", usecols=needed_cols)
 
-# Keep only the unified manager columns
-df_open_enriched = df_open_enriched[[
-    "Employee ID","Employee Name","PID","Position Title",
-    "Manager_ID_Final","Manager_Name_Final"
-]].rename(columns={
-    "Manager_ID_Final":"Functional Manager Employee ID",
-    "Manager_Name_Final":"Functional Manager Employee Name"
-})
+    # Clean and coerce
+    df_base["PID"] = pd.to_numeric(df_base["PID"], errors="coerce").astype("Int64")
+    df_base["FTE FCST"] = pd.to_numeric(df_base["FTE FCST"], errors="coerce")
+    df_base["Stack"] = df_base["Stack"].astype(str).str.strip()
 
-# --- Now update df_final in place ---
-for _, row in df_open_enriched.iterrows():
-    pid = row["PID"]
-    mask = df_final["PID"] == pid
-    if mask.any():
-        df_final.loc[mask, ["Functional Manager Employee ID","Functional Manager Employee Name"]] = [
-            row["Functional Manager Employee ID"],
-            row["Functional Manager Employee Name"]
-        ]..............................
+    # Filter candidates
+    mask_candidates = (
+        (df_base["Stack"] != "ACTUALS") &
+        (df_base["FTE FCST"] > 0) &
+        (df_base["PID"].notna())
+    )
+    df_open_candidates = (
+        df_base.loc[mask_candidates, ["PID","Functional Manager Employee ID","Functional Manager Employee Name"]]
+        .drop_duplicates(subset=["PID"])
+        .copy()
+    )
 
+    # --- Load open positions ---
+    open_pos = pd.read_excel(
+        open_pos_path,
+        usecols=[
+            "Position Number","Position Title",
+            "Functional Manager Position Level Employee ID",
+            "Functional Manager Position Level Employee Name"
+        ]
+    )
+    open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
+    open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(
+        open_pos["Functional Manager Position Level Employee ID"], errors="coerce"
+    ).astype("Int64")
+
+    for col in ["Position Title","Functional Manager Position Level Employee Name"]:
+        open_pos[col] = open_pos[col].astype(str).str.strip().replace("Unspecified","")
+
+    # --- Merge candidates with open positions ---
+    df_open_enriched = df_open_candidates.merge(
+        open_pos,
+        left_on="PID",
+        right_on="Position Number",
+        how="inner",
+        suffixes=("_org","_open")
+    )
+
+    # --- Coalesce manager fields ---
+    df_open_enriched["Manager_ID_Final"] = df_open_enriched["Functional Manager Position Level Employee ID"].fillna(
+        df_open_enriched["Functional Manager Employee ID"]
+    )
+    df_open_enriched["Manager_Name_Final"] = df_open_enriched["Functional Manager Position Level Employee Name"].replace("", pd.NA).fillna(
+        df_open_enriched["Functional Manager Employee Name"]
+    )
+
+    # --- Prepare placeholder rows ---
+    df_open_enriched["Employee ID"] = pd.NA
+    df_open_enriched["Employee Name"] = ""
+    df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("<blank>")
+
+    # --- Final schema for open positions ---
+    df_open_enriched = df_open_enriched[[
+        "Employee ID","Employee Name","PID","Position Title",
+        "Manager_ID_Final","Manager_Name_Final"
+    ]].rename(columns={
+        "Manager_ID_Final":"Functional Manager Employee ID",
+        "Manager_Name_Final":"Functional Manager Employee Name"
+    })
+
+    # --- Update df_final in place ---
+    df["PID"] = pd.to_numeric(df["PID"], errors="coerce").astype("Int64")
+    updated = 0
+    for _, row in df_open_enriched.iterrows():
+        mask = df["PID"].eq(row["PID"])
+        if mask.any():
+            df.loc[mask, ["Functional Manager Employee ID","Functional Manager Employee Name"]] = [
+                row["Functional Manager Employee ID"],
+                row["Functional Manager Employee Name"]
+            ]
+            updated += int(mask.sum())
+
+    print(f"Open positions merged: {len(df_open_enriched)}")
+    print(f"Rows updated in df_final: {updated}")
+
+    return df.copy(), df_open_enriched
+
+df_final, df_open_enriched = step3_append_open_positions(df)
 
 import pandas as pd
 import win32com.client
