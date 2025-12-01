@@ -1,19 +1,22 @@
-# Step 3: Append open positions with strict criteria and manager fill
+# -----------------------------
+# Step 3: Append open positions (constraints from org_data)
+# -----------------------------
 
+# Re-read org_data with needed cols for filtering
 needed_cols = [
-    "Employee ID","Employee Name","Functional Manager Employee ID",
-    "Functional Manager Employee Name","Stack","FTE FCST","PID","Employment Type"
+    "PID","Stack","FTE FCST","Employment Type",
+    "Functional Manager Employee ID","Functional Manager Employee Name"
 ]
 df_base = pd.read_excel("org_data.xlsx", sheet_name="Data", usecols=needed_cols)
 
-# Strict filter
+# Apply constraints
 mask = (
     ~df_base["Employment Type"].isin(["Consultant","Contractor","Service Provider","Intern"]) &
-    (df_base["Stack"].str.upper() != "ACTUALS") &
+    (df_base["Stack"].astype(str).str.strip().str.upper() != "ACTUALS") &
     (pd.to_numeric(df_base["FTE FCST"], errors="coerce") > 0) &
     df_base["PID"].notna()
 )
-df_open_candidates = df_base.loc[mask, ["PID"]].drop_duplicates()
+valid_pids = df_base.loc[mask, "PID"].dropna().unique()
 
 # Load open positions
 open_pos = pd.read_excel(
@@ -26,48 +29,29 @@ open_pos = pd.read_excel(
 )
 open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
 
-# Merge candidates with open positions
-df_open_enriched = df_open_candidates.merge(
-    open_pos,
-    left_on="PID",
-    right_on="Position Number",
-    how="inner"
-)
+# Keep only open positions whose Position Number is in valid PIDs
+open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
+
+# Rename to match org_data schema
+df_open = open_pos.rename(columns={
+    "Position Number":"PID",
+    "Functional Manager Position Level Employee ID":"Functional Manager Employee ID",
+    "Functional Manager Position Level Employee Name":"Functional Manager Employee Name"
+})
 
 # Add placeholders
-df_open_enriched["Employee ID"] = pd.NA
-df_open_enriched["Employee Name"] = ""
-df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("<blank>")
-
-# --- Fill manager details from org_data (only for those passing criteria) ---
-pid_lookup = (
-    df_base.loc[mask, ["PID","Functional Manager Employee ID","Functional Manager Employee Name"]]
-    .drop_duplicates(subset=["PID"])
-    .set_index("PID")
-)
-
-def fill_manager(row):
-    pid = row["PID"]
-    if pd.notna(pid) and pid in pid_lookup.index:
-        row["Functional Manager Employee ID"] = pid_lookup.loc[pid, "Functional Manager Employee ID"]
-        row["Functional Manager Employee Name"] = pid_lookup.loc[pid, "Functional Manager Employee Name"]
-    return row
-
-df_open_enriched = df_open_enriched.apply(fill_manager, axis=1)
-
-# Harmonize schema with df
-for col in df.columns:
-    if col not in df_open_enriched.columns:
-        df_open_enriched[col] = pd.NA
-df_open_enriched = df_open_enriched[df.columns]
+df_open["Employee ID"] = pd.NA
+df_open["Employee Name"] = ""
+df_open["Position Title"] = df_open["Position Title"].fillna("<blank>")
+df_open = df_open[[
+    "Employee ID","Employee Name","Functional Manager Employee ID",
+    "Functional Manager Employee Name","PID","Position Title"
+]]
 
 # Combine ACTUALS + Open Positions
-df_final = pd.concat([df, df_open_enriched], ignore_index=True)
-df_final = df_final.drop_duplicates(subset=["Employee ID","PID"], keep="first")
-
-# Recompute counts
-direct_counts = df_final.groupby("Functional Manager Employee ID").size().to_dict()
-open_pos_counts = df_open_enriched.groupby("Functional Manager Employee ID").size().to_dict()------------------
+df_final = pd.concat([df, df_open], ignore_index=True)
+df_final = df_final.drop_duplicates(subset=["Employee ID","PID","Functional Manager Employee ID"], keep="first")
+------------------
 import pandas as pd
 import win32com.client
 import tkinter as tk
