@@ -1,3 +1,28 @@
+
+df_final, df_open_enriched = step3_append_open_positions(df)
+
+# Actual direct reports
+direct_counts_actual = (
+    df_final[df_final["Employee ID"].notna()]
+    .groupby("Functional Manager Employee ID")["Employee ID"]
+    .nunique()
+    .to_dict()
+)
+
+# Open positions
+open_counts = (
+    df_open_enriched.groupby("Functional Manager Employee ID")["PID"]
+    .size()
+    .to_dict()
+)
+
+# Combined
+direct_counts_total = {
+    mgr: direct_counts_actual.get(mgr, 0) + open_counts.get(mgr, 0)
+    for mgr in set(direct_counts_actual) | set(open_counts)
+}
+
+
 # -----------------------------
 # Step 3: Append open positions (strict filtering + update)
 # -----------------------------
