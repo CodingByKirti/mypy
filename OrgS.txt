@@ -1,22 +1,15 @@
 # -----------------------------
-# Step 3: Append open positions (constraints + update logic)
+# Step 3: Append open positions (string-safe)
 # -----------------------------
 
-# Re-read org_data with needed cols for filtering
-needed_cols = [
-    "PID","Stack","FTE FCST","Employment Type",
-    "Functional Manager Employee ID","Functional Manager Employee Name"
-]
-df_base = pd.read_excel("org_data.xlsx", sheet_name="Data", usecols=needed_cols)
-
-# Apply constraints
+# Constraints on org_data
 mask = (
     ~df_base["Employment Type"].isin(["Consultant","Contractor","Service Provider","Intern"]) &
     (df_base["Stack"].astype(str).str.strip().str.upper() != "ACTUALS") &
     (pd.to_numeric(df_base["FTE FCST"], errors="coerce") > 0) &
     df_base["PID"].notna()
 )
-valid_pids = df_base.loc[mask, "PID"].dropna().astype(str).unique()
+valid_pids = df_base.loc[mask, "PID"].dropna().astype(str).str.strip().unique()
 
 # Load open positions
 open_pos = pd.read_excel(
@@ -28,41 +21,38 @@ open_pos = pd.read_excel(
     ]
 )
 
-# Convert Position Number to string to match PID dtype
+# Convert Position Number to string
 open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
 
-# Keep only open positions whose Position Number is in valid PIDs
+# Keep only valid PIDs
 open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
 
-# Rename to match org_data schema
+# Rename to match schema
 df_open = open_pos.rename(columns={
     "Position Number":"PID",
     "Functional Manager Position Level Employee ID":"Functional Manager Employee ID",
     "Functional Manager Position Level Employee Name":"Functional Manager Employee Name"
 })
 
-# Add placeholders for employee fields
+# Add placeholders
 df_open["Employee ID"] = pd.NA
 df_open["Employee Name"] = ""
 df_open["Position Title"] = df_open["Position Title"].fillna("<blank>")
 
-# --- Update org_data with manager info from df_open instead of concat ---
+# --- Update org_data with manager info ---
+df["PID"] = df["PID"].astype(str).str.strip()
 mgr_map = df_open.set_index("PID")[[
     "Functional Manager Employee ID","Functional Manager Employee Name"
 ]]
 
-# Ensure PID dtype matches
-df["PID"] = df["PID"].astype(str).str.strip()
-mgr_map.index = mgr_map.index.astype(str).str.strip()
+df["Functional Manager Employee ID"] = df["Functional Manager Employee ID"].astype(str)
+df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str)
 
-# Update df in place
-df["Functional Manager Employee ID"].update(df["PID"].map(mgr_map["Functional Manager Employee ID"]))
-df["Functional Manager Employee Name"].update(df["PID"].map(mgr_map["Functional Manager Employee Name"]))
+df["Functional Manager Employee ID"].update(df["PID"].map(mgr_map["Functional Manager Employee ID"].astype(str)))
+df["Functional Manager Employee Name"].update(df["PID"].map(mgr_map["Functional Manager Employee Name"].astype(str)))
 
-# Final dataframe includes updated manager info
-df_final = df.copy()
-
-------------------
+# Final dataframe
+df_final = df.copy()------------------
 import pandas as pd
 import win32com.client
 import tkinter as tk
