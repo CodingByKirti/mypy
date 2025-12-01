@@ -39,7 +39,7 @@ def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path
     # Convert Position Number to string
     open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
 
-    # Keep only valid PIDs
+    # Keep only open positions whose Position Number is in valid PIDs
     open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
     print("Open positions matched:", len(open_pos))
 
@@ -55,33 +55,35 @@ def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path
     df_open["Employee Name"] = ""
     df_open["Position Title"] = df_open["Position Title"].fillna("<blank>")
 
-    # --- Update df with manager info ---
+    # --- Update df with manager info at correct rows ---
     df["PID"] = df["PID"].astype(str).str.strip()
-    mgr_map = df_open.set_index("PID")[[
-        "Functional Manager Employee ID","Functional Manager Employee Name"
-    ]]
-
-    # Ensure manager fields are string to avoid casting errors
     df["Functional Manager Employee ID"] = df["Functional Manager Employee ID"].astype(str)
     df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str)
 
-    df["Functional Manager Employee ID"].update(
-        df["PID"].map(mgr_map["Functional Manager Employee ID"].astype(str))
-    )
-    df["Functional Manager Employee Name"].update(
-        df["PID"].map(mgr_map["Functional Manager Employee Name"].astype(str))
-    )
+    updated_count = 0
+    for _, row in df_open.iterrows():
+        pid = row["PID"]
+        mask = df["PID"] == pid
+        if mask.any():
+            df.loc[mask, ["Functional Manager Employee ID","Functional Manager Employee Name"]] = [
+                str(row["Functional Manager Employee ID"]),
+                str(row["Functional Manager Employee Name"])
+            ]
+            updated_count += mask.sum()
 
-    # Diagnostics: show updated rows
-    updated_rows = df[df["PID"].isin(mgr_map.index)]
-    print("Rows updated with manager info:", len(updated_rows))
+    print("Rows updated with manager info:", updated_count)
 
     # Return updated dataframe
     return df.copy()
 
 
 # --- Usage ---
-df_final = step3_append_open_positions(df)------------------
+df_final = step3_append_open_positions(df)
+
+
+
+
+
 import pandas as pd
 import win32com.client
 import tkinter as tk
