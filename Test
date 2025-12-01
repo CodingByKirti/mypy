@@ -1,4 +1,46 @@
 
+
+def get_direct_reports(manager_id, df_actual, df_open):
+    """Return both actual employees and open positions reporting to a manager."""
+    # Actual employees
+    actuals = df_actual[df_actual["Functional Manager Employee ID"] == manager_id]
+
+    # Open positions
+    opens = df_open[df_open["Functional Manager Employee ID"] == manager_id]
+
+    return actuals, opens
+
+
+def box_text_actual(row):
+    """Format box for actual employee."""
+    return f"{row['Employee Name']}\n{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}"
+
+
+def box_text_open(row):
+    """Format box for open position (no employee name)."""
+    return f"{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}\n<Open Position>"
+
+
+def render_hierarchy(manager_id, df_actual, df_open, level=0):
+    """Recursive hierarchy renderer with open positions included."""
+    # Show manager box
+    mgr_row = df_actual[df_actual["Employee ID"] == manager_id].iloc[0]
+    print("    " * level + box_text_actual(mgr_row))
+
+    # Get direct reports
+    actuals, opens = get_direct_reports(manager_id, df_actual, df_open)
+
+    # Render actual employees
+    for _, row in actuals.iterrows():
+        print("    " * (level+1) + box_text_actual(row))
+        render_hierarchy(row["Employee ID"], df_actual, df_open, level+2)
+
+    # Render open positions
+    for _, row in opens.iterrows():
+        print("    " * (level+1) + box_text_open(row))
+
+
+
 df_final, df_open_enriched = step3_append_open_positions(df)
 
 # Actual direct reports
