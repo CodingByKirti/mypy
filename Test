@@ -1,3 +1,64 @@
+Right now your **Step 6: PowerPoint generation** only draws boxes for employees (`Employee ID` not null). That’s why open positions aren’t showing up. You need to extend `add_l4_slide` so it also loops through **open positions** for each L5 manager, and draws them as separate boxes with Position Title, GCB, and Location.
+
+---
+
+### 🔧 Changes to make
+
+1. **Update `get_direct_reports`** so it returns both actuals and opens:
+```python
+def get_direct_reports(manager_id):
+    actuals = df_final[df_final["Functional Manager Employee ID"] == manager_id]
+    opens   = df_open_enriched[df_open_enriched["Functional Manager Employee ID"] == manager_id]
+    return actuals, opens
+```
+
+2. **Add a formatter for open positions**:
+```python
+def box_text_open(row):
+    return f"{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}\n<Open Position>"
+```
+
+3. **Extend `add_l4_slide`**:
+Right now you only loop through `l6_rows` (actual employees). Add a second loop for open positions:
+
+```python
+actuals, opens = get_direct_reports(l5_id)
+
+# Existing loop for actual employees
+l6_rows = [row for _,row in actuals.iterrows() if pd.notna(row["Employee ID"])]
+
+# New loop for open positions
+open_rows = [row for _,row in opens.iterrows()]
+
+# Draw actual employees
+for j,l6_row in enumerate(l6_rows):
+    l6_id = l6_row["Employee ID"]
+    l6_left = left+(L5_W-L6_W)/2
+    l6_top = L6_TOP_BASE+j*(L6_H+ROW_GAP)
+    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text(l6_id,is_l6=True))
+    connect(slide,l5_box,l6_box)
+
+# Draw open positions
+for k,open_row in enumerate(open_rows):
+    l6_left = left+(L5_W-L6_W)/2
+    l6_top = L6_TOP_BASE+(len(l6_rows)+k)*(L6_H+ROW_GAP)
+    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text_open(open_row))
+    connect(slide,l5_box,l6_box)
+```
+
+---
+
+### ✅ Result
+- If an L5 manager has 2 employees and 1 open position, the slide will show **3 boxes under them**:  
+  - 2 employee boxes with names/titles  
+  - 1 open position box with Position Title, GCB, Location, and `<Open Position>`  
+
+- Overflow logic (batching >10) can be applied to open positions the same way as employees if needed.
+
+---
+
+👉 Do you want me to rewrite the **entire Step 6 function** (`draw_orgchart`) with these changes baked in, so you can drop it in directly without patching pieces?
+
 
 
 def get_direct_reports(manager_id, df_actual, df_open):
