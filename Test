@@ -1,3 +1,27 @@
+def box_text_open(row, df_actual):
+    pid = row["PID"]
+
+    # Look up GCB and Country R3 from df_actual using PID
+    gcb = ""
+    country = ""
+    match = df_actual[df_actual["PID"] == pid]
+    if not match.empty:
+        gcb = str(match.iloc[0]["GCB"])
+        country = str(match.iloc[0]["Country R3"])
+
+    return f"{row['Position Title']}\n{gcb}\n{country}\n<Open Position>"
+
+for k,open_row in enumerate(open_rows):
+    l6_left = left+(L5_W-L6_W)/2
+    l6_top = L6_TOP_BASE+(len(l6_rows)+k)*(L6_H+ROW_GAP)
+    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text_open(open_row, df_actual))
+    connect(slide,l5_box,l6_box)
+
+
+----------
+
+
+
 # -----------------------------
 # Step 6: PowerPoint generation (actuals + open positions)
 # -----------------------------
