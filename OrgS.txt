@@ -258,11 +258,90 @@ def export_indented_text_full(level4_id,
                               excel_path="OrgChart_Indented.xlsx",
                               ppt_path="OrgChart_Indented.pptx",
                               ppt_app=None):
-    # Helpers omitted for brevity (same as your code)...
+    """
+    Export indented hierarchy lines with employees + open positions.
+    - L4/L5: list all direct reports explicitly.
+    - L6: show counts only (Direct Reports, Open Positions).
+    - Skip open positions if Position Title missing/blank/Unspecified.
+    """
 
+    # --- Helpers ---
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() == "unspecified" else s
+
+    def line_for_actual(row, mgr_id=None, level=0):
+        name = clean(row.get("Employee Name",""))
+        title = clean(row.get("Position Title",""))
+        gcb   = clean(row.get("GCB",""))
+        country = clean(row.get("Country R3",""))
+        header = " | ".join([p for p in [name,title] if p])
+        footer = " | ".join([p for p in [gcb,country] if p])
+        line = f"{header}\n{footer}" if footer else header
+
+        # At L6, append counts instead of expanding further
+        if level == 6 and mgr_id:
+            if open_pos_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Open Positions: {open_pos_counts[mgr_id]}"
+            if direct_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Direct Reports: {direct_counts[mgr_id]}"
+        return line
+
+    def line_for_open(op_row):
+        title = clean(op_row.get("Position Title",""))
+        if not title: return None
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        match = df_actual[df_actual["PID"] == pid]
+        if not match.empty:
+            gcb = clean(match.iloc[0].get("GCB",""))
+            country = clean(match.iloc[0].get("Country R3",""))
+        header = f"<Open Position> | {title}"
+        footer = " | ".join([p for p in [gcb,country] if p])
+        return f"{header}\n{footer}" if footer else header
+
+    # --- Build indented lines ---
+    lines = []
+
+    # L4 manager
+    mgr_row = df_actual[df_actual["Employee ID"] == level4_id].iloc[0]
+    lines.append(line_for_actual(mgr_row, level4_id, level=4))
+
+    # L5 reports
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
+
+    for _, l5 in l5_actuals.iterrows():
+        l5_id = l5.get("Employee ID")
+        if pd.isna(l5_id): continue
+        lines.append(f"\t{line_for_actual(l5, l5_id, level=5)}")
+
+        # L6 reports
+        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+        for _, l6 in l6_actuals.iterrows():
+            l6_id = l6.get("Employee ID")
+            if pd.isna(l6_id): continue
+            lines.append(f"\t\t{line_for_actual(l6, l6_id, level=6)}")
+
+        for _, op in l6_opens.iterrows():
+            op_line = line_for_open(op)
+            if op_line:
+                lines.append(f"\t\t{op_line}")
+
+    # Open positions directly under L4
+    for _, op in l5_opens.iterrows():
+        op_line = line_for_open(op)
+        if op_line:
+            lines.append(f"\t{op_line}")
+
+    # --- Export to Excel ---
     pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
     print(f"Indented hierarchy exported to Excel: {excel_path}")
 
+    # --- Export to PPT ---
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
@@ -276,7 +355,6 @@ def export_indented_text_full(level4_id,
     print(f"Indented hierarchy exported to PPT: {ppt_path}")
 
     return lines
-
 # -----------------------------
 # Main
 # -----------------------------
