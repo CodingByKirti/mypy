@@ -1,303 +1,147 @@
-# -----------------------------
-# Step 3: Append open positions (constraints + update logic)
-# -----------------------------
+import tkinter as tk
+from tkinter import ttk
 
-def step3_append_open_positions(df, org_data_path="org_data.xlsx", open_pos_path="open_position.xlsx"):
-    """
-    Updates df with open position manager info from open_position.xlsx,
-    applying constraints from org_data.xlsx. Works with PID as string.
-    """
+# --- Step A: BFG selection ---
+def select_bfg_and_filter(df_input):
+    root = tk.Tk()
+    root.title("Select Business Framework Group")
+    root.geometry("480x150")
+    root.resizable(False, False)
 
-    # --- Load org_data for constraints ---
-    needed_cols = [
-        "PID","Stack","FTE FCST","Employment Type",
-        "Functional Manager Employee ID","Functional Manager Employee Name"
-    ]
-    df_base = pd.read_excel(org_data_path, sheet_name="Data", usecols=needed_cols)
+    bfg_values = sorted([s for s in df_input["Business Framework Group"].dropna().astype(str).str.strip().unique() if s])
 
-    # Apply constraints
-    mask = (
-        ~df_base["Employment Type"].isin(["Consultant","Contractor","Service Provider","Intern"]) &
-        (df_base["Stack"].astype(str).str.strip().str.upper() != "ACTUALS") &
-        (pd.to_numeric(df_base["FTE FCST"], errors="coerce") > 0) &
-        df_base["PID"].notna()
+    var = tk.StringVar()
+    tk.Label(root, text="Business Framework Group:").pack(pady=(12,2))
+    combo = ttk.Combobox(root, textvariable=var, values=bfg_values, state="readonly", width=60)
+    combo.pack(pady=(0,10))
+    if bfg_values:
+        combo.current(0)
+
+    selected = {"value": None}
+    def on_ok():
+        selected["value"] = combo.get()
+        root.destroy()
+
+    tk.Button(root, text="OK", command=on_ok).pack()
+    root.mainloop()
+
+    chosen = selected["value"]
+    if not chosen:
+        raise ValueError("No Business Framework Group selected.")
+
+    df_bfg = df_input[df_input["Business Framework Group"].astype(str).str.strip() == chosen].copy()
+    return chosen, df_bfg
+
+# --- Step B: Recompute counts ---
+def recompute_counts(df_bfg, df_open_enriched):
+    direct_counts_actual = (
+        df_bfg[df_bfg["Employee ID"].notna()]
+        .groupby("Functional Manager Employee ID")["Employee ID"]
+        .nunique()
+        .to_dict()
     )
-    valid_pids = df_base.loc[mask, "PID"].dropna().astype(str).str.strip().unique()
-
-    print("Valid PIDs after constraints:", len(valid_pids))
-
-    # --- Load open positions ---
-    open_pos = pd.read_excel(
-        open_pos_path,
-        usecols=[
-            "Position Number","Position Title",
-            "Functional Manager Position Level Employee ID",
-            "Functional Manager Position Level Employee Name"
-        ]
+    open_pos_counts = (
+        df_open_enriched[df_open_enriched["Functional Manager Employee ID"].isin(df_bfg["Employee ID"])]
+        .groupby("Functional Manager Employee ID")["PID"]
+        .size()
+        .to_dict()
     )
+    direct_counts_total = {
+        mgr: direct_counts_actual.get(mgr, 0) + open_pos_counts.get(mgr, 0)
+        for mgr in set(direct_counts_actual) | set(open_pos_counts)
+    }
+    return direct_counts_actual, open_pos_counts, direct_counts_total
 
-    # Convert Position Number to string
-    open_pos["Position Number"] = open_pos["Position Number"].astype(str).str.strip()
+# --- Step C: Coverage summary export ---
+def export_bfg_coverage_summary(df_bfg, covered_ids, excel_path="OrgChart_Summary.xlsx"):
+    all_ids = set(df_bfg["Employee ID"].dropna())
+    uncovered_ids = all_ids - covered_ids
 
-    # Keep only open positions whose Position Number is in valid PIDs
-    open_pos = open_pos[open_pos["Position Number"].isin(valid_pids)]
-    print("Open positions matched:", len(open_pos))
+    mds = df_bfg[df_bfg["GCB"] == "MD"]
+    l5s = df_bfg[df_bfg["GCB"] == "3"]
+    l6s = df_bfg[df_bfg["GCB"] == "4"]
 
-    # Rename to match schema
-    df_open = open_pos.rename(columns={
-        "Position Number":"PID",
-        "Functional Manager Position Level Employee ID":"Functional Manager Employee ID",
-        "Functional Manager Position Level Employee Name":"Functional Manager Employee Name"
+    summary = pd.DataFrame({
+        "Metric": ["MD Count", "L5 Count", "L6 Count", "Total Employees", "Covered", "Uncovered"],
+        "Value": [len(mds), len(l5s), len(l6s), len(all_ids), len(covered_ids), len(uncovered_ids)]
     })
 
-    # Add placeholders for employee fields
-    df_open["Employee ID"] = pd.NA
-    df_open["Employee Name"] = ""
-    df_open["Position Title"] = df_open["Position Title"].fillna("<blank>")
+    covered_df = df_bfg[df_bfg["Employee ID"].isin(covered_ids)].copy()
+    exceptions_df = df_bfg[df_bfg["Employee ID"].isin(uncovered_ids)].copy()
+    exceptions_df["Reason"] = exceptions_df.apply(
+        lambda r: "No manager found" if pd.isna(r.get("Functional Manager Employee ID"))
+        else "Not attached to MD/L5 in selected BFG", axis=1
+    )
 
-    # --- Update df with manager info at correct rows ---
-    df["PID"] = df["PID"].astype(str).str.strip()
-    df["Functional Manager Employee ID"] = df["Functional Manager Employee ID"].astype(str)
-    df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str)
+    with pd.ExcelWriter(excel_path) as writer:
+        summary.to_excel(writer, sheet_name="Summary", index=False)
+        covered_df.to_excel(writer, sheet_name="Covered", index=False)
+        exceptions_df.to_excel(writer, sheet_name="Exceptions", index=False)
 
-    updated_count = 0
-    for _, row in df_open.iterrows():
-        pid = row["PID"]
-        mask = df["PID"] == pid
-        if mask.any():
-            df.loc[mask, ["Functional Manager Employee ID","Functional Manager Employee Name"]] = [
-                str(row["Functional Manager Employee ID"]),
-                str(row["Functional Manager Employee Name"])
-            ]
-            updated_count += mask.sum()
+    print(f"Coverage summary exported to {excel_path}")
 
-    print("Rows updated with manager info:", updated_count)
+# --- Step D: Controller ---
+def build_bfg_orgcharts_controller(df_final, df_open_enriched,
+                                   draw_orgchart_fn,
+                                   export_indented_fn,
+                                   summary_excel_path="OrgChart_Summary.xlsx",
+                                   ppt_dir=".",
+                                   indented_excel_dir="."):
+    # 1) BFG selection
+    selected_bfg, df_bfg = select_bfg_and_filter(df_final)
+    print(f"Selected BFG: {selected_bfg} | Rows: {len(df_bfg)}")
 
-    # Return updated dataframe
-    return df.copy()
+    # 2) Recompute counts
+    direct_counts, open_pos_counts, direct_counts_total = recompute_counts(df_bfg, df_open_enriched)
+
+    # 3) Identify MD/L5/L6
+    mds = df_bfg[df_bfg["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
+    l5s = df_bfg[df_bfg["GCB"] == "3"]["Employee ID"].dropna().unique().tolist()
+    l6s = df_bfg[df_bfg["GCB"] == "4"]["Employee ID"].dropna().unique().tolist()
+
+    print(f"MDs: {len(mds)} | L5s: {len(l5s)} | L6s: {len(l6s)}")
+
+    covered_ids = set()
+
+    def mark_covered_for_manager(mgr_id):
+        covered_ids.add(mgr_id)
+        direct_actuals = df_bfg[df_bfg["Functional Manager Employee ID"] == mgr_id]["Employee ID"].dropna().tolist()
+        for emp_id in direct_actuals:
+            covered_ids.add(emp_id)
+
+    # 4) Generate charts for MDs
+    for md_id in mds:
+        ppt_path = f"{ppt_dir}/OrgChart_MD_{md_id}.pptx"
+        draw_orgchart_fn(md_id, df_bfg, df_open_enriched, direct_counts, open_pos_counts, ppt_path)
+        export_indented_fn(md_id, df_bfg, df_open_enriched, direct_counts, open_pos_counts,
+                           excel_path=f"{indented_excel_dir}/Indented_MD_{md_id}.xlsx",
+                           ppt_path=f"{indented_excel_dir}/Indented_MD_{md_id}.pptx")
+        mark_covered_for_manager(md_id)
+
+    # 5) Fill gaps: uncovered L5s with L6 reports
+    remaining_l5s = [l5 for l5 in l5s if l5 not in covered_ids]
+    for l5_id in remaining_l5s:
+        l6_reports = df_bfg[df_bfg["Functional Manager Employee ID"] == l5_id]["Employee ID"].dropna().tolist()
+        if len(l6_reports) > 0:
+            ppt_path = f"{ppt_dir}/OrgChart_L5_{l5_id}.pptx"
+            draw_orgchart_fn(l5_id, df_bfg, df_open_enriched, direct_counts, open_pos_counts, ppt_path)
+            export_indented_fn(l5_id, df_bfg, df_open_enriched, direct_counts, open_pos_counts,
+                               excel_path=f"{indented_excel_dir}/Indented_L5_{l5_id}.xlsx",
+                               ppt_path=f"{indented_excel_dir}/Indented_L5_{l5_id}.pptx")
+            mark_covered_for_manager(l5_id)
+
+    # 6) Export coverage summary
+    export_bfg_coverage_summary(df_bfg, covered_ids, excel_path=summary_excel_path)
+
+    print("Controller complete: charts generated, coverage tracked, summary exported.")
 
 
-# --- Usage ---
-df_final = step3_append_open_positions(df)
-
-
-
-
-
-import pandas as pd
-import win32com.client
-import tkinter as tk
-from tkinter import simpledialog
-
-# --- Helper to detect missing values robustly ---
-def is_missing(val):
-    if pd.isna(val):
-        return True
-    s = str(val).strip()
-    return s == "" or s.lower() == "unspecified"
-
-# Step 1: Read base org data (ACTUALS)
-df = pd.read_excel("org_data.xlsx", skiprows=1, sheet_name="Data")
-df["Employee Name"] = df["Employee Name"].astype(str).str.strip().replace("Unspecified","")
-df["Functional Manager Employee Name"] = df["Functional Manager Employee Name"].astype(str).str.strip().replace("Unspecified","")
-df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
-df["Functional Manager Employee ID"] = pd.to_numeric(df["Functional Manager Employee ID"], errors="coerce").astype("Int64")
-
-# Step 1b: Read lookup file for Position Title
-lookup = pd.read_excel("ghaOct.xlsx", sheet_name="Headcount - Employee Detail")
-lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
-
-# Merge Position Title into df (ID-based)
-df = df.merge(lookup[["Employee ID","Position Title"]], on="Employee ID", how="left")
-df["Position Title"] = df["Position Title"].fillna("<blank>")
-
-# Step 1c: Re-read org_data.xlsx for open positions
-needed_cols = ["Employee ID","Employee Name","Functional Manager Employee ID",
-               "Functional Manager Employee Name","Stack","FTE FCST","PID"]
-df_base = pd.read_excel("org_data.xlsx", skiprows=1, sheet_name="Data", usecols=needed_cols)
-
-mask = (
-    (df_base["Stack"] != "ACTUALS") &
-    (df_base["FTE FCST"] > 0) &
-    df_base["PID"].apply(lambda x: not is_missing(x))
+build_bfg_orgcharts_controller(
+    df_final=df_final,
+    df_open_enriched=df_open_enriched,
+    draw_orgchart_fn=draw_orgchart,
+    export_indented_fn=export_indented_text_full,
+    summary_excel_path="OrgChart_Summary.xlsx",
+    ppt_dir=".",
+    indented_excel_dir="."
 )
-df_open_candidates = df_base[mask].drop_duplicates(subset=["PID"]).copy()
-
-# Step 1d: Load open_position.xlsx
-open_pos = pd.read_excel("open_position.xlsx",
-                         usecols=["Position Number","Position Title",
-                                  "Functional Manager Position Level Employee ID",
-                                  "Functional Manager Position Level Employee Name"])
-for col in open_pos.columns:
-    open_pos[col] = open_pos[col].astype(str).str.strip().replace("Unspecified","")
-
-open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
-open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(open_pos["Functional Manager Position Level Employee ID"], errors="coerce").astype("Int64")
-
-# Step 1e: Merge candidates with open pos report (ID-based)
-df_open_candidates["PID"] = pd.to_numeric(df_open_candidates["PID"], errors="coerce").astype("Int64")
-df_open_enriched = df_open_candidates.merge(
-    open_pos,
-    left_on="PID",
-    right_on="Position Number",
-    how="left"
-)
-
-# Skip rows where Position Number is missing
-df_open_enriched = df_open_enriched[~df_open_enriched["Position Number"].isna()].copy()
-
-# Add placeholders for open positions
-df_open_enriched["Employee ID"] = pd.NA
-df_open_enriched["Employee Name"] = ""
-df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("<blank>")
-
-# Step 1f: Combine ACTUALS + Open Positions
-df_final = pd.concat([df, df_open_enriched], ignore_index=True)
-df_final = df_final.drop_duplicates(subset=["Employee ID","PID"], keep="first")
-
-# Step 2: Precompute counts
-open_pos_counts = (
-    df_open_enriched.groupby("Functional Manager Position Level Employee ID")
-    .size()
-    .to_dict()
-)
-direct_counts = (
-    df_final.groupby("Functional Manager Employee ID")
-    .size()
-    .to_dict()
-)
-
-output_rows = []
-overflow_managers = []
-
-def traverse_level5(level4_id):
-    level5_reports = df_final[df_final["Functional Manager Employee ID"] == level4_id].drop_duplicates(subset=["Employee ID","PID"])
-    for _, l5 in level5_reports.iterrows():
-        l5_id = l5["Employee ID"]
-        if is_missing(l5_id):
-            continue
-        level6_reports = df_final[df_final["Functional Manager Employee ID"] == l5_id].drop_duplicates(subset=["Employee ID","PID"])
-        if level6_reports.empty:
-            output_rows.append([level4_id, l5_id, None, 0, l5.get("PID",""), l5.get("Position Title","")])
-        else:
-            for _, l6 in level6_reports.iterrows():
-                l6_id = l6["Employee ID"]
-                count = df_final[df_final["Functional Manager Employee ID"] == l6_id].drop_duplicates(subset=["Employee ID","PID"]).shape[0]
-                output_rows.append([level4_id, l5_id, l6_id, count, l6.get("PID",""), l6.get("Position Title","")])
-
-# Step 3: Export indented hierarchy with details
-def export_indented_to_excel(out_df, excel_path="OrgChart_Indented.xlsx", level4_id=None):
-    lines = []
-    if level4_id is not None:
-        mgr_row = df_final[df_final["Employee ID"] == level4_id].iloc[0]
-        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
-        count_open = open_pos_counts.get(level4_id, 0)
-        if count_open > 0:
-            mgr_details += f"\n→ Open Positions: {count_open}"
-        lines.append(mgr_details)
-
-    for l5_id, group in out_df.groupby("Level 5 Employee ID"):
-        if pd.notna(l5_id):
-            l5_row = df_final[df_final["Employee ID"] == l5_id].iloc[0]
-            l5_details = (
-                f"{l5_row.get('Employee Name','')} | {l5_row.get('Position Title','<blank>')}\n"
-                f"{l5_row.get('GCB','')} | {l5_row.get('Country R3','')}"
-            )
-            count_open = open_pos_counts.get(l5_id, 0)
-            if count_open > 0:
-                l5_details += f"\n→ Open Positions: {count_open}"
-            count_reports = direct_counts.get(l5_id, 0)
-            if count_reports > 7:   # overflow rule for Level-5
-                l5_details += f"\n→ Direct Reports: {count_reports}"
-                overflow_managers.append(l5_id)
-            lines.append(f"\t{l5_details}")
-
-        for _, row in group.iterrows():
-            l6_id = row["Level 6 Employee ID"]
-            count = row["Count of Direct Reports"]
-            if pd.notna(l6_id):
-                l6_row = df_final[df_final["Employee ID"] == l6_id].iloc[0]
-                l6_details = (
-                    f"{l6_row.get('Employee Name','')} | {l6_row.get('Position Title','<blank>')}\n"
-                    f"{l6_row.get('GCB','')} | {l6_row.get('Country R3','')}\n"
-                    f"→ Reports: {count}"
-                )
-                count_open = open_pos_counts.get(l6_id, 0)
-                if count_open > 0:
-                    l6_details += f"\n→ Open Positions: {count_open}"
-                if count > 7:   # overflow rule for Level-6
-                    overflow_managers.append(l6_id)
-                lines.append(f"\t\t{l6_details}")
-
-    pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
-    print(f"Indented hierarchy exported to {excel_path}")
-    return lines
-
-
-# Step 4: Write to PowerPoint with batching + overflow
-def write_indented_to_ppt(lines, ppt_path="OrgChart_Output.pptx", level4_id=None):
-    ppt = win32com.client.Dispatch("PowerPoint.Application")
-    ppt.Visible = True
-    pres = ppt.Presentations.Add()
-
-    # Helper to create slides in batches of 7
-    def create_batched_slides(header, report_lines):
-        chunks = [report_lines[i:i+7] for i in range(0, len(report_lines), 7)]
-        for chunk in chunks:
-            slide = pres.Slides.Add(pres.Slides.Count+1, 12)
-            textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
-            textbox.TextFrame.TextRange.Text = "\r".join([header] + chunk)
-
-    # Level-4 batching
-    mgr_header = lines[0]
-    report_lines = lines[1:]
-    create_batched_slides(mgr_header, report_lines)
-
-    # Add overflow slides for managers (Level-5 or Level-6 with >7 reports)
-    for mgr_id in overflow_managers:
-        mgr_row = df_final[df_final["Employee ID"] == mgr_id].iloc[0]
-        mgr_details = f"{mgr_row['Employee Name']} | {mgr_row.get('Position Title','<blank>')}\n{mgr_row.get('GCB','')} | {mgr_row.get('Country R3','')}"
-        count_open = open_pos_counts.get(mgr_id, 0)
-        if count_open > 0:
-            mgr_details += f"\n→ Open Positions: {count_open}"
-
-        # Collect all direct reports of this overflow manager
-        mgr_reports = df_final[df_final["Functional Manager Employee ID"] == mgr_id].drop_duplicates(subset=["Employee ID","PID"])
-        report_lines = []
-        for _, rep in mgr_reports.iterrows():
-            rep_details = f"{rep.get('Employee Name','')} | {rep.get('Position Title','<blank>')}\n{rep.get('GCB','')} | {rep.get('Country R3','')}"
-            count_reports = direct_counts.get(rep["Employee ID"], 0)
-            if count_reports > 0:
-                rep_details += f"\n→ Reports: {count_reports}"
-            count_open = open_pos_counts.get(rep["Employee ID"], 0)
-            if count_open > 0:
-                rep_details += f"\n→ Open Positions: {count_open}"
-            report_lines.append(f"\t{rep_details}")
-
-        # Batch these reportees into slides of 7
-        create_batched_slides(mgr_details, report_lines)
-
-    pres.SaveAs(ppt_path)
-    print(f"PPT saved: {ppt_path}")
-    return pres
-
-
-# --- Ask user for Level 4 Manager Employee ID ---
-root = tk.Tk()
-root.withdraw()
-level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
-
-# --- Traverse hierarchy ---
-traverse_level5(level4_id)
-
-# --- Build DataFrame ---
-out_df = pd.DataFrame(output_rows, columns=[
-    "Level 4 Employee ID","Level 5 Employee ID","Level 6 Employee ID",
-    "Count of Direct Reports","PID","Position Title"
-])
-
-# --- Export hierarchy to Excel and capture lines ---
-lines = export_indented_to_excel(out_df, "OrgChart_Indented.xlsx", level4_id=level4_id)
-
-# --- Write those lines to PowerPoint ---
-write_indented_to_ppt(lines, "OrgChart_Output.pptx", level4_id=level4_id)
