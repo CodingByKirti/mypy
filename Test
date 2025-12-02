@@ -1,65 +1,122 @@
-Right now your **Step 6: PowerPoint generation** only draws boxes for employees (`Employee ID` not null). That’s why open positions aren’t showing up. You need to extend `add_l4_slide` so it also loops through **open positions** for each L5 manager, and draws them as separate boxes with Position Title, GCB, and Location.
+# -----------------------------
+# Step 6: PowerPoint generation (actuals + open positions)
+# -----------------------------
+import win32com.client
+import pandas as pd
 
----
+def draw_orgchart(level4_id, df_actual, df_open, ppt_path="OrgChart_Output.pptx"):
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
 
-### 🔧 Changes to make
+    # Box sizes
+    L4_W,L4_H = 320,110
+    L5_W,L5_H = 280,100
+    L6_W,L6_H = 240,90
+    TOP_MARGIN = 30
+    L5_TOP = 180
+    L6_TOP_BASE = 320
+    COL_GAP = 50
+    ROW_GAP = 20
 
-1. **Update `get_direct_reports`** so it returns both actuals and opens:
-```python
-def get_direct_reports(manager_id):
-    actuals = df_final[df_final["Functional Manager Employee ID"] == manager_id]
-    opens   = df_open_enriched[df_open_enriched["Functional Manager Employee ID"] == manager_id]
-    return actuals, opens
-```
+    # --- Helpers ---
+    def add_box(slide,left,top,w,h,text):
+        shape = slide.Shapes.AddShape(1,left,top,w,h)
+        shape.TextFrame.TextRange.Text = text
+        shape.TextFrame.TextRange.ParagraphFormat.Alignment = 1
+        return shape
 
-2. **Add a formatter for open positions**:
-```python
-def box_text_open(row):
-    return f"{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}\n<Open Position>"
-```
+    def connect(slide,parent,child):
+        conn = slide.Shapes.AddConnector(1,0,0,0,0)
+        conn.ConnectorFormat.BeginConnect(parent,3)
+        conn.ConnectorFormat.EndConnect(child,1)
 
-3. **Extend `add_l4_slide`**:
-Right now you only loop through `l6_rows` (actual employees). Add a second loop for open positions:
+    def place_row(sw,n,box_w):
+        total_w = n*box_w+(n-1)*COL_GAP
+        start_left = max(20,(sw-total_w)/2)
+        return [start_left+i*(box_w+COL_GAP) for i in range(n)]
 
-```python
-actuals, opens = get_direct_reports(l5_id)
+    def box_text_actual(emp_id,is_l6=False):
+        row = df_actual[df_actual["Employee ID"]==emp_id].iloc[0]
+        return f"{row['Employee Name']}\n{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}"
 
-# Existing loop for actual employees
-l6_rows = [row for _,row in actuals.iterrows() if pd.notna(row["Employee ID"])]
+    def box_text_open(row):
+        return f"{row['Position Title']}\n{row['GCB']}\n{row['Country R3']}\n<Open Position>"
 
-# New loop for open positions
-open_rows = [row for _,row in opens.iterrows()]
+    def get_direct_reports(manager_id):
+        actuals = df_actual[df_actual["Functional Manager Employee ID"] == manager_id]
+        opens   = df_open[df_open["Functional Manager Employee ID"] == manager_id]
+        return actuals, opens
 
-# Draw actual employees
-for j,l6_row in enumerate(l6_rows):
-    l6_id = l6_row["Employee ID"]
-    l6_left = left+(L5_W-L6_W)/2
-    l6_top = L6_TOP_BASE+j*(L6_H+ROW_GAP)
-    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text(l6_id,is_l6=True))
-    connect(slide,l5_box,l6_box)
+    # --- Slide builder ---
+    def add_l4_slide(l4_id,l5_rows):
+        slide = pres.Slides.Add(pres.Slides.Count+1,12)
+        sw = pres.PageSetup.SlideWidth
 
-# Draw open positions
-for k,open_row in enumerate(open_rows):
-    l6_left = left+(L5_W-L6_W)/2
-    l6_top = L6_TOP_BASE+(len(l6_rows)+k)*(L6_H+ROW_GAP)
-    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text_open(open_row))
-    connect(slide,l5_box,l6_box)
-```
+        # L4 box
+        l4_left = (sw-L4_W)/2
+        l4_box = add_box(slide,l4_left,TOP_MARGIN,L4_W,L4_H,box_text_actual(l4_id))
 
----
+        # Place L5 boxes
+        l5_positions = place_row(sw,len(l5_rows),L5_W)
+        for i,l5_row in enumerate(l5_rows):
+            l5_id = l5_row["Employee ID"]
+            if pd.isna(l5_id): continue
+            left = l5_positions[i]
+            l5_box = add_box(slide,left,L5_TOP,L5_W,L5_H,box_text_actual(l5_id))
+            connect(slide,l4_box,l5_box)
 
-### ✅ Result
-- If an L5 manager has 2 employees and 1 open position, the slide will show **3 boxes under them**:  
-  - 2 employee boxes with names/titles  
-  - 1 open position box with Position Title, GCB, Location, and `<Open Position>`  
+            # Get L6 direct reports (actual + open)
+            actuals, opens = get_direct_reports(l5_id)
+            l6_rows = [row for _,row in actuals.iterrows() if pd.notna(row["Employee ID"])]
+            open_rows = [row for _,row in opens.iterrows()]
 
-- Overflow logic (batching >10) can be applied to open positions the same way as employees if needed.
+            # Handle overflow for actual employees
+            if len(l6_rows)>10:
+                info_box = add_box(slide,left+(L5_W-L6_W)/2,L6_TOP_BASE,L6_W,L6_H,f"Direct Reports: {len(l6_rows)}")
+                connect(slide,l5_box,info_box)
+                batch=[]
+                for idx,l6_row in enumerate(l6_rows):
+                    batch.append(l6_row)
+                    if len(batch)==10 or idx==len(l6_rows)-1:
+                        ov_slide = pres.Slides.Add(pres.Slides.Count+1,12)
+                        sw2 = pres.PageSetup.SlideWidth
+                        l5_left = (sw2-L5_W)/2
+                        ov_l5_box = add_box(ov_slide,l5_left,TOP_MARGIN,L5_W,L5_H,box_text_actual(l5_id))
+                        l6_positions = place_row(sw2,len(batch),L6_W)
+                        for j,b in enumerate(batch):
+                            l6_id = b["Employee ID"]
+                            l6_box = add_box(ov_slide,l6_positions[j],L6_TOP_BASE,L6_W,L6_H,box_text_actual(l6_id,is_l6=True))
+                            connect(ov_slide,ov_l5_box,l6_box)
+                        batch=[]
+            else:
+                for j,l6_row in enumerate(l6_rows):
+                    l6_id = l6_row["Employee ID"]
+                    l6_left = left+(L5_W-L6_W)/2
+                    l6_top = L6_TOP_BASE+j*(L6_H+ROW_GAP)
+                    l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text_actual(l6_id,is_l6=True))
+                    connect(slide,l5_box,l6_box)
 
----
+            # Add open positions as boxes under L5
+            for k,open_row in enumerate(open_rows):
+                l6_left = left+(L5_W-L6_W)/2
+                l6_top = L6_TOP_BASE+(len(l6_rows)+k)*(L6_H+ROW_GAP)
+                l6_box = add_box(slide,l6_left,l6_top,L6_W,L6_H,box_text_open(open_row))
+                connect(slide,l5_box,l6_box)
 
-👉 Do you want me to rewrite the **entire Step 6 function** (`draw_orgchart`) with these changes baked in, so you can drop it in directly without patching pieces?
+    # --- Build chart starting from L4 ---
+    l5_reports, _ = get_direct_reports(level4_id)
+    l5_rows = [row for _,row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
+    add_l4_slide(level4_id,l5_rows)
 
+    # Save presentation
+    pres.SaveAs(ppt_path)
+    print(f"Org chart saved to {ppt_path}")
 
+df_final, df_open_enriched = step3_append_open_positions(df)
+
+# Step 6: Generate PowerPoint org chart starting from a Level 4 manager
+draw_orgchart(level4_id=12345, df_actual=df_final, df_open=df_open_enriched)
 
 def get_direct_reports(manager_id, df_actual, df_open):
     """Return both actual employees and open positions reporting to a manager."""
