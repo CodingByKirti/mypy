@@ -154,7 +154,93 @@ def draw_orgchart(level4_id, df_actual, df_open, direct_counts, open_pos_counts,
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
-    # Helpers omitted for brevity (same as your code)...
+    # --- Helpers ---
+    def add_box(slide,left,top,w,h,text):
+        shape = slide.Shapes.AddShape(1,left,top,w,h)
+        tr= shape.TextFrame.TextRange
+        tr.Text = text
+        tr.ParagraphFormat.Alignment = 1
+        tr.Font.Size=8
+        shape.TextFrame.AutoSize = 0 
+        return shape
+
+    def connect(slide,parent,child):
+        conn = slide.Shapes.AddConnector(1,0,0,0,0)
+        conn.ConnectorFormat.BeginConnect(parent,3)
+        conn.ConnectorFormat.EndConnect(child,1)
+
+    def place_row(sw,n,box_w):
+        total_w = n*box_w+(n-1)*20
+        start_left = max(20,(sw-total_w)/2)
+        return [start_left+i*(box_w+20) for i in range(n)]
+
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower()=="unspecified" else s
+
+    def box_text_actual(emp_id, level=None):
+        row = df_actual[df_actual["Employee ID"]==emp_id].iloc[0]
+        name = clean(row["Employee Name"])
+        title = clean(row["Position Title"])
+        gcb = clean(row["GCB"])
+        country = clean(row["Country R3"])
+        header = "\n".join([p for p in [name,title] if p])
+        footer = " | ".join([p for p in [gcb,country] if p])
+        text = f"{header}\n{footer}" if footer else header
+        if level==6:
+            if open_pos_counts.get(emp_id,0)>0:
+                text += f"\n→ Open Positions: {open_pos_counts[emp_id]}"
+            if direct_counts.get(emp_id,0)>0:
+                text += f"\n→ Direct Reports: {direct_counts[emp_id]}"
+        return text
+
+    def box_text_open(op_row):
+        title = clean(op_row.get("Position Title",""))
+        if not title: return None
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        match = df_actual[df_actual["PID"]==pid]
+        if not match.empty:
+            gcb = clean(match.iloc[0].get("GCB",""))
+            country = clean(match.iloc[0].get("Country R3",""))
+        header = f"<Open Position>\n{title}"
+        footer = " | ".join([p for p in [gcb,country] if p])
+        return f"{header}\n{footer}" if footer else header
+
+    def get_direct_reports(manager_id):
+        actuals = df_actual[df_actual["Functional Manager Employee ID"] == manager_id]
+        opens   = df_open[df_open["Functional Manager Employee ID"] == manager_id]
+        return actuals, opens
+
+    def add_l4_slide(l4_id,l5_rows):
+        slide = pres.Slides.Add(pres.Slides.Count+1,12)
+        sw = pres.PageSetup.SlideWidth
+        l4_left = (sw-100)/2
+        l4_box = add_box(slide,l4_left,15,100,50,box_text_actual(l4_id, level=4))
+        l5_positions = place_row(sw,len(l5_rows),100)
+        for i,l5_row in enumerate(l5_rows):
+            l5_id = l5_row["Employee ID"]
+            if pd.isna(l5_id): continue
+            left = l5_positions[i]
+            l5_box = add_box(slide,left,100,100,50,box_text_actual(l5_id, level=5))
+            connect(slide,l4_box,l5_box)
+            actuals, opens = get_direct_reports(l5_id)
+            l6_rows = [row for _,row in actuals.iterrows() if pd.notna(row["Employee ID"])]
+            open_rows = [row for _,row in opens.iterrows()]
+            for j,l6_row in enumerate(l6_rows):
+                l6_id = l6_row["Employee ID"]
+                l6_left = left+(100-100)/2
+                l6_top = 160+j*(50+15)
+                l6_box = add_box(slide,l6_left,l6_top,100,50,box_text_actual(l6_id, level=6))
+                connect(slide,l5_box,l6_box)
+            for k,op_row in enumerate(open_rows):
+                op_text = box_text_open(op_row)
+                if not op_text: continue
+                l6_left = left+(100-100)/2
+                l6_top = 160+(len(l6_rows)+k)*(50+15)
+                l6_box = add_box(slide,l6_left,l6_top,100,50,op_text)
+                connect(slide,l5_box,l6_box)
 
     # --- Build chart starting from L4 ---
     l5_reports, _ = get_direct_reports(level4_id)
@@ -164,7 +250,6 @@ def draw_orgchart(level4_id, df_actual, df_open, direct_counts, open_pos_counts,
     pres.SaveAs(ppt_path)
     pres.Close()
     print(f"Org chart saved to {ppt_path}")
-
 def export_indented_text_full(level4_id,
                               df_actual,
                               df_open,
