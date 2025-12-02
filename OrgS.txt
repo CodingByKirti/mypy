@@ -1,7 +1,13 @@
+import os
 import pandas as pd
 import win32com.client
-import tkinter as tk
-from tkinter import simpledialog
+import tkinter as tk  # only used if you later re-add dialogs
+
+# -----------------------------
+# Output folder (absolute path under current dir)
+# -----------------------------
+output_dir = os.path.join(os.getcwd(), "Output")
+os.makedirs(output_dir, exist_ok=True)
 
 # -----------------------------
 # Helpers
@@ -15,15 +21,18 @@ def is_missing(val):
     s = str(val).strip()
     return s == "" or s.lower() == "unspecified"
 
+def clean_text(series):
+    return series.astype(str).str.strip().replace("Unspecified", "")
+
 # -----------------------------
-# Step 1: Read org_data.xlsx (using preloaded copy)
+# Step 1: Use preloaded org_data copy (df1)
 # -----------------------------
 df = df1.copy()
 
 # Clean text
-for col in ["Employee Name","Functional Manager Employee Name","Country R3","GCB"]:
+for col in ["Employee Name", "Functional Manager Employee Name", "Country R3", "GCB", "Business Framework Group", "Position Title"]:
     if col in df.columns:
-        df[col] = df[col].astype(str).str.strip().replace("Unspecified","")
+        df[col] = clean_text(df[col])
 
 # Coerce IDs
 df["Employee ID"] = pd.to_numeric(df["Employee ID"], errors="coerce").astype("Int64")
@@ -34,81 +43,156 @@ else:
     df["PID"] = pd.NA
 
 # -----------------------------
-# Step 2: Merge Position Title from gha
+# Step 2: Merge Position Title from gha (lookup1)
 # -----------------------------
 lookup = lookup1.copy()
 lookup["Employee ID"] = pd.to_numeric(lookup["Employee ID"], errors="coerce").astype("Int64")
-lookup["Position Title"] = lookup["Position Title"].astype(str).str.strip().replace("Unspecified","")
+lookup["Position Title"] = clean_text(lookup["Position Title"])
 
 # Rename to avoid clash
-lookup = lookup.rename(columns={"Position Title":"Position_Title_gha"})
+lookup = lookup.rename(columns={"Position Title": "Position_Title_gha"})
 
 # Merge
 df = df.merge(lookup, on="Employee ID", how="left")
-df["Position Title"] = df["Position_Title_gha"].fillna("")
+df["Position Title"] = df["Position Title"].fillna("").astype(str).str.strip()
+df["Position Title"] = df["Position Title"].where(df["Position Title"] != "", df["Position_Title_gha"])
 df.drop(columns=["Position_Title_gha"], inplace=True)
 
 # -----------------------------
 # Step 3: Append open positions
 # -----------------------------
 def step3_append_open_positions(df, df_base, open_pos_df):
-    df_base["PID"] = pd.to_numeric(df_base["PID"], errors="coerce").astype("Int64")
-    df_base["FTE"] = pd.to_numeric(df_base["FTE"], errors="coerce")
-    df_base["Stack"] = df_base["Stack"].astype(str).str.strip()
+    """
+    Fetches open positions, applies org_data constraints, coalesces manager info,
+    and updates df_final in place. Returns df_final and df_open_enriched.
 
+    df_base: base org_data-like DF with PID, Stack, FTE, and manager columns
+    open_pos_df: open positions DF (may have different manager column names)
+    """
+
+    # Clean and coerce base
+    if "PID" not in df_base.columns:
+        raise ValueError("df_base must contain PID column for open position matching.")
+
+    df_base = df_base.copy()
+    df_base["PID"] = pd.to_numeric(df_base["PID"], errors="coerce").astype("Int64")
+    if "FTE" in df_base.columns:
+        df_base["FTE"] = pd.to_numeric(df_base["FTE"], errors="coerce")
+    else:
+        df_base["FTE"] = 1.0  # fallback so filter works
+
+    df_base["Stack"] = df_base["Stack"].astype(str).str.strip() if "Stack" in df_base.columns else "PLAN"
+
+    # Candidate filter: not ACTUALS, FTE > 0, PID present
     mask_candidates = (
         (df_base["Stack"] != "ACTUALS") &
         (df_base["FTE"] > 0) &
         (df_base["PID"].notna())
     )
     df_open_candidates = (
-        df_base.loc[mask_candidates, ["PID","Functional Manager Employee ID","Functional Manager Employee Name"]]
+        df_base.loc[mask_candidates, ["PID", "Functional Manager Employee ID", "Functional Manager Employee Name"]]
         .drop_duplicates(subset=["PID"])
         .copy()
     )
+    # Ensure expected manager columns exist for candidates
+    if "Functional Manager Employee ID" not in df_open_candidates.columns:
+        df_open_candidates["Functional Manager Employee ID"] = pd.NA
+    if "Functional Manager Employee Name" not in df_open_candidates.columns:
+        df_open_candidates["Functional Manager Employee Name"] = ""
 
-    open_pos = open_pos_df.copy()
-    open_pos["Position Number"] = pd.to_numeric(open_pos["Position Number"], errors="coerce").astype("Int64")
-    open_pos["Functional Manager Position Level Employee ID"] = pd.to_numeric(
-        open_pos["Functional Manager Position Level Employee ID"], errors="coerce"
-    ).astype("Int64")
+    # --- Normalize open positions columns (handle naming differences) ---
+    op = open_pos_df.copy()
 
-    for col in ["Position Title","Functional Manager Position Level Employee Name"]:
-        open_pos[col] = open_pos[col].astype(str).str.strip().replace("Unspecified","")
+    # Standardize key columns
+    # PID in open positions is commonly "Position Number"
+    if "Position Number" in op.columns:
+        op["Position Number"] = pd.to_numeric(op["Position Number"], errors="coerce").astype("Int64")
+    elif "PID" in op.columns:
+        op["Position Number"] = pd.to_numeric(op["PID"], errors="coerce").astype("Int64")
+    else:
+        raise ValueError("open_pos_df requires 'Position Number' or 'PID' to match against org PID.")
 
+    # Position Title column
+    title_col = "Position Title" if "Position Title" in op.columns else None
+    if title_col is None:
+        # fallback to any column that looks like title
+        maybe_title = [c for c in op.columns if "title" in c.lower()]
+        if not maybe_title:
+            raise ValueError("open_pos_df must have a position title column.")
+        title_col = maybe_title[0]
+    op[title_col] = clean_text(op[title_col])
+
+    # Manager ID and Manager Name columns in open positions may differ
+    # Try common variants in order:
+    manager_id_cols = [
+        "Functional Manager Position Level Employee ID",
+        "Manager Employee ID",
+        "Functional Manager Employee ID",
+        "Manager_ID",
+    ]
+    manager_name_cols = [
+        "Functional Manager Position Level Employee Name",
+        "Manager Employee Name",
+        "Functional Manager Employee Name",
+        "Manager_Name",
+    ]
+
+    mgr_id_col = next((c for c in manager_id_cols if c in op.columns), None)
+    mgr_name_col = next((c for c in manager_name_cols if c in op.columns), None)
+
+    # Coerce manager ID if present
+    if mgr_id_col:
+        op[mgr_id_col] = pd.to_numeric(op[mgr_id_col], errors="coerce").astype("Int64")
+    else:
+        op["__mgr_id_missing__"] = pd.NA
+        mgr_id_col = "__mgr_id_missing__"
+
+    # Clean manager name if present
+    if mgr_name_col:
+        op[mgr_name_col] = clean_text(op[mgr_name_col])
+    else:
+        op["__mgr_name_missing__"] = ""
+        mgr_name_col = "__mgr_name_missing__"
+
+    # --- Merge candidates with open positions ---
     df_open_enriched = df_open_candidates.merge(
-        open_pos,
+        op,
         left_on="PID",
         right_on="Position Number",
         how="inner",
-        suffixes=("_org","_open")
+        suffixes=("_org", "_open")
     )
 
-    df_open_enriched["Manager_ID_Final"] = df_open_enriched["Functional Manager Position Level Employee ID"].fillna(
+    # --- Coalesce manager fields ---
+    # Prefer open positions manager fields if available; fall back to org candidates
+    df_open_enriched["Manager_ID_Final"] = df_open_enriched[mgr_id_col].fillna(
         df_open_enriched["Functional Manager Employee ID"]
     )
-    df_open_enriched["Manager_Name_Final"] = df_open_enriched["Functional Manager Position Level Employee Name"].replace("", pd.NA).fillna(
+    df_open_enriched["Manager_Name_Final"] = df_open_enriched[mgr_name_col].replace("", pd.NA).fillna(
         df_open_enriched["Functional Manager Employee Name"]
     )
 
+    # --- Prepare placeholder rows ---
     df_open_enriched["Employee ID"] = pd.NA
     df_open_enriched["Employee Name"] = ""
-    df_open_enriched["Position Title"] = df_open_enriched["Position Title"].fillna("")
+    df_open_enriched["Position Title"] = df_open_enriched[title_col].fillna("")
 
+    # --- Final schema for open positions ---
     df_open_enriched = df_open_enriched[[
-        "Employee ID","Employee Name","PID","Position Title",
-        "Manager_ID_Final","Manager_Name_Final"
+        "Employee ID", "Employee Name", "PID", "Position Title",
+        "Manager_ID_Final", "Manager_Name_Final"
     ]].rename(columns={
-        "Manager_ID_Final":"Functional Manager Employee ID",
-        "Manager_Name_Final":"Functional Manager Employee Name"
+        "Manager_ID_Final": "Functional Manager Employee ID",
+        "Manager_Name_Final": "Functional Manager Employee Name"
     })
 
+    # --- Update df_final in place (manager fields from open positions) ---
     df["PID"] = pd.to_numeric(df["PID"], errors="coerce").astype("Int64")
     updated = 0
     for _, row in df_open_enriched.iterrows():
         mask = df["PID"].eq(row["PID"])
         if mask.any():
-            df.loc[mask, ["Functional Manager Employee ID","Functional Manager Employee Name"]] = [
+            df.loc[mask, ["Functional Manager Employee ID", "Functional Manager Employee Name"]] = [
                 row["Functional Manager Employee ID"],
                 row["Functional Manager Employee Name"]
             ]
@@ -146,117 +230,146 @@ print("Open pos:", open_pos_counts)
 print("Direct counts:", direct_counts_actual)
 
 # -----------------------------
-# Step 6: PowerPoint generation + Indented export
+# Step 6A: PowerPoint generation (actuals + open positions, counts at L6)
 # -----------------------------
 def draw_orgchart(level4_id, df_actual, df_open, direct_counts, open_pos_counts,
-                  ppt_path="OrgChart_Output.pptx", ppt_app=None):
+                  ppt_app=None):
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
+    # Box sizes and layout
+    L4_W, L4_H = 100, 50
+    L5_W, L5_H = 100, 50
+    L6_W, L6_H = 100, 50
+    TOP_MARGIN = 15
+    L5_TOP = 100
+    L6_TOP_BASE = 160
+    COL_GAP = 20
+    ROW_GAP = 15
+
     # --- Helpers ---
-    def add_box(slide,left,top,w,h,text):
-        shape = slide.Shapes.AddShape(1,left,top,w,h)
-        tr= shape.TextFrame.TextRange
+    def add_box(slide, left, top, w, h, text):
+        shape = slide.Shapes.AddShape(1, left, top, w, h)
+        tr = shape.TextFrame.TextRange
         tr.Text = text
         tr.ParagraphFormat.Alignment = 1
-        tr.Font.Size=8
-        shape.TextFrame.AutoSize = 0 
+        tr.Font.Size = 8
+        shape.TextFrame.AutoSize = 0
         return shape
 
-    def connect(slide,parent,child):
-        conn = slide.Shapes.AddConnector(1,0,0,0,0)
-        conn.ConnectorFormat.BeginConnect(parent,3)
-        conn.ConnectorFormat.EndConnect(child,1)
+    def connect(slide, parent, child):
+        conn = slide.Shapes.AddConnector(1, 0, 0, 0, 0)
+        conn.ConnectorFormat.BeginConnect(parent, 3)
+        conn.ConnectorFormat.EndConnect(child, 1)
 
-    def place_row(sw,n,box_w):
-        total_w = n*box_w+(n-1)*20
-        start_left = max(20,(sw-total_w)/2)
-        return [start_left+i*(box_w+20) for i in range(n)]
+    def place_row(sw, n, box_w):
+        total_w = n * box_w + (n - 1) * COL_GAP
+        start_left = max(20, (sw - total_w) / 2)
+        return [start_left + i * (box_w + COL_GAP) for i in range(n)]
 
     def clean(x):
-        if pd.isna(x): return ""
+        if pd.isna(x):
+            return ""
         s = str(x).strip()
-        return "" if s.lower()=="unspecified" else s
+        return "" if s.lower() == "unspecified" else s
 
     def box_text_actual(emp_id, level=None):
-        row = df_actual[df_actual["Employee ID"]==emp_id].iloc[0]
+        row = df_actual[df_actual["Employee ID"] == emp_id].iloc[0]
         name = clean(row["Employee Name"])
         title = clean(row["Position Title"])
         gcb = clean(row["GCB"])
         country = clean(row["Country R3"])
-        header = "\n".join([p for p in [name,title] if p])
-        footer = " | ".join([p for p in [gcb,country] if p])
+        header = "\n".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
         text = f"{header}\n{footer}" if footer else header
-        if level==6:
-            if open_pos_counts.get(emp_id,0)>0:
+        # At L6, append counts
+        if level == 6:
+            if open_pos_counts.get(emp_id, 0) > 0:
                 text += f"\n→ Open Positions: {open_pos_counts[emp_id]}"
-            if direct_counts.get(emp_id,0)>0:
+            if direct_counts.get(emp_id, 0) > 0:
                 text += f"\n→ Direct Reports: {direct_counts[emp_id]}"
         return text
 
     def box_text_open(op_row):
-        title = clean(op_row.get("Position Title",""))
-        if not title: return None
+        title = clean(op_row.get("Position Title", ""))
+        if not title:
+            return None
         pid = op_row.get("PID")
         gcb, country = "", ""
-        match = df_actual[df_actual["PID"]==pid]
+        match = df_actual[df_actual["PID"] == pid]
         if not match.empty:
-            gcb = clean(match.iloc[0].get("GCB",""))
-            country = clean(match.iloc[0].get("Country R3",""))
+            gcb = clean(match.iloc[0].get("GCB", ""))
+            country = clean(match.iloc[0].get("Country R3", ""))
         header = f"<Open Position>\n{title}"
-        footer = " | ".join([p for p in [gcb,country] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
         return f"{header}\n{footer}" if footer else header
 
     def get_direct_reports(manager_id):
         actuals = df_actual[df_actual["Functional Manager Employee ID"] == manager_id]
-        opens   = df_open[df_open["Functional Manager Employee ID"] == manager_id]
+        opens = df_open[df_open["Functional Manager Employee ID"] == manager_id]
         return actuals, opens
 
-    def add_l4_slide(l4_id,l5_rows):
-        slide = pres.Slides.Add(pres.Slides.Count+1,12)
+    def add_l4_slide(l4_id, l5_rows):
+        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
         sw = pres.PageSetup.SlideWidth
-        l4_left = (sw-100)/2
-        l4_box = add_box(slide,l4_left,15,100,50,box_text_actual(l4_id, level=4))
-        l5_positions = place_row(sw,len(l5_rows),100)
-        for i,l5_row in enumerate(l5_rows):
+
+        # L4 box
+        l4_left = (sw - L4_W) / 2
+        l4_box = add_box(slide, l4_left, TOP_MARGIN, L4_W, L4_H, box_text_actual(l4_id, level=4))
+
+        # Place L5 boxes
+        l5_positions = place_row(sw, len(l5_rows), L5_W)
+        for i, l5_row in enumerate(l5_rows):
             l5_id = l5_row["Employee ID"]
-            if pd.isna(l5_id): continue
+            if pd.isna(l5_id):
+                continue
             left = l5_positions[i]
-            l5_box = add_box(slide,left,100,100,50,box_text_actual(l5_id, level=5))
-            connect(slide,l4_box,l5_box)
+            l5_box = add_box(slide, left, L5_TOP, L5_W, L5_H, box_text_actual(l5_id, level=5))
+            connect(slide, l4_box, l5_box)
+
+            # Get L6 direct reports (actual + open)
             actuals, opens = get_direct_reports(l5_id)
-            l6_rows = [row for _,row in actuals.iterrows() if pd.notna(row["Employee ID"])]
-            open_rows = [row for _,row in opens.iterrows()]
-            for j,l6_row in enumerate(l6_rows):
+            l6_rows = [row for _, row in actuals.iterrows() if pd.notna(row["Employee ID"])]
+            open_rows = [row for _, row in opens.iterrows()]
+
+            # Draw actual L6 employees (with counts inside their box, no expansion)
+            for j, l6_row in enumerate(l6_rows):
                 l6_id = l6_row["Employee ID"]
-                l6_left = left+(100-100)/2
-                l6_top = 160+j*(50+15)
-                l6_box = add_box(slide,l6_left,l6_top,100,50,box_text_actual(l6_id, level=6))
-                connect(slide,l5_box,l6_box)
-            for k,op_row in enumerate(open_rows):
+                l6_left = left + (L5_W - L6_W) / 2
+                l6_top = L6_TOP_BASE + j * (L6_H + ROW_GAP)
+                l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, box_text_actual(l6_id, level=6))
+                connect(slide, l5_box, l6_box)
+
+            # Draw open positions under L5
+            for k, op_row in enumerate(open_rows):
                 op_text = box_text_open(op_row)
-                if not op_text: continue
-                l6_left = left+(100-100)/2
-                l6_top = 160+(len(l6_rows)+k)*(50+15)
-                l6_box = add_box(slide,l6_left,l6_top,100,50,op_text)
-                connect(slide,l5_box,l6_box)
+                if not op_text:
+                    continue
+                l6_left = left + (L5_W - L6_W) / 2
+                l6_top = L6_TOP_BASE + (len(l6_rows) + k) * (L6_H + ROW_GAP)
+                l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, op_text)
+                connect(slide, l5_box, l6_box)
 
     # --- Build chart starting from L4 ---
     l5_reports, _ = get_direct_reports(level4_id)
-    l5_rows = [row for _,row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
-    add_l4_slide(level4_id,l5_rows)
+    l5_rows = [row for _, row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
+    add_l4_slide(level4_id, l5_rows)
 
-    pres.SaveAs(ppt_path)
+    pres.SaveAs(os.path.join(output_dir, f"OrgChart_MD_{level4_id}.pptx"))
     pres.Close()
-    print(f"Org chart saved to {ppt_path}")
+    print(f"Org chart saved to {os.path.join(output_dir, f'OrgChart_MD_{level4_id}.pptx')}")
+
+# -----------------------------
+# Step 6B: Export indented hierarchy to Excel and PPT
+# -----------------------------
 def export_indented_text_full(level4_id,
                               df_actual,
                               df_open,
                               direct_counts,
                               open_pos_counts,
-                              excel_path="OrgChart_Indented.xlsx",
-                              ppt_path="OrgChart_Indented.pptx",
+                              excel_path=None,
+                              ppt_path=None,
                               ppt_app=None):
     """
     Export indented hierarchy lines with employees + open positions.
@@ -265,19 +378,19 @@ def export_indented_text_full(level4_id,
     - Skip open positions if Position Title missing/blank/Unspecified.
     """
 
-    # --- Helpers ---
     def clean(x):
-        if pd.isna(x): return ""
+        if pd.isna(x):
+            return ""
         s = str(x).strip()
         return "" if s.lower() == "unspecified" else s
 
     def line_for_actual(row, mgr_id=None, level=0):
-        name = clean(row.get("Employee Name",""))
-        title = clean(row.get("Position Title",""))
-        gcb   = clean(row.get("GCB",""))
-        country = clean(row.get("Country R3",""))
-        header = " | ".join([p for p in [name,title] if p])
-        footer = " | ".join([p for p in [gcb,country] if p])
+        name = clean(row.get("Employee Name", ""))
+        title = clean(row.get("Position Title", ""))
+        gcb = clean(row.get("GCB", ""))
+        country = clean(row.get("Country R3", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
         line = f"{header}\n{footer}" if footer else header
 
         # At L6, append counts instead of expanding further
@@ -289,19 +402,19 @@ def export_indented_text_full(level4_id,
         return line
 
     def line_for_open(op_row):
-        title = clean(op_row.get("Position Title",""))
-        if not title: return None
+        title = clean(op_row.get("Position Title", ""))
+        if not title:
+            return None
         pid = op_row.get("PID")
         gcb, country = "", ""
         match = df_actual[df_actual["PID"] == pid]
         if not match.empty:
-            gcb = clean(match.iloc[0].get("GCB",""))
-            country = clean(match.iloc[0].get("Country R3",""))
+            gcb = clean(match.iloc[0].get("GCB", ""))
+            country = clean(match.iloc[0].get("Country R3", ""))
         header = f"<Open Position> | {title}"
-        footer = " | ".join([p for p in [gcb,country] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
         return f"{header}\n{footer}" if footer else header
 
-    # --- Build indented lines ---
     lines = []
 
     # L4 manager
@@ -310,20 +423,22 @@ def export_indented_text_full(level4_id,
 
     # L5 reports
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
-    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
+    l5_opens = df_open[df_open["Functional Manager Employee ID"] == level4_id]
 
     for _, l5 in l5_actuals.iterrows():
         l5_id = l5.get("Employee ID")
-        if pd.isna(l5_id): continue
+        if pd.isna(l5_id):
+            continue
         lines.append(f"\t{line_for_actual(l5, l5_id, level=5)}")
 
         # L6 reports
         l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+        l6_opens = df_open[df_open["Functional Manager Employee ID"] == l5_id]
 
         for _, l6 in l6_actuals.iterrows():
             l6_id = l6.get("Employee ID")
-            if pd.isna(l6_id): continue
+            if pd.isna(l6_id):
+                continue
             lines.append(f"\t\t{line_for_actual(l6, l6_id, level=6)}")
 
         for _, op in l6_opens.iterrows():
@@ -337,11 +452,15 @@ def export_indented_text_full(level4_id,
         if op_line:
             lines.append(f"\t{op_line}")
 
-    # --- Export to Excel ---
+    # Paths
+    excel_path = excel_path or os.path.join(output_dir, f"Indented_MD_{level4_id}.xlsx")
+    ppt_path = ppt_path or os.path.join(output_dir, f"Indented_MD_{level4_id}.pptx")
+
+    # Export to Excel
     pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
     print(f"Indented hierarchy exported to Excel: {excel_path}")
 
-    # --- Export to PPT ---
+    # Export to PPT
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
@@ -355,63 +474,35 @@ def export_indented_text_full(level4_id,
     print(f"Indented hierarchy exported to PPT: {ppt_path}")
 
     return lines
+
 # -----------------------------
-# Main
-# -----------------------------if __name__ == "__main__":
-    # Step 0: read only BFG column quickly
-    df_bfg_preview = df_final[["Business Framework Group"]].dropna().copy()
+# Main (no dropdown; uses already filtered df1/open_pos1/etc.)
+# -----------------------------
+if __name__ == "__main__":
+    # You already filtered by BFG and built df1/df_base1/open_pos1/lookup1 upstream.
+    # Here we just iterate over MDs present in df_final and generate outputs.
 
-    # Dropdown selection
-    import tkinter as tk
-    from tkinter import ttk
-
-    root = tk.Tk()
-    root.title("Select Business Framework Group")
-    root.geometry("480x150")
-    root.resizable(False, False)
-
-    bfg_values = sorted(df_bfg_preview["Business Framework Group"].astype(str).unique())
-    var = tk.StringVar()
-    tk.Label(root, text="Business Framework Group:").pack(pady=(12,2))
-    combo = ttk.Combobox(root, textvariable=var, values=bfg_values, state="readonly", width=60)
-    combo.pack(pady=(0,10))
-    if bfg_values:
-        combo.current(0)
-
-    selected = {"value": None}
-    def on_ok():
-        selected["value"] = combo.get()
-        root.destroy()
-
-    tk.Button(root, text="OK", command=on_ok).pack()
-    root.mainloop()
-
-    selected_bfg = selected["value"]
-    if not selected_bfg:
-        print("No BFG selected. Exiting.")
+    # Identify MDs
+    mds = df_final[df_final["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
+    if not mds:
+        print("No MDs found in df_final. Nothing to generate.")
     else:
-        # Filter to chosen BFG
-        df_bfg = df_final[df_final["Business Framework Group"] == selected_bfg].copy()
-        df_open_bfg = df_open_enriched[df_open_enriched["Functional Manager Employee ID"].isin(df_bfg["Employee ID"])]
-
-        print(f"Selected BFG: {selected_bfg} | Rows: {len(df_bfg)}")
-
-        # Identify MDs in this BFG
-        mds = df_bfg[df_bfg["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
-
         ppt_app = win32com.client.Dispatch("PowerPoint.Application")
         ppt_app.Visible = True
 
         for md_id in mds:
-            print(f"Generating chart for MD {md_id}...")
-            draw_orgchart(md_id, df_bfg, df_open_bfg,
-                          direct_counts_actual, open_pos_counts,
-                          f"OrgChart_MD_{md_id}.pptx", ppt_app)
+            print(f"Generating for MD {md_id}...")
+            # Limit open positions to those whose manager is within current df_final slice
+            df_open_bfg = df_open_enriched[df_open_enriched["Functional Manager Employee ID"].isin(df_final["Employee ID"])]
 
-            export_indented_text_full(md_id, df_bfg, df_open_bfg,
+            # Generate PPT chart
+            draw_orgchart(md_id, df_final, df_open_bfg, direct_counts_actual, open_pos_counts, ppt_app)
+
+            # Generate indented Excel + PPT
+            export_indented_text_full(md_id, df_final, df_open_bfg,
                                       direct_counts_actual, open_pos_counts,
-                                      f"Indented_MD_{md_id}.xlsx",
-                                      f"Indented_MD_{md_id}.pptx",
-                                      ppt_app)
+                                      excel_path=os.path.join(output_dir, f"Indented_MD_{md_id}.xlsx"),
+                                      ppt_path=os.path.join(output_dir, f"Indented_MD_{md_id}.pptx"),
+                                      ppt_app=ppt_app)
 
-        print("Workflow complete. Charts + Excel generated.")
+        print(f"Workflow complete. Files saved under: {output_dir}")
