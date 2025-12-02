@@ -357,26 +357,61 @@ def export_indented_text_full(level4_id,
     return lines
 # -----------------------------
 # Main
-# -----------------------------
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
-    level4_id = simpledialog.askinteger("Input", "Enter Level 4 Manager Employee ID:")
+# -----------------------------if __name__ == "__main__":
+    # Step 0: read only BFG column quickly
+    df_bfg_preview = df_final[["Business Framework Group"]].dropna().copy()
 
-    if level4_id is None:
-        print("No Level 4 ID entered. Exiting.")
+    # Dropdown selection
+    import tkinter as tk
+    from tkinter import ttk
+
+    root = tk.Tk()
+    root.title("Select Business Framework Group")
+    root.geometry("480x150")
+    root.resizable(False, False)
+
+    bfg_values = sorted(df_bfg_preview["Business Framework Group"].astype(str).unique())
+    var = tk.StringVar()
+    tk.Label(root, text="Business Framework Group:").pack(pady=(12,2))
+    combo = ttk.Combobox(root, textvariable=var, values=bfg_values, state="readonly", width=60)
+    combo.pack(pady=(0,10))
+    if bfg_values:
+        combo.current(0)
+
+    selected = {"value": None}
+    def on_ok():
+        selected["value"] = combo.get()
+        root.destroy()
+
+    tk.Button(root, text="OK", command=on_ok).pack()
+    root.mainloop()
+
+    selected_bfg = selected["value"]
+    if not selected_bfg:
+        print("No BFG selected. Exiting.")
     else:
+        # Filter to chosen BFG
+        df_bfg = df_final[df_final["Business Framework Group"] == selected_bfg].copy()
+        df_open_bfg = df_open_enriched[df_open_enriched["Functional Manager Employee ID"].isin(df_bfg["Employee ID"])]
+
+        print(f"Selected BFG: {selected_bfg} | Rows: {len(df_bfg)}")
+
+        # Identify MDs in this BFG
+        mds = df_bfg[df_bfg["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
+
         ppt_app = win32com.client.Dispatch("PowerPoint.Application")
         ppt_app.Visible = True
 
-        draw_orgchart(level4_id, df_final, df_open_enriched,
-                      direct_counts_actual, open_pos_counts,
-                      "OrgChart_Output.pptx", ppt_app)
+        for md_id in mds:
+            print(f"Generating chart for MD {md_id}...")
+            draw_orgchart(md_id, df_bfg, df_open_bfg,
+                          direct_counts_actual, open_pos_counts,
+                          f"OrgChart_MD_{md_id}.pptx", ppt_app)
 
-        export_indented_text_full(level4_id, df_final, df_open_enriched,
-                                  direct_counts_actual, open_pos_counts,
-                                  "OrgChart_Indented.xlsx",
-                                  "OrgChart_Indented.pptx",
-                                  ppt_app)
+            export_indented_text_full(md_id, df_bfg, df_open_bfg,
+                                      direct_counts_actual, open_pos_counts,
+                                      f"Indented_MD_{md_id}.xlsx",
+                                      f"Indented_MD_{md_id}.pptx",
+                                      ppt_app)
 
-        print("Workflow complete. PPT + Excel generated.")
+        print("Workflow complete. Charts + Excel generated.")
