@@ -1,3 +1,130 @@
+import pandas as pd
+import win32com.client
+
+def export_indented_text_full(level4_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              excel_path="OrgChart_Indented.xlsx",
+                              ppt_path="OrgChart_Indented.pptx"):
+    """
+    Export indented hierarchy lines with open positions shown separately.
+    - For open positions: skip lines entirely if Position Title is missing/blank/Unspecified.
+    - For employees: never print "<blank>"; omit missing fields instead.
+    """
+
+    def _clean_str(x):
+        if pd.isna(x):
+            return ""
+        s = str(x).strip()
+        return "" if s.lower() == "unspecified" else s
+
+    def _compose_header(name, title):
+        name = _clean_str(name)
+        title = _clean_str(title)
+        # No placeholders; include only present parts
+        if name and title:
+            return f"{name} | {title}"
+        elif name:
+            return f"{name}"
+        elif title:
+            return f"{title}"
+        else:
+            return ""
+
+    def _compose_footer(gcb, country):
+        gcb = _clean_str(gcb)
+        country = _clean_str(country)
+        if gcb and country:
+            return f"{gcb} | {country}"
+        elif gcb:
+            return f"{gcb}"
+        elif country:
+            return f"{country}"
+        else:
+            return ""
+
+    def _line_for_actual(row):
+        header = _compose_header(row.get("Employee Name", ""), row.get("Position Title", ""))
+        footer = _compose_footer(row.get("GCB", ""), row.get("Country R3", ""))
+        return f"{header}\n{footer}" if footer else header
+
+    def _line_for_open(op_row):
+        # Skip open positions if Position Title is missing/blank/Unspecified
+        title = _clean_str(op_row.get("Position Title", ""))
+        if not title:
+            return None
+        # Enrich GCB/Location by PID lookup in df_actual
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        if "PID" in df_actual.columns:
+            match = df_actual[df_actual["PID"] == pid]
+            if not match.empty:
+                gcb = _clean_str(match.iloc[0].get("GCB", ""))
+                country = _clean_str(match.iloc[0].get("Country R3", ""))
+        header = _compose_header(f"<Open Position>", title)
+        footer = _compose_footer(gcb, country)
+        return f"{header}\n{footer}" if footer else header
+
+    lines = []
+
+    # --- L4 manager details ---
+    mgr_row = df_actual[df_actual["Employee ID"] == level4_id].iloc[0]
+    lines.append(_line_for_actual(mgr_row))
+
+    # --- L5 reports (actual + open under L4) ---
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
+
+    # Actual L5 employees
+    for _, l5 in l5_actuals.iterrows():
+        l5_id = l5.get("Employee ID")
+        if pd.isna(l5_id):
+            continue
+        lines.append(f"\t{_line_for_actual(l5)}")
+
+        # --- L6 under this L5 (actual + open) ---
+        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+        for _, l6 in l6_actuals.iterrows():
+            l6_id = l6.get("Employee ID")
+            if pd.isna(l6_id):
+                continue
+            lines.append(f"\t\t{_line_for_actual(l6)}")
+
+        # Open positions under L5 (each as its own line; skip if title missing)
+        for _, op in l6_opens.iterrows():
+            op_line = _line_for_open(op)
+            if op_line:
+                lines.append(f"\t\t{op_line}")
+
+    # Open positions directly under L4 (skip if title missing)
+    for _, op in l5_opens.iterrows():
+        op_line = _line_for_open(op)
+        if op_line:
+            lines.append(f"\t{op_line}")
+
+    # --- Write to Excel ---
+    pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to Excel: {excel_path}")
+
+    # --- Write to PowerPoint ---
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)
+    tr.Font.Size = 8
+    pres.SaveAs(ppt_path)
+    print(f"Indented hierarchy exported to PPT: {ppt_path}")
+
+    return lines
+
+
 def box_text_open(row, df_actual):
     pid = row["PID"]
 
