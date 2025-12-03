@@ -1,44 +1,4 @@
-def build_bfg_orgcharts_controller(df_final, df_open_enriched,
-                                   draw_orgchart_fn,
-                                   export_indented_fn,
-                                   direct_counts, open_pos_counts,
-                                   summary_excel_path=os.path.join(output_dir, "OrgChart_Summary.xlsx")):
-    # Filtered BFG slice already passed in as df_final
-    all_ids = set(df_final["Employee ID"].dropna().unique())
-    covered_ids = set()
-
-    ppt_app = win32com.client.Dispatch("PowerPoint.Application")
-    ppt_app.Visible = True
-
-    mds = df_final[df_final["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
-
-    for md_id in mds:
-        print(f"Generating chart for MD {md_id}...")
-        df_open_bfg = df_open_enriched[df_open_enriched["Functional Manager Employee ID"].isin(df_final["Employee ID"])]
-
-        draw_orgchart_fn(md_id, df_final, df_open_bfg, direct_counts, open_pos_counts, ppt_app)
-        export_indented_fn(md_id, df_final, df_open_bfg, direct_counts, open_pos_counts,
-                           excel_path=os.path.join(output_dir, f"Indented_MD_{md_id}.xlsx"),
-                           ppt_path=os.path.join(output_dir, f"Indented_MD_{md_id}.pptx"),
-                           ppt_app=ppt_app)
-
-        # Mark coverage: MD + their subtree
-        covered_ids.add(md_id)
-        covered_ids.update(df_final[df_final["Functional Manager Employee ID"] == md_id]["Employee ID"].dropna().tolist())
-
-    # Coverage check
-    uncovered = all_ids - covered_ids
-    print(f"Coverage summary: {len(covered_ids)} employees covered, {len(uncovered)} uncovered.")
-
-    if uncovered:
-        print("Uncovered Employee IDs:", uncovered)
-        df_uncovered = df_final[df_final["Employee ID"].isin(uncovered)]
-        df_uncovered.to_excel(summary_excel_path, index=False)
-        print(f"Uncovered employees exported to {summary_excel_path}")
-    else:
-        print("All employees covered.")
-
-------------
+# loop for bfg level code:
 import os
 import pandas as pd
 import win32com.client
@@ -530,6 +490,8 @@ if __name__ == "__main__":
     else:
         ppt_app = win32com.client.Dispatch("PowerPoint.Application")
         ppt_app.Visible = True
+        
+        covered_ids = set()
 
         for md_id in mds:
             print(f"Generating for MD {md_id}...")
@@ -545,5 +507,27 @@ if __name__ == "__main__":
                                       excel_path=os.path.join(output_dir, f"Indented_MD_{md_id}.xlsx"),
                                       ppt_path=os.path.join(output_dir, f"Indented_MD_{md_id}.pptx"),
                                       ppt_app=ppt_app)
+            covered_ids.add(md_id)
+            covered_ids.update(df_final[df_final["Functional Manager Employee ID"] == md_id]["Employee ID"].dropna().tolist())
 
         print(f"Workflow complete. Files saved under: {output_dir}")
+        check_coverage(df_final, covered_ids)
+        
+def check_coverage(df_final, covered_ids, summary_excel_path=os.path.join(output_dir, "OrgChart_Summary.xlsx")):
+    # All employees in the current BFG slice
+    all_ids = set(df_final["Employee ID"].dropna().unique())
+
+    # Who is not covered
+    uncovered = all_ids - covered_ids
+
+    print(f"Coverage summary: {len(covered_ids)} employees covered, {len(uncovered)} uncovered.")
+
+    if uncovered:
+        print("Uncovered Employee IDs:", uncovered)
+        df_uncovered = df_final[df_final["Employee ID"].isin(uncovered)]
+        df_uncovered.to_excel(summary_excel_path, index=False)
+        print(f"Uncovered employees exported to {summary_excel_path}")
+    else:
+        print("All employees covered.")
+        
+        
