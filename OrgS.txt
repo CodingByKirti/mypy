@@ -9,7 +9,7 @@ def export_indented_text_full(level4_id,
                               max_per_slide=7):
     """
     Export indented hierarchy lines with employees + open positions.
-    Enforces batching: max 7 L5s per L4 per slide, max 7 L6s per L5 per slide.
+    Enforces batching: max 7 lines per slide in PPT export.
     Also produces role summary and uncovered employee list.
     """
 
@@ -55,78 +55,70 @@ def export_indented_text_full(level4_id,
     lines.append(line_for_actual(mgr_row, level4_id, level=4))
     covered_ids.add(level4_id)
 
-    # --- L5 reports (batched) ---
+    # --- L5 reports ---
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
     l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
 
-    l5_list = []
     for _, l5 in l5_actuals.iterrows():
         l5_id = l5.get("Employee ID")
-        if pd.notna(l5_id):
-            l5_list.append(("actual", l5))
+        if pd.isna(l5_id): continue
+        lines.append(f"\t{line_for_actual(l5, l5_id, level=5)}")
+        covered_ids.add(l5_id)
+
+        # --- L6 reports ---
+        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+        for _, l6 in l6_actuals.iterrows():
+            l6_id = l6.get("Employee ID")
+            if pd.isna(l6_id): continue
+            lines.append(f"\t\t{line_for_actual(l6, l6_id, level=6)}")
+            covered_ids.add(l6_id)
+            dr_ids = df_actual[df_actual["Functional Manager Employee ID"] == l6_id]["Employee ID"].dropna().tolist()
+            covered_ids.update(dr_ids)
+
+        for _, op in l6_opens.iterrows():
+            op_line = line_for_open(op)
+            if op_line:
+                lines.append(f"\t\t{op_line}")
+                if pd.notna(op.get("PID")):
+                    covered_ids.add(op["PID"])
+
+    # --- Open positions directly under L4 ---
     for _, op in l5_opens.iterrows():
-        l5_list.append(("open", op))
+        op_line = line_for_open(op)
+        if op_line:
+            lines.append(f"\t{op_line}")
+            if pd.notna(op.get("PID")):
+                covered_ids.add(op["PID"])
 
-    for batch_start in range(0, len(l5_list), max_per_slide):
-        batch = l5_list[batch_start:batch_start+max_per_slide]
-        lines.append(f"\t--- L5 batch {batch_start//max_per_slide+1} ---")
-        for kind, l5 in batch:
-            if kind == "actual":
-                l5_id = l5.get("Employee ID")
-                lines.append(f"\t{line_for_actual(l5, l5_id, level=5)}")
-                covered_ids.add(l5_id)
-
-                # --- L6 reports (batched per L5) ---
-                l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-                l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
-
-                l6_list = []
-                for _, l6 in l6_actuals.iterrows():
-                    if pd.notna(l6.get("Employee ID")):
-                        l6_list.append(("actual", l6))
-                for _, op in l6_opens.iterrows():
-                    l6_list.append(("open", op))
-
-                for l6_start in range(0, len(l6_list), max_per_slide):
-                    l6_batch = l6_list[l6_start:l6_start+max_per_slide]
-                    lines.append(f"\t\t--- L6 batch {l6_start//max_per_slide+1} under {clean(l5.get('Employee Name'))} ---")
-                    for kind2, l6 in l6_batch:
-                        if kind2 == "actual":
-                            l6_id = l6.get("Employee ID")
-                            lines.append(f"\t\t{line_for_actual(l6, l6_id, level=6)}")
-                            covered_ids.add(l6_id)
-                        else:
-                            op_line = line_for_open(l6)
-                            if op_line:
-                                lines.append(f"\t\t{op_line}")
-                                if pd.notna(l6.get("PID")):
-                                    covered_ids.add(l6.get("PID"))
-
-            else:  # open L5
-                op_line = line_for_open(l5)
-                if op_line:
-                    lines.append(f"\t{op_line}")
-                    if pd.notna(l5.get("PID")):
-                        covered_ids.add(l5.get("PID"))
-
-    # --- Export hierarchy ---
-    excel_path = excel_path or os.path.join(output_dir, f"Indented_MD_{level4_id}.xlsx")
-    ppt_path   = ppt_path   or os.path.join(output_dir, f"Indented_MD_{level4_id}.pptx")
-
+    # --- Export hierarchy to Excel ---
+    if excel_path is None:
+        excel_path = os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.xlsx")
     pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
     print(f"Indented hierarchy exported to Excel: {excel_path}")
+
+    # --- Export hierarchy to PPT (multi-slide) ---
+    if ppt_path is None:
+        ppt_path = os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.pptx")
 
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
-    slide = pres.Slides.Add(1, 12)
-    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
-    tr = textbox.TextFrame.TextRange
-    tr.Text = "\r".join(lines)
-    tr.Font.Size = 8
+
+    # Break lines into chunks of max_per_slide
+    for start in range(0, len(lines), max_per_slide):
+        batch = lines[start:start+max_per_slide]
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+        textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+        tr = textbox.TextFrame.TextRange
+        tr.Text = "\r".join(batch)
+        tr.Font.Size = 8
+
     pres.SaveAs(ppt_path)
     pres.Close()
     print(f"Indented hierarchy exported to PPT: {ppt_path}")
+
 .......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
