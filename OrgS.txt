@@ -1,3 +1,61 @@
+import pandas as pd
+import os
+
+def validate_orgchart(df_final, selected_bfg, output_path=os.path.join(output_dir,"BFG_Validation.xlsx")):
+    # Filter slice
+    df_bfg = df_final[df_final["Business Framework Group"] == selected_bfg].copy()
+    df_bfg["GCB"] = df_bfg["GCB"].astype(str).str.strip().replace("nan","")
+
+    # Determine starting nodes
+    if "MD" in df_bfg["GCB"].unique():
+        start_nodes = df_bfg[df_bfg["GCB"]=="MD"]["Employee ID"].dropna().tolist()
+    else:
+        start_nodes = df_bfg[df_bfg["GCB"]=="3"]["Employee ID"].dropna().tolist()
+
+    covered_ids = set()
+
+    # Recursive traversal
+    def traverse(manager_id):
+        covered_ids.add(manager_id)
+        direct_reports = df_bfg[df_bfg["Functional Manager Employee ID"] == manager_id]["Employee ID"].dropna().tolist()
+        covered_ids.update(direct_reports)  # mark them covered
+        for dr in direct_reports:
+            traverse(dr)
+
+    for node in start_nodes:
+        traverse(node)
+
+    # Compare coverage
+    all_ids = set(df_bfg[df_bfg["GCB"].isin(["MD","3","4","5"])]["Employee ID"].dropna())
+    uncovered_ids = all_ids - covered_ids
+
+    # Build summary tables
+    df_raw = df_bfg[["Employee ID","Employee Name","GCB","Functional Manager Employee ID","Functional Manager Employee Name"]]
+    df_covered = df_raw[df_raw["Employee ID"].isin(covered_ids)]
+    df_uncovered = df_raw[df_raw["Employee ID"].isin(uncovered_ids)]
+
+    counts = []
+    for role in ["MD","3","4","5"]:
+        total = len(df_raw[df_raw["GCB"]==role])
+        covered = len(df_covered[df_covered["GCB"]==role])
+        uncovered = len(df_uncovered[df_uncovered["GCB"]==role])
+        counts.append({"Role":role,"Total":total,"Covered":covered,"Uncovered":uncovered})
+    df_counts = pd.DataFrame(counts)
+
+    # Write to one Excel file with multiple tabs
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        df_raw.to_excel(writer, sheet_name="Org_Data_Raw", index=False)
+        df_covered.to_excel(writer, sheet_name="OrgChart_Covered", index=False)
+        df_uncovered.to_excel(writer, sheet_name="Uncovered", index=False)
+        df_counts.to_excel(writer, sheet_name="Counts", index=False)
+
+    print(f"Validation report written to {output_path}")
+    return df_counts, df_uncovered
+
+
+
+==================================
+
 def export_indented_text_full(level4_id,
                               df_actual,
                               df_open,
