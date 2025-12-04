@@ -1,15 +1,16 @@
-def export_indented_text_hierarchical(level4_id,
-                                      df_actual,
-                                      df_open,
-                                      direct_counts,
-                                      open_pos_counts,
-                                      excel_path=None,
-                                      ppt_path=None,
-                                      ppt_app=None,
-                                      max_per_slide=7):
+def export_indented_orgchart(level4_id,
+                             df_actual,
+                             df_open,
+                             direct_counts,
+                             open_pos_counts,
+                             excel_path=None,
+                             ppt_path=None,
+                             ppt_app=None,
+                             max_per_slide=7):
     """
     Export hierarchical indented org chart into multiple PPT slides.
-    Each slide contains at most 7 items per manager layer.
+    - L4: max 7 L5 per slide
+    - Each L5: max 7 L6 per slide
     Indentation preserved for SmartArt conversion.
     """
 
@@ -61,15 +62,10 @@ def export_indented_text_hierarchical(level4_id,
 
     excel_lines = []
 
-    # --- L4 header slide ---
+    # --- L4 manager ---
     l4_row = df_actual[df_actual["Employee ID"] == level4_id].iloc[0]
     l4_text = text_for_actual(l4_row, level4_id, level=4)
     excel_lines.append(l4_text)
-
-    slide = pres.Slides.Add(pres.Slides.Count+1, 12)
-    tr = slide.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
-    tr.Text = l4_text
-    tr.Font.Size = 10
 
     # --- L5 batching ---
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
@@ -87,7 +83,7 @@ def export_indented_text_hierarchical(level4_id,
         slide = pres.Slides.Add(pres.Slides.Count+1, 12)
         tr = slide.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
         tr.Font.Size = 9
-        tr.Text = f"L5 batch {i//max_per_slide+1}\r"
+        tr.Text = l4_text  # always include L4 at top
 
         for kind, item in batch:
             if kind == "actual":
@@ -112,8 +108,8 @@ def export_indented_text_hierarchical(level4_id,
                     slide2 = pres.Slides.Add(pres.Slides.Count+1, 12)
                     tr2 = slide2.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
                     tr2.Font.Size = 9
-                    tr2.Text = f"L6 batch {j//max_per_slide+1} under {clean(item.get('Employee Name'))}\r"
-
+                    tr2.Text = l4_text
+                    tr2.Text += f"\r\t{text_for_actual(item, l5_id, level=5)}"
                     for kind2, l6 in l6_batch:
                         if kind2 == "actual":
                             l6_id = l6.get("Employee ID")
@@ -136,7 +132,8 @@ def export_indented_text_hierarchical(level4_id,
     pd.DataFrame({"Hierarchy": excel_lines}).to_excel(excel_path, index=False)
 
     pres.SaveAs(ppt_path)
-    pres.Close().......................
+    pres.Close()
+.......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
 
