@@ -1,63 +1,45 @@
-MAX_PER_LAYER = 7  # threshold
+MAX_PER_SLIDE = 7
 
-def add_l4_slide(l4_id, l5_rows):
-    sw = pres.PageSetup.SlideWidth
+def draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_box=None):
+    # Collect all L6 actuals + open positions
+    l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+    l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
 
-    # Split L5 rows into batches of 7
-    for batch_start in range(0, len(l5_rows), MAX_PER_LAYER):
-        batch = l5_rows[batch_start:batch_start+MAX_PER_LAYER]
+    l6_items = []
+    for _, row in l6_actuals.iterrows():
+        if pd.notna(row["Employee ID"]):
+            l6_items.append(("actual", row))
+    for _, row in l6_opens.iterrows():
+        l6_items.append(("open", row))
 
-        # New slide for each batch
-        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+    # Batch across all items
+    for batch_start in range(0, len(l6_items), MAX_PER_SLIDE):
+        batch = l6_items[batch_start:batch_start+MAX_PER_SLIDE]
 
-        # L4 box
-        l4_left = (sw - L4_W) / 2
-        l4_box = add_box(slide, l4_left, TOP_MARGIN, L4_W, L4_H, box_text_actual(l4_id, level=4))
-
-        # Place L5 boxes for this batch
-        l5_positions = place_row(sw, len(batch), L5_W)
-        for i, l5_row in enumerate(batch):
-            l5_id = l5_row["Employee ID"]
-            if pd.isna(l5_id):
-                continue
-            left = l5_positions[i]
-            l5_box = add_box(slide, left, L5_TOP, L5_W, L5_H, box_text_actual(l5_id, level=5))
+        # If not first batch, create new slide and redraw parent boxes
+        if batch_start > 0:
+            slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+            # redraw L4 and L5 boxes for context
+            if l4_box:
+                l4_box = add_box(slide, L4_LEFT, TOP_MARGIN, L4_W, L4_H, box_text_actual(l4_box_id, level=4))
+            l5_box = add_box(slide, L5_LEFT, L5_TOP, L5_W, L5_H, box_text_actual(l5_id, level=5))
             connect(slide, l4_box, l5_box)
+        else:
+            slide = l5_box.Parent
 
-            # Get L6 direct reports (actual + open)
-            actuals, opens = get_direct_reports(l5_id)
-            l6_rows = [row for _, row in actuals.iterrows() if pd.notna(row["Employee ID"])]
-            open_rows = [row for _, row in opens.iterrows()]
-
-            # Combine and batch L6 + open positions
-            l6_items = l6_rows + open_rows
-            for sub_start in range(0, len(l6_items), MAX_PER_LAYER):
-                sub_batch = l6_items[sub_start:sub_start+MAX_PER_LAYER]
-
-                # If not first batch, create new slide and redraw L5 box
-                if sub_start > 0:
-                    slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
-                    l4_box = add_box(slide, l4_left, TOP_MARGIN, L4_W, L4_H, box_text_actual(l4_id, level=4))
-                    l5_box = add_box(slide, left, L5_TOP, L5_W, L5_H, box_text_actual(l5_id, level=5))
-                    connect(slide, l4_box, l5_box)
-
-                # Draw each L6/open in this batch
-                for j, item in enumerate(sub_batch):
-                    if "Employee ID" in item and pd.notna(item["Employee ID"]):
-                        l6_id = item["Employee ID"]
-                        l6_left = left + (L5_W - L6_W) / 2
-                        l6_top = L6_TOP_BASE + j * (L6_H + ROW_GAP)
-                        l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, box_text_actual(l6_id, level=6))
-                        connect(slide, l5_box, l6_box)
-                    else:
-                        op_text = box_text_open(item)
-                        if op_text:
-                            l6_left = left + (L5_W - L6_W) / 2
-                            l6_top = L6_TOP_BASE + j * (L6_H + ROW_GAP)
-                            l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, op_text)
-                            connect(slide, l5_box, l6_box)
-
-/...........................................
+        # Place batch items
+        for j, (kind, row) in enumerate(batch):
+            l6_left = L6_LEFT_BASE + j*(L6_W+ROW_GAP)
+            l6_top  = L6_TOP_BASE
+            if kind == "actual":
+                l6_id = row["Employee ID"]
+                l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, box_text_actual(l6_id, level=6))
+                connect(slide, l5_box, l6_box)
+            else:
+                op_text = box_text_open(row)
+                if op_text:
+                    l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, op_text)
+                    connect(slide, l5_box, l6_box)/...........................................
 
 import pandas as pd
 import os
