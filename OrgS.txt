@@ -1,3 +1,66 @@
+
+def export_indented_orgchart(l4_id, df_actual, df_open, max_per_slide=7):
+    """
+    Export an indented text representation of the org chart for manual validation.
+    Enforces max_per_slide = 7 at both L5 and L6 levels.
+    """
+    lines = []
+
+    # L4 root
+    lines.append(f"L4: {box_text_actual(l4_id, level=4)}")
+
+    # Get L5 reports
+    l5_reports, _ = get_direct_reports(l4_id)
+    l5_rows = [row for _, row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
+
+    # Batch L5s
+    for batch_start in range(0, len(l5_rows), max_per_slide):
+        batch = l5_rows[batch_start:batch_start+max_per_slide]
+        lines.append(f"  --- Slide for L5 batch {batch_start//max_per_slide+1} ---")
+        for l5_row in batch:
+            l5_id = l5_row["Employee ID"]
+            l5_text = box_text_actual(l5_id, level=5)
+            lines.append(f"  L5: {l5_text}")
+
+            # Collect L6s + open positions
+            l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+            l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+            l6_items = []
+            for _, row in l6_actuals.iterrows():
+                if pd.notna(row["Employee ID"]):
+                    l6_items.append(("actual", row))
+            for _, row in l6_opens.iterrows():
+                l6_items.append(("open", row))
+
+            # Batch L6s per L5
+            for l6_start in range(0, len(l6_items), max_per_slide):
+                l6_batch = l6_items[l6_start:l6_start+max_per_slide]
+                lines.append(f"    --- Slide for L6 batch {l6_start//max_per_slide+1} under {l5_text} ---")
+                for kind, row in l6_batch:
+                    if kind == "actual":
+                        l6_id = row["Employee ID"]
+                        l6_text = box_text_actual(l6_id, level=6)
+                        lines.append(f"    L6: {l6_text}")
+                    else:
+                        op_text = box_text_open(row)
+                        if op_text:
+                            lines.append(f"    Open: {op_text}")
+
+    return lines
+
+
+def print_indented_orgchart(l4_id, df_actual, df_open):
+    """
+    Print the indented org chart lines to console for manual checking.
+    """
+    lines = export_indented_orgchart(l4_id, df_actual, df_open)
+    for line in lines:
+        print(line)
+
+print_indented_orgchart(level4_id, df_final, df_open)
+.......................
+
 MAX_PER_SLIDE = 7  # threshold for readability
 
 def draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_id=None, l5_left=None):
