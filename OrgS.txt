@@ -1,9 +1,9 @@
 MAX_PER_SLIDE = 7  # threshold for readability
 
-def draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_id=None):
+def draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_id=None, l5_left=None):
     """
-    Draw L6 actuals + open positions under an L5 manager,
-    batching into slides of MAX_PER_SLIDE.
+    Draw L6 actuals + open positions under a single L5 manager,
+    batching into slides of MAX_PER_SLIDE per L5.
     """
     l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
     l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
@@ -21,37 +21,39 @@ def draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_id=None):
         # If not first batch, create new slide and redraw parent boxes
         if batch_start > 0:
             slide = pres.Slides.Add(pres.Slides.Count+1, 12)
-            # redraw L4 and L5 boxes for context
             if l4_id:
                 l4_left = (pres.PageSetup.SlideWidth - L4_W) / 2
                 l4_box = add_box(slide, l4_left, TOP_MARGIN, L4_W, L4_H,
                                  box_text_actual(l4_id, level=4))
-            l5_box = add_box(slide, L5_LEFT, L5_TOP, L5_W, L5_H,
+            # redraw only this L5
+            l5_box = add_box(slide, l5_left, L5_TOP, L5_W, L5_H,
                              box_text_actual(l5_id, level=5))
-            connect(slide, l4_box, l5_box)
+            if l4_id:
+                connect(slide, l4_box, l5_box)
         else:
             slide = l5_box.Parent
 
-        # Place batch items
+        # Place batch items under this L5
+        l6_positions = place_row(pres.PageSetup.SlideWidth, len(batch), L6_W)
         for j, (kind, row) in enumerate(batch):
-            l6_left = L6_LEFT_BASE + j*(L6_W+ROW_GAP)
+            l6_left = l6_positions[j]
             l6_top  = L6_TOP_BASE
             if kind == "actual":
                 l6_id = row["Employee ID"]
                 l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H,
                                  box_text_actual(l6_id, level=6))
-                connect(slide, l5_box, l6_box)
+                connect(slide, l5_box, l6_box)  # connect only this L5 to its L6
             else:
                 op_text = box_text_open(row)
                 if op_text:
                     l6_box = add_box(slide, l6_left, l6_top, L6_W, L6_H, op_text)
-                    connect(slide, l5_box, l6_box)
+                    connect(slide, l5_box, l6_box)  # connect only this L5 to its open position
 
 
 def add_l4_slide(l4_id, l5_rows):
     """
     Draw L4 manager and their L5 reports,
-    batching into slides of MAX_PER_SLIDE.
+    batching into slides of MAX_PER_SLIDE per L4.
     """
     sw = pres.PageSetup.SlideWidth
 
@@ -75,30 +77,11 @@ def add_l4_slide(l4_id, l5_rows):
             left = l5_positions[i]
             l5_box = add_box(slide, left, L5_TOP, L5_W, L5_H,
                              box_text_actual(l5_id, level=5))
-            connect(slide, l4_box, l5_box)
+            connect(slide, l4_box, l5_box)  # connect only this L5 to its L4
 
             # Draw L6 subtree with batching
-            draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres, l4_id=l4_id)
-
-
-def draw_orgchart(level4_id, df_actual, df_open, pres):
-    """
-    Controller: build chart starting from L4/MD root.
-    """
-    # fetch L5 reports
-    l5_reports, _ = get_direct_reports(level4_id)
-    l5_rows = [row for _, row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
-
-    # call helper
-    add_l4_slide(level4_id, l5_rows)
-
-    # save presentation
-    output_path = os.path.join(output_dir, f"OrgChart_MD_{level4_id}.pptx")
-    pres.SaveAs(output_path)
-    pres.Close()
-    print(f"Org chart saved to {output_path}")
-
-...........................................
+            draw_l6_layer(l5_box, l5_id, df_actual, df_open, pres,
+                          l4_id=l4_id, l5_left=left)...........................................
 
 import pandas as pd
 import os
