@@ -1,64 +1,132 @@
+def export_indented_text_full(level4_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              excel_path=None,
+                              ppt_path=None,
+                              ppt_app=None,
+                              max_per_slide=7):
+    """
+    Export indented hierarchy lines with employees + open positions.
+    Enforces batching: max 7 L5s per L4 per slide, max 7 L6s per L5 per slide.
+    Also produces role summary and uncovered employee list.
+    """
 
-def export_indented_orgchart(l4_id, df_actual, df_open, max_per_slide=7):
-    """
-    Export an indented text representation of the org chart for manual validation.
-    Enforces max_per_slide = 7 at both L5 and L6 levels.
-    """
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() == "unspecified" else s
+
+    def line_for_actual(row, mgr_id=None, level=0):
+        name = clean(row.get("Employee Name", ""))
+        title = clean(row.get("Position Title", ""))
+        gcb   = clean(row.get("GCB", ""))
+        country = clean(row.get("Country R3", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+
+        if level == 6 and mgr_id:
+            if open_pos_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Open Positions: {open_pos_counts[mgr_id]}"
+            if direct_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Direct Reports: {direct_counts[mgr_id]}"
+        return line
+
+    def line_for_open(op_row):
+        title = clean(op_row.get("Position Title", ""))
+        if not title: return None
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        match = df_actual[df_actual["PID"] == pid]
+        if not match.empty:
+            gcb = clean(match.iloc[0].get("GCB", ""))
+            country = clean(match.iloc[0].get("Country R3", ""))
+        header = f"<Open Position> | {title}"
+        footer = " | ".join([p for p in [gcb, country] if p])
+        return f"{header}\n{footer}" if footer else header
+
     lines = []
+    covered_ids = set()
 
-    # L4 root
-    lines.append(f"L4: {box_text_actual(l4_id, level=4)}")
+    # --- L4 manager ---
+    mgr_row = df_actual[df_actual["Employee ID"] == level4_id].iloc[0]
+    lines.append(line_for_actual(mgr_row, level4_id, level=4))
+    covered_ids.add(level4_id)
 
-    # Get L5 reports
-    l5_reports, _ = get_direct_reports(l4_id)
-    l5_rows = [row for _, row in l5_reports.iterrows() if pd.notna(row["Employee ID"])]
+    # --- L5 reports (batched) ---
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
 
-    # Batch L5s
-    for batch_start in range(0, len(l5_rows), max_per_slide):
-        batch = l5_rows[batch_start:batch_start+max_per_slide]
-        lines.append(f"  --- Slide for L5 batch {batch_start//max_per_slide+1} ---")
-        for l5_row in batch:
-            l5_id = l5_row["Employee ID"]
-            l5_text = box_text_actual(l5_id, level=5)
-            lines.append(f"  L5: {l5_text}")
+    l5_list = []
+    for _, l5 in l5_actuals.iterrows():
+        l5_id = l5.get("Employee ID")
+        if pd.notna(l5_id):
+            l5_list.append(("actual", l5))
+    for _, op in l5_opens.iterrows():
+        l5_list.append(("open", op))
 
-            # Collect L6s + open positions
-            l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-            l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+    for batch_start in range(0, len(l5_list), max_per_slide):
+        batch = l5_list[batch_start:batch_start+max_per_slide]
+        lines.append(f"\t--- L5 batch {batch_start//max_per_slide+1} ---")
+        for kind, l5 in batch:
+            if kind == "actual":
+                l5_id = l5.get("Employee ID")
+                lines.append(f"\t{line_for_actual(l5, l5_id, level=5)}")
+                covered_ids.add(l5_id)
 
-            l6_items = []
-            for _, row in l6_actuals.iterrows():
-                if pd.notna(row["Employee ID"]):
-                    l6_items.append(("actual", row))
-            for _, row in l6_opens.iterrows():
-                l6_items.append(("open", row))
+                # --- L6 reports (batched per L5) ---
+                l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+                l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
 
-            # Batch L6s per L5
-            for l6_start in range(0, len(l6_items), max_per_slide):
-                l6_batch = l6_items[l6_start:l6_start+max_per_slide]
-                lines.append(f"    --- Slide for L6 batch {l6_start//max_per_slide+1} under {l5_text} ---")
-                for kind, row in l6_batch:
-                    if kind == "actual":
-                        l6_id = row["Employee ID"]
-                        l6_text = box_text_actual(l6_id, level=6)
-                        lines.append(f"    L6: {l6_text}")
-                    else:
-                        op_text = box_text_open(row)
-                        if op_text:
-                            lines.append(f"    Open: {op_text}")
+                l6_list = []
+                for _, l6 in l6_actuals.iterrows():
+                    if pd.notna(l6.get("Employee ID")):
+                        l6_list.append(("actual", l6))
+                for _, op in l6_opens.iterrows():
+                    l6_list.append(("open", op))
 
-    return lines
+                for l6_start in range(0, len(l6_list), max_per_slide):
+                    l6_batch = l6_list[l6_start:l6_start+max_per_slide]
+                    lines.append(f"\t\t--- L6 batch {l6_start//max_per_slide+1} under {clean(l5.get('Employee Name'))} ---")
+                    for kind2, l6 in l6_batch:
+                        if kind2 == "actual":
+                            l6_id = l6.get("Employee ID")
+                            lines.append(f"\t\t{line_for_actual(l6, l6_id, level=6)}")
+                            covered_ids.add(l6_id)
+                        else:
+                            op_line = line_for_open(l6)
+                            if op_line:
+                                lines.append(f"\t\t{op_line}")
+                                if pd.notna(l6.get("PID")):
+                                    covered_ids.add(l6.get("PID"))
 
+            else:  # open L5
+                op_line = line_for_open(l5)
+                if op_line:
+                    lines.append(f"\t{op_line}")
+                    if pd.notna(l5.get("PID")):
+                        covered_ids.add(l5.get("PID"))
 
-def print_indented_orgchart(l4_id, df_actual, df_open):
-    """
-    Print the indented org chart lines to console for manual checking.
-    """
-    lines = export_indented_orgchart(l4_id, df_actual, df_open)
-    for line in lines:
-        print(line)
+    # --- Export hierarchy ---
+    excel_path = excel_path or os.path.join(output_dir, f"Indented_MD_{level4_id}.xlsx")
+    ppt_path   = ppt_path   or os.path.join(output_dir, f"Indented_MD_{level4_id}.pptx")
 
-print_indented_orgchart(level4_id, df_final, df_open)
+    pd.DataFrame({"Hierarchy": lines}).to_excel(excel_path, index=False)
+    print(f"Indented hierarchy exported to Excel: {excel_path}")
+
+    ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+    slide = pres.Slides.Add(1, 12)
+    textbox = slide.Shapes.AddTextbox(1, 50, 50, 600, 400)
+    tr = textbox.TextFrame.TextRange
+    tr.Text = "\r".join(lines)
+    tr.Font.Size = 8
+    pres.SaveAs(ppt_path)
+    pres.Close()
+    print(f"Indented hierarchy exported to PPT: {ppt_path}")
 .......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
