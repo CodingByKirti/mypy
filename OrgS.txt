@@ -1,16 +1,10 @@
-def export_indented_outline_for_smartart(level4_id,
-                                         df_actual,
-                                         df_open,
-                                         ppt_app=None,
-                                         ppt_path=None,
-                                         max_per_slide=7):
+def export_outline_for_smartart(level4_id, df_actual, df_open, ppt_app=None, ppt_path=None, max_per_slide=7):
     """
-    Create PPT slides with hierarchical indented text that mirrors draw_orgchart batching:
-      - L4: max 7 L5 per slide
-      - For each L5: max 7 L6 per slide
-    Each slide includes L4 at the top; L5/L6 lines are indented with tabs for SmartArt conversion.
+    Create PPT slides with hierarchical indented outline:
+      - L4 → up to 7 L5 per slide (tabs: L4=0, L5=1)
+      - For each L5 → up to 7 L6 per slide (tabs: L4=0, L5=1, L6=2)
+    Ready for "Convert to SmartArt" with hierarchy preserved.
     """
-
     import os
     import pandas as pd
     import win32com.client
@@ -20,51 +14,43 @@ def export_indented_outline_for_smartart(level4_id,
         s = str(x).strip()
         return "" if s.lower() == "unspecified" else s
 
-    def text_for_actual(row, level):
-        # Compose the text you already use in boxes, but as a single line suitable for SmartArt
+    def line_actual(row):
         name  = clean(row.get("Employee Name", ""))
         title = clean(row.get("Position Title", ""))
         gcb   = clean(row.get("GCB", ""))
         country = clean(row.get("Country R3", ""))
-        header = " | ".join([p for p in [name, title] if p])
-        footer = " | ".join([p for p in [gcb, country] if p])
-        line = f"{header}" if not footer else f"{header} | {footer}"
-        return ("\t" * (1 if level == 5 else 2 if level == 6 else 0)) + line
+        parts = [p for p in [name, title, gcb, country] if p]
+        return " | ".join(parts) if parts else ""
 
-    def text_for_open(row, level):
-        title = clean(row.get("Position Title", ""))
-        if not title:
-            return None
-        pid = row.get("PID")
-        # Try to enrich from a matching actual by PID
+    def line_open(op_row):
+        title = clean(op_row.get("Position Title", ""))
+        if not title: return None
+        pid = op_row.get("PID")
         gcb = country = ""
         match = df_actual[df_actual["PID"] == pid]
         if not match.empty:
             gcb = clean(match.iloc[0].get("GCB", ""))
             country = clean(match.iloc[0].get("Country R3", ""))
-        header = f"<Open Position> | {title}"
-        footer = " | ".join([p for p in [gcb, country] if p])
-        line = header if not footer else f"{header} | {footer}"
-        return ("\t" * (1 if level == 5 else 2)) + line
+        parts = ["<Open Position>", title] + [p for p in [gcb, country] if p]
+        return " | ".join(parts)
 
-    # Resolve PPT application and output path
+    # PowerPoint app and path
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
     if ppt_path is None:
         ppt_path = os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.pptx")
 
-    # Fetch L4 row and header text
-    l4_row = df_actual[df_actual["Employee ID"] == level4_id]
-    if l4_row.empty:
-        raise ValueError(f"L4 Employee ID {level4_id} not found in df_actual.")
-    l4_row = l4_row.iloc[0]
-    l4_text = text_for_actual(l4_row, level=4)
+    # L4 row
+    l4_row_df = df_actual[df_actual["Employee ID"] == level4_id]
+    if l4_row_df.empty:
+        raise ValueError(f"L4 {level4_id} not found.")
+    l4_row = l4_row_df.iloc[0]
+    l4_text = line_actual(l4_row)
 
-    # Build L5 items (actuals + opens) under L4
+    # Collect L5 items (actuals + open)
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
     l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
-
     l5_items = []
     for _, r in l5_actuals.iterrows():
         if pd.notna(r.get("Employee ID")):
@@ -72,72 +58,79 @@ def export_indented_outline_for_smartart(level4_id,
     for _, r in l5_opens.iterrows():
         l5_items.append(("open", r))
 
-    # --- L5 batched slides: max_per_slide under L4 ---
-    for l5_start in range(0, len(l5_items), max_per_slide):
-        l5_batch = l5_items[l5_start:l5_start + max_per_slide]
-        slide = pres.Slides.Add(pres.Slides.Count + 1, 12)
+    # L4 → batched L5 slides
+    for start in range(0, len(l5_items), max_per_slide):
+        batch = l5_items[start:start+max_per_slide]
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
         tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
         tr.Font.Size = 10
 
-        # Parent L4 line at top
-        tr.Text = l4_text
+        # L4 line (no tab)
+        tr.Text = l4_text if l4_text else "L4"
 
-        # Add each L5 line under L4 (one tab)
-        for kind, l5 in l5_batch:
+        # L5 lines (one tab)
+        for kind, item in batch:
             if kind == "actual":
-                tr.Text += f"\r{ text_for_actual(l5, level=5) }"
+                l5_line = line_actual(item)
+                tr.Text += f"\r\t{l5_line if l5_line else 'L5'}"
             else:
-                op_line = text_for_open(l5, level=5)
+                op_line = line_open(item)
                 if op_line:
-                    tr.Text += f"\r{ op_line }"
+                    tr.Text += f"\r\t{op_line}"
 
-    # --- For each L5, add L6 batched slides: L4 + that L5 + up to 7 L6 ---
+    # For each actual L5 → batched L6 slides
     for kind, l5 in l5_items:
-        if kind == "actual":
-            l5_id = l5.get("Employee ID")
-            # Collect L6 actuals + opens under this L5
-            l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-            l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
-            l6_items = []
-            for _, rr in l6_actuals.iterrows():
-                if pd.notna(rr.get("Employee ID")):
-                    l6_items.append(("actual", rr))
-            for _, rr in l6_opens.iterrows():
-                l6_items.append(("open", rr))
+        if kind != "actual":
+            continue
+        l5_id = l5.get("Employee ID")
+        # Collect L6 items
+        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+        l6_items = []
+        for _, rr in l6_actuals.iterrows():
+            if pd.notna(rr.get("Employee ID")):
+                l6_items.append(("actual", rr))
+        for _, rr in l6_opens.iterrows():
+            l6_items.append(("open", rr))
 
-            # Create slides for L6 in batches of max_per_slide
-            for l6_start in range(0, len(l6_items), max_per_slide):
-                l6_batch = l6_items[l6_start:l6_start + max_per_slide]
-                slide2 = pres.Slides.Add(pres.Slides.Count + 1, 12)
-                tr2 = slide2.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
-                tr2.Font.Size = 10
+        # If no L6, skip
+        if not l6_items:
+            continue
 
-                # Repeat L4 and this L5 as parent lines
-                tr2.Text  = l4_text
-                tr2.Text += f"\r{ text_for_actual(l5, level=5) }"
+        # Create L6 slides in batches of max_per_slide
+        for s in range(0, len(l6_items), max_per_slide):
+            l6_batch = l6_items[s:s+max_per_slide]
+            slide2 = pres.Slides.Add(pres.Slides.Count+1, 12)
+            tr2 = slide2.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+            tr2.Font.Size = 10
 
-                # Add each L6 line under the L5 (two tabs)
-                for kind2, l6 in l6_batch:
-                    if kind2 == "actual":
-                        tr2.Text += f"\r{ text_for_actual(l6, level=6) }"
-                    else:
-                        op_line = text_for_open(l6, level=6)
-                        if op_line:
-                            tr2.Text += f"\r{ op_line }"
+            # Repeat L4 and L5 headers
+            l5_line_header = line_actual(l5) or "L5"
+            tr2.Text  = l4_text if l4_text else "L4"
+            tr2.Text += f"\r\t{l5_line_header}"
 
-    # Save and close
+            # L6 lines (two tabs)
+            for kind2, l6 in l6_batch:
+                if kind2 == "actual":
+                    l6_line = line_actual(l6)
+                    tr2.Text += f"\r\t\t{l6_line if l6_line else 'L6'}"
+                else:
+                    op_line = line_open(l6)
+                    if op_line:
+                        tr2.Text += f"\r\t\t{op_line}"
+
     pres.SaveAs(ppt_path)
     pres.Close()
 
-
-export_indented_outline_for_smartart(
-    level4_id=level4_id,
+export_outline_for_smartart(
+    level4_id=LEVEL4_ID,
     df_actual=df_final,
     df_open=df_open,
-    ppt_app=ppt_app,  # reuse your existing COM app if available
-    ppt_path=os.path.join(output_dir, f"Indented_MD_{level4_id}.pptx"),
+    ppt_app=ppt_app,  # if you have one; otherwise omit
+    ppt_path=os.path.join(output_dir, f"Indented_MD_{LEVEL4_ID}.pptx"),
     max_per_slide=7
 )
+
 .......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
