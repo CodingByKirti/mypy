@@ -72,6 +72,27 @@ def bifurcate_to_excel(level4_id, df_actual, df_open, excel_path, max_per_slide=
 
     writer.close()
 
+
+def excel_to_ppt(excel_path, ppt_path):
+    import pandas as pd
+    import win32com.client
+
+    xls = pd.ExcelFile(excel_path)
+    ppt = win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres = ppt.Presentations.Add()
+
+    for sheet in xls.sheet_names:
+        df = pd.read_excel(excel_path, sheet_name=sheet)
+        lines = df["Hierarchy"].tolist()
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+        tr.Font.Size = 10
+        tr.Text = "\r".join(lines)
+
+    pres.SaveAs(ppt_path)
+    pres.Close()
+
 .......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
