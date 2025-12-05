@@ -1,3 +1,54 @@
+mds = df_final[df_final["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
+
+if not mds:
+    # --- Fallback to GCB3 ---
+    gcb3s = df_final[df_final["GCB"] == "GCB3"]["Employee ID"].dropna().unique().tolist()
+    if not gcb3s:
+        print("No MDs or GCB3s found in df_final. Nothing to generate.")
+    else:
+        print("No MDs found. Generating charts for GCB3s instead...")
+        ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+        ppt_app.Visible = True
+
+        for gcb3_id in gcb3s:
+            print(f"Generating for GCB3 {gcb3_id}...")
+            df_open_gcb3 = df_open_enriched[
+                df_open_enriched["Functional Manager Employee ID"].isin(df_final["Employee ID"])
+            ]
+
+            draw_orgchart(gcb3_id, df_final, df_open_gcb3,
+                          direct_counts_actual, open_pos_counts, ppt_app)
+
+            export_indented_text_full(
+                gcb3_id, df_final, df_open_gcb3,
+                direct_counts_actual, open_pos_counts,
+                excel_path=os.path.join(output_dir, f"Indented_GCB3_{gcb3_id}.xlsx"),
+                ppt_path=os.path.join(output_dir, f"Indented_GCB3_{gcb3_id}.pptx"),
+                ppt_app=ppt_app
+            )
+else:
+    # --- Normal MD loop ---
+    ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+    ppt_app.Visible = True
+
+    for md_id in mds:
+        print(f"Generating for MD {md_id}...")
+        df_open_bfg = df_open_enriched[
+            df_open_enriched["Functional Manager Employee ID"].isin(df_final["Employee ID"])
+        ]
+
+        draw_orgchart(md_id, df_final, df_open_bfg,
+                      direct_counts_actual, open_pos_counts, ppt_app)
+
+        export_indented_text_full(
+            md_id, df_final, df_open_bfg,
+            direct_counts_actual, open_pos_counts,
+            excel_path=os.path.join(output_dir, f"Indented_MD_{md_id}.xlsx"),
+            ppt_path=os.path.join(output_dir, f"Indented_MD_{md_id}.pptx"),
+            ppt_app=ppt_app
+        )
+-----
+
 def export_indented_text_full(level4_id,
                               df_actual,
                               df_open,
