@@ -8,10 +8,12 @@ def export_indented_text_full(level4_id,
                               ppt_app=None,
                               max_per_slide=7):
     """
-    Export indented hierarchy lines with employees + open positions.
-    Enforces batching: max 7 L5 per slide under L4, max 7 L6 per slide under each L5.
+    Export hierarchical indented text with batching:
+      - Max 7 L5 per slide under L4
+      - Max 7 L6 per slide under each L5
+    Writes one Excel sheet per slide and mirrors to PPT slides.
+    Ensures at least one visible sheet to avoid Excel save error.
     """
-
     import os
     import pandas as pd
     import win32com.client
@@ -50,114 +52,166 @@ def export_indented_text_full(level4_id,
         line = f"{header}\n{footer}" if footer else header
         return ("\t"*level) + line
 
-    covered_ids = set()
+    # Paths
+    excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.xlsx")
+    ppt_path   = ppt_path   or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.pptx")
 
-    # L4 manager
-    mgr_row = df_actual[df_actual["Employee ID"] == level4_id].iloc[0]
+    # L4 row (fail fast if missing)
+    l4_df = df_actual[df_actual["Employee ID"] == level4_id]
+    if l4_df.empty:
+        raise ValueError(f"L4 Employee ID {level4_id} not found in df_actual.")
+    mgr_row = l4_df.iloc[0]
     l4_line = line_for_actual(mgr_row, level4_id, level=4)
-    covered_ids.add(level4_id)
 
-    # Collect L5s
+    # Collect L5 items (actuals + opens)
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
     l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
     l5_items = []
     for _, r in l5_actuals.iterrows():
-        if pd.notna(r["Employee ID"]):
+        if pd.notna(r.get("Employee ID")):
             l5_items.append(("actual", r))
     for _, r in l5_opens.iterrows():
         l5_items.append(("open", r))
 
-    # Prepare Excel writer
-    excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.xlsx")
-    writer = pd.ExcelWriter(excel_path, engine="openpyxl")
+    covered_ids = set([level4_id])
+    slide_num = 1
+    sheets_written = 0  # track to guarantee at least one visible sheet
 
-    # PowerPoint
-    ppt_path = ppt_path or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.pptx")
+    # PowerPoint app
     ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
     ppt.Visible = True
     pres = ppt.Presentations.Add()
 
-    slide_num = 1
-    # Batch L5s
-    for i in range(0, len(l5_items), max_per_slide):
-        batch = l5_items[i:i+max_per_slide]
-        lines = [l4_line]
-
-        for kind, l5 in batch:
-            if kind == "actual":
-                l5_id = l5["Employee ID"]
-                l5_line = "\t" + line_for_actual(l5, l5_id, level=5)
-                lines.append(l5_line)
-                covered_ids.add(l5_id)
-
-                # Collect L6s
-                l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-                l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
-                l6_items = []
-                for _, rr in l6_actuals.iterrows():
-                    if pd.notna(rr["Employee ID"]):
-                        l6_items.append(("actual", rr))
-                for _, rr in l6_opens.iterrows():
-                    l6_items.append(("open", rr))
-
-                # Batch L6s
-                for j in range(0, len(l6_items), max_per_slide):
-                    l6_batch = l6_items[j:j+max_per_slide]
-                    if j == 0:
-                        for kind2, l6 in l6_batch:
-                            if kind2 == "actual":
-                                l6_id = l6["Employee ID"]
-                                lines.append("\t\t" + line_for_actual(l6, l6_id, level=6))
-                                covered_ids.add(l6_id)
-                            else:
-                                op_line = line_for_open(l6, level=2)
-                                if op_line:
-                                    lines.append(op_line)
-                                    if pd.notna(l6.get("PID")):
-                                        covered_ids.add(l6["PID"])
-                    else:
-                        # Overflow → new slide
-                        lines2 = [l4_line, l5_line]
-                        for kind2, l6 in l6_batch:
-                            if kind2 == "actual":
-                                l6_id = l6["Employee ID"]
-                                lines2.append("\t\t" + line_for_actual(l6, l6_id, level=6))
-                                covered_ids.add(l6_id)
-                            else:
-                                op_line = line_for_open(l6, level=2)
-                                if op_line:
-                                    lines2.append(op_line)
-                                    if pd.notna(l6.get("PID")):
-                                        covered_ids.add(l6["PID"])
-                        pd.DataFrame({"Hierarchy": lines2}).to_excel(writer, sheet_name=f"Slide_{slide_num}", index=False)
-                        slide2 = pres.Slides.Add(pres.Slides.Count+1, 12)
-                        tr2 = slide2.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
-                        tr2.Text = "\r".join(lines2)
-                        tr2.Font.Size = 8
-                        slide_num += 1
-            else:
-                op_line = line_for_open(l5, level=1)
-                if op_line:
-                    lines.append(op_line)
-                    if pd.notna(l5.get("PID")):
-                        covered_ids.add(l5["PID"])
-
-        # Write this batch to Excel sheet
-        pd.DataFrame({"Hierarchy": lines}).to_excel(writer, sheet_name=f"Slide_{slide_num}", index=False)
-        # Write this batch to PPT slide
+    # Use context manager for ExcelWriter
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        # Always write an initial L4-only sheet to guarantee visibility
+        pd.DataFrame({"Hierarchy": [l4_line]}).to_excel(writer, sheet_name=f"Slide_{slide_num}", index=False)
+        # Also mirror to PPT
         slide = pres.Slides.Add(pres.Slides.Count+1, 12)
         tr = slide.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
-        tr.Text = "\r".join(lines)
-        tr.Font.Size = 8
+        tr.Text = l4_line
+        tr.Font.Size = 9
+        sheets_written += 1
         slide_num += 1
 
-    writer.close()
+        # Batch L5s (max 7 per slide)
+        for i in range(0, len(l5_items), max_per_slide):
+            batch = l5_items[i:i+max_per_slide]
+            lines = [l4_line]
+
+            for kind, l5 in batch:
+                if kind == "actual":
+                    l5_id = l5.get("Employee ID")
+                    l5_line = "\t" + line_for_actual(l5, l5_id, level=5)
+                    lines.append(l5_line)
+                    covered_ids.add(l5_id)
+
+                    # Collect L6 (actuals + opens)
+                    l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+                    l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+                    l6_items = []
+                    for _, rr in l6_actuals.iterrows():
+                        if pd.notna(rr.get("Employee ID")):
+                            l6_items.append(("actual", rr))
+                    for _, rr in l6_opens.iterrows():
+                        l6_items.append(("open", rr))
+
+                    # L6 batching (max 7 per slide per L5)
+                    for j in range(0, len(l6_items), max_per_slide):
+                        l6_batch = l6_items[j:j+max_per_slide]
+                        if j == 0:
+                            # First batch of L6 lines goes under this L5 on the current slide
+                            for kind2, l6 in l6_batch:
+                                if kind2 == "actual":
+                                    l6_id = l6.get("Employee ID")
+                                    lines.append("\t\t" + line_for_actual(l6, l6_id, level=6))
+                                    covered_ids.add(l6_id)
+                                    # counts-only coverage under L6
+                                    dr_ids = df_actual[df_actual["Functional Manager Employee ID"] == l6_id]["Employee ID"].dropna().tolist()
+                                    covered_ids.update(dr_ids)
+                                else:
+                                    op_line = line_for_open(l6, level=2)
+                                    if op_line:
+                                        lines.append(op_line)
+                                        if pd.notna(l6.get("PID")):
+                                            covered_ids.add(l6.get("PID"))
+                        else:
+                            # Overflow L6 → new slide with L4 + this L5 repeated at top
+                            lines2 = [l4_line, l5_line]
+                            for kind2, l6 in l6_batch:
+                                if kind2 == "actual":
+                                    l6_id = l6.get("Employee ID")
+                                    lines2.append("\t\t" + line_for_actual(l6, l6_id, level=6))
+                                    covered_ids.add(l6_id)
+                                else:
+                                    op_line = line_for_open(l6, level=2)
+                                    if op_line:
+                                        lines2.append(op_line)
+                                        if pd.notna(l6.get("PID")):
+                                            covered_ids.add(l6.get("PID"))
+
+                            # Write overflow L6 sheet and slide
+                            pd.DataFrame({"Hierarchy": lines2}).to_excel(writer, sheet_name=f"Slide_{slide_num}", index=False)
+                            slide2 = pres.Slides.Add(pres.Slides.Count+1, 12)
+                            tr2 = slide2.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
+                            tr2.Text = "\r".join(lines2)
+                            tr2.Font.Size = 9
+                            sheets_written += 1
+                            slide_num += 1
+                else:
+                    op_line = line_for_open(l5, level=1)
+                    if op_line:
+                        lines.append(op_line)
+                        if pd.notna(l5.get("PID")):
+                            covered_ids.add(l5.get("PID"))
+
+            # Write L5 batch sheet and slide
+            pd.DataFrame({"Hierarchy": lines}).to_excel(writer, sheet_name=f"Slide_{slide_num}", index=False)
+            slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+            tr = slide.Shapes.AddTextbox(1, 50, 50, 600, 400).TextFrame.TextRange
+            tr.Text = "\r".join(lines)
+            tr.Font.Size = 9
+            sheets_written += 1
+            slide_num += 1
+
+        # Safety: ensure at least one visible sheet exists
+        if sheets_written == 0:
+            # This should never trigger because we wrote the L4-only slide first,
+            # but keep a guard in place.
+            pd.DataFrame({"Hierarchy": [l4_line]}).to_excel(writer, sheet_name="Slide_1", index=False)
+            sheets_written = 1
+
+    # Save PPT
     pres.SaveAs(ppt_path)
     pres.Close()
+
     print(f"Indented hierarchy exported to Excel (multi-sheet): {excel_path}")
     print(f"Indented hierarchy exported to PPT (multi-slide): {ppt_path}")
 
-.......................
+    # Coverage summary (unchanged; optional to keep)
+    all_ids = set(df_actual["Employee ID"].dropna().unique())
+    uncovered_ids = all_ids - covered_ids
+
+    role_summary = []
+    for role in ["MD","GCB3","GCB4","GCB5"]:
+        total = len(df_actual[df_actual["GCB"]==role])
+        uncovered = len(df_actual[(df_actual["GCB"]==role) & (df_actual["Employee ID"].isin(uncovered_ids))])
+        role_summary.append({"Role":role,"Total":total,"Uncovered":uncovered})
+
+    df_summary = pd.DataFrame(role_summary)
+    summary_path = os.path.join(os.getcwd(), f"Role_Summary_MD_{level4_id}.xlsx")
+    df_summary.to_excel(summary_path,index=False)
+    print(f"Role summary exported to {summary_path}")
+
+    if uncovered_ids:
+        df_uncovered = df_actual[df_actual["Employee ID"].isin(uncovered_ids)]
+        uncovered_path = os.path.join(os.getcwd(), f"Uncovered_Employees_MD_{level4_id}.xlsx")
+        df_uncovered.to_excel(uncovered_path,index=False)
+        print(f"Uncovered employees exported to {uncovered_path}")
+    else:
+        print("All employees covered for this MD.")
+
+    return df_summary, uncovered_ids.......................
 
 MAX_PER_SLIDE = 7  # threshold for readability
 
