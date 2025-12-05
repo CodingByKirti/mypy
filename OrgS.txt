@@ -1,3 +1,17 @@
+with pd.ExcelWriter(summary_path) as writer:
+    for md_id in mds:
+        # Existing org chart drawing
+        draw_org(md_id, df_final, df_open, pres, writer)
+
+        # New: bifurcate hierarchy into Excel sheets
+        excel_path = os.path.join(output_dir, f"OrgOutline_{md_id}.xlsx")
+        ppt_path   = os.path.join(output_dir, f"OrgOutline_{md_id}.pptx")
+
+        bifurcate_to_excel(md_id, df_final, df_open, excel_path, max_per_slide=7)
+
+        # New: convert each sheet → one PPT slide
+        excel_to_ppt(excel_path, ppt_path)
+
 def bifurcate_to_excel(level4_id, df_actual, df_open, excel_path, max_per_slide=7):
     """
     Partition hierarchy into slide-sized chunks and write each chunk
