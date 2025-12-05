@@ -106,7 +106,10 @@ def export_indented_text_full(level4_id,
     # --- Batch L5s ---
     for i in range(0, len(l5_items), max_per_slide):
         l5_batch = l5_items[i:i+max_per_slide]
+
+        # 1. Build main hierarchy slide
         lines = [l4_line]
+        overflow_dict = {}
 
         for kind, l5 in l5_batch:
             if kind == "actual":
@@ -133,36 +136,40 @@ def export_indented_text_full(level4_id,
                         if op_line:
                             lines.append(op_line)
 
-                # Overflow L6 → extra slides
-                for j in range(max_per_slide, len(l6_items), max_per_slide):
-                    overflow = l6_items[j:j+max_per_slide]
-                    lines2 = [l4_line]
-                    # repeat all L5s in batch
-                    for kind_repeat, l5_repeat in l5_batch:
-                        if kind_repeat == "actual":
-                            l5_id2 = l5_repeat["Employee ID"]
-                            l5_line2 = "\t" + line_for_actual(l5_repeat, l5_id2, level=5)
-                            lines2.append(l5_line2)
-                            if l5_id2 == l5_id:
-                                for kind2, l6 in overflow:
-                                    if kind2 == "actual":
-                                        lines2.append("\t\t" + line_for_actual(l6, l6["Employee ID"], level=6))
-                                    else:
-                                        op_line = line_for_open(l6, level=2)
-                                        if op_line:
-                                            lines2.append(op_line)
-                        else:
-                            op_line = line_for_open(l5_repeat, level=1)
-                            if op_line:
-                                lines2.append(op_line)
-                    write_slide(lines2)
+                # Save overflow for later
+                if len(l6_items) > max_per_slide:
+                    overflow_dict[l5_line] = l6_items[max_per_slide:]
             else:
                 op_line = line_for_open(l5, level=1)
                 if op_line:
                     lines.append(op_line)
 
-        # Write the batch slide
+        # Write the main hierarchy slide
         write_slide(lines)
+
+        # 2. Write overflow slides for any L5s in this batch
+        for l5_line, overflow in overflow_dict.items():
+            for j in range(0, len(overflow), max_per_slide):
+                chunk = overflow[j:j+max_per_slide]
+                lines2 = [l4_line]
+                for kind, l5 in l5_batch:
+                    if kind == "actual":
+                        l5_id2 = l5["Employee ID"]
+                        l5_line2 = "\t" + line_for_actual(l5, l5_id2, level=5)
+                        lines2.append(l5_line2)
+                        if l5_line2 == l5_line:
+                            for kind2, l6 in chunk:
+                                if kind2 == "actual":
+                                    lines2.append("\t\t" + line_for_actual(l6, l6["Employee ID"], level=6))
+                                else:
+                                    op_line = line_for_open(l6, level=2)
+                                    if op_line:
+                                        lines2.append(op_line)
+                    else:
+                        op_line = line_for_open(l5, level=1)
+                        if op_line:
+                            lines2.append(op_line)
+                write_slide(lines2)
 
     # Save Excel and PPT
     wb.save(excel_path)
