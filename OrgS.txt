@@ -1,3 +1,53 @@
+
+
+
+Sub BatchConvertSlidesToSmartArt()
+    Dim fDialog As FileDialog
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim pptApp As PowerPoint.Application
+    Dim fso As Object, folder As Object, file As Object
+    
+    ' Ask user to select folder
+    Set fDialog = Application.FileDialog(msoFileDialogFolderPicker)
+    If fDialog.Show <> -1 Then Exit Sub
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set folder = fso.GetFolder(fDialog.SelectedItems(1))
+    
+    ' Loop through all PPTX files in folder
+    For Each file In folder.Files
+        If LCase(fso.GetExtensionName(file.Name)) = "pptx" Then
+            Set pptApp = Application
+            Set pres = pptApp.Presentations.Open(file.Path, WithWindow:=msoFalse)
+            
+            ' Loop through slides
+            For Each sld In pres.Slides
+                ' Loop through shapes
+                For Each shp In sld.Shapes
+                    If shp.HasTextFrame Then
+                        If shp.TextFrame.HasText Then
+                            ' Convert to SmartArt (basic vertical list layout)
+                            shp.ConvertToSmartArt (pptApp.SmartArtLayouts("BasicProcess"))
+                        End If
+                    End If
+                Next shp
+            Next sld
+            
+            ' Save and close
+            pres.Save
+            pres.Close
+        End If
+    Next file
+    
+    MsgBox "Conversion complete for all PPTX files in folder."
+End Sub
+
+
+
+
+
+
 if __name__ == "__main__":
     # Identify MDs
     mds = df_final[df_final["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
