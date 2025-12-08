@@ -1,4 +1,52 @@
 
+Sub CreateSmartArtFromSlideText()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim txt As String
+    Dim lines() As String
+    Dim sa As Shape
+    Dim node As SmartArtNode
+    
+    Set pres = Application.ActivePresentation
+    
+    For Each sld In pres.Slides
+        txt = ""
+        ' Collect text from all textboxes
+        For Each shp In sld.Shapes
+            If shp.HasTextFrame Then
+                If shp.TextFrame.HasText Then
+                    txt = txt & shp.TextFrame.TextRange.Text & vbCrLf
+                End If
+            End If
+        Next shp
+        
+        If Len(txt) > 0 Then
+            ' Split text into lines
+            lines = Split(txt, vbCrLf)
+            
+            ' Add SmartArt (Vertical Bullet List is safe)
+            Set sa = sld.Shapes.AddSmartArt(Application.SmartArtLayouts(2), 50, 50, 600, 400)
+            
+            ' Clear default nodes
+            Do While sa.SmartArt.AllNodes.Count > 0
+                sa.SmartArt.AllNodes(1).Delete
+            Loop
+            
+            ' Add each line as a node
+            For i = LBound(lines) To UBound(lines)
+                Set node = sa.SmartArt.AllNodes.Add
+                node.TextFrame2.TextRange.Text = lines(i)
+            Next i
+        End If
+    Next sld
+    
+    MsgBox "SmartArt created for all slides."
+End Sub
+
+
+
+....
 Sub ConvertSlidesToSmartArt()
     Dim pres As Presentation
     Dim sld As Slide
