@@ -1,16 +1,43 @@
 
-Sub BatchCreateSmartArtFromText()
-    Dim fDialog As FileDialog
+Sub ConvertSlidesToSmartArt()
     Dim pres As Presentation
     Dim sld As Slide
     Dim shp As Shape
-    Dim pptApp As PowerPoint.Application
-    Dim fso As Object, folder As Object, file As Object
+    Dim txt As String
     Dim newSmartArt As Shape
     Dim layout As SmartArtLayout
     
-    ' Ask user to select folder
-    Set fDialog = Application.FileDialog(msoFileDialogFolderPicker)
+    ' Choose SmartArt layout (Hierarchy is good for org charts)
+    Set layout = Application.SmartArtLayouts("BasicHierarchy")
+    
+    ' Work on the active presentation
+    Set pres = Application.ActivePresentation
+    
+    For Each sld In pres.Slides
+        txt = ""
+        ' Collect text from all textboxes on the slide
+        For Each shp In sld.Shapes
+            If shp.HasTextFrame Then
+                If shp.TextFrame.HasText Then
+                    txt = txt & shp.TextFrame.TextRange.Text & vbCrLf
+                End If
+            End If
+        Next shp
+        
+        If Len(txt) > 0 Then
+            ' Add SmartArt and put text in
+            Set newSmartArt = sld.Shapes.AddSmartArt(layout, 50, 50, 600, 400)
+            newSmartArt.TextFrame2.TextRange.Text = txt
+        End If
+    Next sld
+    
+    MsgBox "Conversion complete."
+End Sub
+
+
+
+
+)
     If fDialog.Show <> -1 Then Exit Sub
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set folder = fso.GetFolder(fDialog.SelectedItems(1))
