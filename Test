@@ -49,6 +49,21 @@ for col in cols_to_update:
         base_df_updated[col] = merged[amend_col]
     else:
         print(f"⚠ Column missing in merge: {amend_col}")
+# -------------------------------------------
+# 6. Update Observations column correctly
+# -------------------------------------------
+
+obs_col = f"Observations{suffix}"
+
+# Amended value exists if DEP_CODE/PS_HR_ID_amend is NOT NaN
+mask_amended = merged["DEP_CODE/PS_HR_ID_amend"].notna()
+
+# No amendment found
+mask_not_found = merged["DEP_CODE/PS_HR_ID_amend"].isna()
+
+# Update inside base_df_updated using same mask reference
+base_df_updated.loc[mask_amended, obs_col] = "To Check - Data correction - Amendments"
+base_df_updated.loc[mask_not_found, obs_col] = "To Check - Resource left"
 
 
 # -----------------------------
