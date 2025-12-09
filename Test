@@ -1,46 +1,56 @@
 import pandas as pd
 
-def apply_amendments(base_df_updated, amend_df, suffix):
-    # -------------------------------------------------------------------
-    # 1. Normalize lookup keys: Convert PSID & Employee_ID to clean strings
-    # -------------------------------------------------------------------
+def process_amendments(base_df_updated, amend_df, suffix):
+    print("\n================= AMENDMENT PROCESS STARTED =================\n")
+    print(f"👉 Using suffix: {suffix}")
 
-    # Base file PSID: convert to clean string
+    # ------------------------------------------
+    # STEP 1 — Normalize lookup keys
+    # ------------------------------------------
+
+    print("🔧 Normalizing PSID and Employee_ID...")
+
+    # Convert PSID in base file
     base_df_updated["PSID_str"] = (
         base_df_updated["PSID"].astype(str)
         .str.strip()
-        .str.replace(".0", "", regex=False)      # remove float artifacts
+        .str.replace(".0", "", regex=False)
     )
 
-    # Amend file Employee_ID: convert to clean string → rename to PSID_str
+    # Convert Employee_ID in amendment file
     amend_df["PSID_str"] = (
         amend_df["Employee_ID"].astype(str)
         .str.strip()
         .str.replace(".0", "", regex=False)
     )
 
-    # -------------------------------------------------------------------
-    # 2. Identify rows needing fixing (DEP_CODE/PS_HR_ID_set1 == '#N/A')
-    # -------------------------------------------------------------------
+    # ------------------------------------------
+    # STEP 2 — Identify rows needing fixing
+    # ------------------------------------------
 
     dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
-    mask = base_df_updated[dep_col] == "#N/A"
+    mask_needs_fix = base_df_updated[dep_col] == "#N/A"
+    count_needs_fix = mask_needs_fix.sum()
 
-    # The PSIDs we must look up
-    psids_to_fix = base_df_updated.loc[mask, "PSID_str"]
+    print(f"🔍 Found {count_needs_fix} rows needing amendment lookup.")
 
-    # -------------------------------------------------------------------
-    # 3. Look up matching amendment rows using PSID_str
-    # -------------------------------------------------------------------
+    # The PSIDs we must search for
+    psids_to_fix = base_df_updated.loc[mask_needs_fix, "PSID_str"]
+
+    # ------------------------------------------
+    # STEP 3 — Find matching amendment rows
+    # ------------------------------------------
 
     amend_lookup = amend_df[amend_df["PSID_str"].isin(psids_to_fix)]
 
-    # Handle duplicate PSIDs in amend file → keep first
+    # Remove duplicates based on PSID_str
     amend_lookup = amend_lookup.drop_duplicates(subset="PSID_str", keep="first")
 
-    # -------------------------------------------------------------------
-    # 4. Merge only base rows with required amendment columns
-    # -------------------------------------------------------------------
+    print(f"📄 Matching amendment rows found: {len(amend_lookup)}")
+
+    # ------------------------------------------
+    # STEP 4 — Merge required columns
+    # ------------------------------------------
 
     cols_to_update = [
         "DEP_CODE/PS_HR_ID",
@@ -56,35 +66,43 @@ def apply_amendments(base_df_updated, amend_df, suffix):
         suffixes=("", "_amend")
     )
 
-    # -------------------------------------------------------------------
-    # 5. Update required columns using amendment data
-    # -------------------------------------------------------------------
+    # ------------------------------------------
+    # STEP 5 — Update each required column
+    # ------------------------------------------
+
+    print("✏ Updating columns from amendments...")
 
     for col in cols_to_update:
-        base_col = f"{col}{suffix}"          # e.g. AID (Billed)_set1
+        base_col = f"{col}{suffix}"
         amend_col = f"{col}_amend"
 
-        # Only update rows where mask is True
-        base_df_updated.loc[mask, base_col] = merged.loc[mask, amend_col]
+        before_count = base_df_updated.loc[mask_needs_fix, base_col].notna().sum()
 
-    # -------------------------------------------------------------------
-    # 6. Update Observations column for both found & not found cases
-    # -------------------------------------------------------------------
+        base_df_updated.loc[mask_needs_fix, base_col] = merged.loc[mask_needs_fix, amend_col]
+
+        after_count = base_df_updated.loc[mask_needs_fix, base_col].notna().sum()
+
+        print(f"   • Updated {base_col} → {after_count - before_count} rows")
+
+    # ------------------------------------------
+    # STEP 6 — Update Observations column
+    # ------------------------------------------
 
     obs_col = f"Observations{suffix}"
 
-    # Amended found: when merged value is not NaN
-    mask_amended = mask & merged["DEP_CODE/PS_HR_ID_amend"].notna()
-
-    # Not found: still NaN after merge
-    mask_not_found = mask & merged["DEP_CODE/PS_HR_ID_amend"].isna()
+    mask_amended = mask_needs_fix & merged["DEP_CODE/PS_HR_ID_amend"].notna()
+    mask_not_found = mask_needs_fix & merged["DEP_CODE/PS_HR_ID_amend"].isna()
 
     base_df_updated.loc[mask_amended, obs_col] = "To Check - Data correction - Amendments"
     base_df_updated.loc[mask_not_found, obs_col] = "To Check - Resource left"
 
-    # -------------------------------------------------------------------
-    # 7. Fix EXCLUDED_REASON when EXCLUDED = 0
-    # -------------------------------------------------------------------
+    print(f"📝 Observations updated:")
+    print(f"   • Amendments found: {mask_amended.sum()}")
+    print(f"   • Not found: {mask_not_found.sum()}")
+
+    # ------------------------------------------
+    # STEP 7 — EXCLUDED_REASON cleanup
+    # ------------------------------------------
 
     excl_col = f"EXCLUDED{suffix}"
     excl_reason_col = f"EXCLUDED_REASON{suffix}"
@@ -92,14 +110,19 @@ def apply_amendments(base_df_updated, amend_df, suffix):
     mask_excl_zero = base_df_updated[excl_col] == 0
     base_df_updated.loc[mask_excl_zero, excl_reason_col] = 0
 
-    # -------------------------------------------------------------------
-    # 8. Cleanup helper column
-    # -------------------------------------------------------------------
+    print(f"🚫 Cleaned EXCLUDED_REASON where {excl_col} = 0 → {mask_excl_zero.sum()} rows")
+
+    # ------------------------------------------
+    # Cleanup
+    # ------------------------------------------
 
     base_df_updated.drop(columns=["PSID_str"], inplace=True)
 
+    print("\n================= AMENDMENT PROCESS COMPLETED =================\n")
+
     return base_df_updated
 
+base_df_updated = process_amendments(base_df_updated, amend_df, suffix="_set1")
 
 
 # -----------------------------
