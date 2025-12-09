@@ -1,3 +1,69 @@
+import pandas as pd
+
+# -------------------------------------------
+# 1. Clean and convert ID columns to string
+# -------------------------------------------
+
+base_df_updated["PSID_str"] = base_df_updated["PSID"].astype(str)
+
+amend_df["EMPLOYEE_ID_str"] = amend_df["EMPLOYEE_ID"].astype(str)
+
+# -------------------------------------------
+# 2. Remove duplicates in amend_df based on EMPLOYEE_ID_str (keep first)
+# -------------------------------------------
+
+amend_df = amend_df.sort_values(by="EMPLOYEE_ID_str").drop_duplicates(
+    subset="EMPLOYEE_ID_str", keep="first"
+)
+
+# -------------------------------------------
+# 3. Create a lookup table with only needed columns
+# -------------------------------------------
+
+cols_to_pull = [
+    "EMPLOYEE_ID_str",          # matching key
+    "DEP_CODE/PS_HR_ID",        # example column to update
+    # add more columns from amend_df that you want to update
+]
+
+amend_lookup = amend_df[cols_to_pull].copy()
+
+# Rename EMPLOYEE_ID_str → psid_str for merging
+amend_lookup = amend_lookup.rename(columns={"EMPLOYEE_ID_str": "psid_str"})
+
+# -------------------------------------------
+# 4. Merge base with lookup using string keys
+# -------------------------------------------
+
+merged = base_df_updated.merge(
+    amend_lookup, 
+    how="left", 
+    left_on="PSID_str", 
+    right_on="psid_str"
+)
+
+# -------------------------------------------
+# 5. Update selected base_df columns with merged lookup values
+# -------------------------------------------
+
+cols_to_update = [
+    "DEP_CODE/PS_HR_ID",   # example – update this column
+    # add more columns here if needed
+]
+
+for col in cols_to_update:
+    if col in merged.columns:
+        base_df_updated[col] = merged[col]
+    else:
+        print(f"⚠ Warning: Column '{col}' not found in merged file.")
+
+# -------------------------------------------
+# 6. Cleanup (optional)
+# -------------------------------------------
+
+base_df_updated = base_df_updated.drop(columns=["PSID_str"], errors="ignore")
+
+
 # -----------------------------
 # Step 6: PowerPoint generation (actuals + open positions, with counts at L6)
 # -----------------------------
