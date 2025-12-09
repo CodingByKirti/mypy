@@ -1,69 +1,105 @@
 import pandas as pd
 
-# -------------------------------------------
-# 1. Convert IDs to consistent string type
-# -------------------------------------------
-base_df_updated["PSID_str"] = base_df_updated["PSID"].astype(str)
-amend_df["EMPLOYEE_ID_str"] = amend_df["EMPLOYEE_ID"].astype(str)
+def apply_amendments(base_df_updated, amend_df, suffix):
+    # -------------------------------------------------------------------
+    # 1. Normalize lookup keys: Convert PSID & Employee_ID to clean strings
+    # -------------------------------------------------------------------
 
-# -------------------------------------------
-# 2. Remove duplicates (keep first)
-# -------------------------------------------
-amend_df = amend_df.sort_values("EMPLOYEE_ID_str").drop_duplicates(
-    subset="EMPLOYEE_ID_str",
-    keep="first"
-)
+    # Base file PSID: convert to clean string
+    base_df_updated["PSID_str"] = (
+        base_df_updated["PSID"].astype(str)
+        .str.strip()
+        .str.replace(".0", "", regex=False)      # remove float artifacts
+    )
 
-# -------------------------------------------
-# 3. Prepare lookup dataframe
-# -------------------------------------------
-cols_to_update = [
-    "DEP_CODE/PS_HR_ID",
-    "AID (Billed)",
-    "EXCLUDED",
-    "EXCLUDED_REASON"
-]
+    # Amend file Employee_ID: convert to clean string → rename to PSID_str
+    amend_df["PSID_str"] = (
+        amend_df["Employee_ID"].astype(str)
+        .str.strip()
+        .str.replace(".0", "", regex=False)
+    )
 
-amend_lookup = amend_df[["EMPLOYEE_ID_str"] + cols_to_update].copy()
+    # -------------------------------------------------------------------
+    # 2. Identify rows needing fixing (DEP_CODE/PS_HR_ID_set1 == '#N/A')
+    # -------------------------------------------------------------------
 
-# rename key for merge
-amend_lookup = amend_lookup.rename(columns={"EMPLOYEE_ID_str": "psid_str"})
+    dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
+    mask = base_df_updated[dep_col] == "#N/A"
 
-# -------------------------------------------
-# 4. Merge base and amendments
-# -------------------------------------------
-merged = base_df_updated.merge(
-    amend_lookup,
-    how="left",
-    left_on="PSID_str",
-    right_on="psid_str",
-    suffixes=("_base", "_amend")
-)
+    # The PSIDs we must look up
+    psids_to_fix = base_df_updated.loc[mask, "PSID_str"]
 
-# -------------------------------------------
-# 5. Update base_df_updated with amended values
-# -------------------------------------------
-for col in cols_to_update:
-    amend_col = f"{col}_amend"   # column from amend_df
-    if amend_col in merged.columns:
-        base_df_updated[col] = merged[amend_col]
-    else:
-        print(f"⚠ Column missing in merge: {amend_col}")
-# -------------------------------------------
-# 6. Update Observations column correctly
-# -------------------------------------------
+    # -------------------------------------------------------------------
+    # 3. Look up matching amendment rows using PSID_str
+    # -------------------------------------------------------------------
 
-obs_col = f"Observations{suffix}"
+    amend_lookup = amend_df[amend_df["PSID_str"].isin(psids_to_fix)]
 
-# Amended value exists if DEP_CODE/PS_HR_ID_amend is NOT NaN
-mask_amended = merged["DEP_CODE/PS_HR_ID_amend"].notna()
+    # Handle duplicate PSIDs in amend file → keep first
+    amend_lookup = amend_lookup.drop_duplicates(subset="PSID_str", keep="first")
 
-# No amendment found
-mask_not_found = merged["DEP_CODE/PS_HR_ID_amend"].isna()
+    # -------------------------------------------------------------------
+    # 4. Merge only base rows with required amendment columns
+    # -------------------------------------------------------------------
 
-# Update inside base_df_updated using same mask reference
-base_df_updated.loc[mask_amended, obs_col] = "To Check - Data correction - Amendments"
-base_df_updated.loc[mask_not_found, obs_col] = "To Check - Resource left"
+    cols_to_update = [
+        "DEP_CODE/PS_HR_ID",
+        "AID (Billed)",
+        "EXCLUDED",
+        "EXCLUDED_REASON"
+    ]
+
+    merged = base_df_updated.merge(
+        amend_lookup[["PSID_str"] + cols_to_update],
+        on="PSID_str",
+        how="left",
+        suffixes=("", "_amend")
+    )
+
+    # -------------------------------------------------------------------
+    # 5. Update required columns using amendment data
+    # -------------------------------------------------------------------
+
+    for col in cols_to_update:
+        base_col = f"{col}{suffix}"          # e.g. AID (Billed)_set1
+        amend_col = f"{col}_amend"
+
+        # Only update rows where mask is True
+        base_df_updated.loc[mask, base_col] = merged.loc[mask, amend_col]
+
+    # -------------------------------------------------------------------
+    # 6. Update Observations column for both found & not found cases
+    # -------------------------------------------------------------------
+
+    obs_col = f"Observations{suffix}"
+
+    # Amended found: when merged value is not NaN
+    mask_amended = mask & merged["DEP_CODE/PS_HR_ID_amend"].notna()
+
+    # Not found: still NaN after merge
+    mask_not_found = mask & merged["DEP_CODE/PS_HR_ID_amend"].isna()
+
+    base_df_updated.loc[mask_amended, obs_col] = "To Check - Data correction - Amendments"
+    base_df_updated.loc[mask_not_found, obs_col] = "To Check - Resource left"
+
+    # -------------------------------------------------------------------
+    # 7. Fix EXCLUDED_REASON when EXCLUDED = 0
+    # -------------------------------------------------------------------
+
+    excl_col = f"EXCLUDED{suffix}"
+    excl_reason_col = f"EXCLUDED_REASON{suffix}"
+
+    mask_excl_zero = base_df_updated[excl_col] == 0
+    base_df_updated.loc[mask_excl_zero, excl_reason_col] = 0
+
+    # -------------------------------------------------------------------
+    # 8. Cleanup helper column
+    # -------------------------------------------------------------------
+
+    base_df_updated.drop(columns=["PSID_str"], inplace=True)
+
+    return base_df_updated
+
 
 
 # -----------------------------
