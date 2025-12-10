@@ -1,3 +1,20 @@
+dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
+
+# Normalize everything to string, strip spaces
+base_df_updated[dep_col] = base_df_updated[dep_col].astype(str).str.strip()
+
+# Replace all known variants with np.nan
+base_df_updated[dep_col] = base_df_updated[dep_col].replace(
+    ["#N/A", "N/A", "nan", "NaN", "<NA>"], pd.NA
+)
+
+# Now .isna() will catch them all
+mask_na = base_df_updated[dep_col].isna()
+print("Total missing rows:", mask_na.sum())
+print(base_df_updated[dep_col].unique()[:20])
+
+
+
 import pandas as pd
 
 def update_base_with_amendments(base_df_updated: pd.DataFrame, amend_df: pd.DataFrame, suffix: str) -> pd.DataFrame:
