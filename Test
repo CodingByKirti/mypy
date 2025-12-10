@@ -1,3 +1,62 @@
+import pandas as pd
+
+def update_base_with_amendments(base_df_updated: pd.DataFrame, amend_df: pd.DataFrame, suffix: str) -> pd.DataFrame:
+    """
+    Update base_df_updated with values from amend_df based on PSID lookup.
+
+    Rules:
+    1. For rows where DEP_CODE/PS_HR_ID_<suffix> == '#N/A':
+       - Lookup PSID in amend_df['EMPLOYEE_ID'].
+       - If found, update DEP_CODE/PS_HR_ID_<suffix>, AID (Billed)<suffix>, EXCLUDED<suffix>, EXCLUDED_REASON<suffix>.
+       - Set Observations_<suffix> = "To Check- Data correction -Amendments".
+       - If not found, only set Observations_<suffix> = "To Check - Resource left".
+    2. Wherever EXCLUDED_<suffix> == 0, set EXCLUDED_REASON_<suffix> = 0.
+    3. Row count is preserved (no increase).
+    """
+
+    # Normalize key columns for matching
+    base_df_updated['PSID'] = base_df_updated['PSID'].astype(str).str.strip()
+    amend_df['EMPLOYEE_ID'] = amend_df['EMPLOYEE_ID'].astype(str).str.strip()
+
+    # Build dynamic column names
+    dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
+    obs_col = f"Observations{suffix}"
+    excluded_col = f"EXCLUDED{suffix}"
+    excluded_reason_col = f"EXCLUDED_REASON{suffix}"
+    aid_col = f"AID (Billed){suffix}"
+
+    # Mask rows with '#N/A' in DEP_CODE/PS_HR_ID
+    mask_na = base_df_updated[dep_col].isin(["#N/A", "NaN"]) | base_df_updated[dep_col].isna()
+
+    # Merge only those rows with amend_df
+    merged = base_df_updated.loc[mask_na].merge(
+        amend_df[['EMPLOYEE_ID', 'DEP_CODE/PS_HR_ID', 'AID (Billed)', 'EXCLUDED', 'EXCLUDED_REASON']],
+        left_on='PSID',
+        right_on='EMPLOYEE_ID',
+        how='left'
+    )
+
+    # Update values for matched rows only
+    matched_mask = merged['EMPLOYEE_ID'].notna()
+    unmatched_mask = merged['EMPLOYEE_ID'].isna()
+
+    # Apply updates back to base_df_updated using index alignment
+    base_df_updated.loc[merged.index[matched_mask], dep_col] = merged.loc[matched_mask, 'DEP_CODE/PS_HR_ID'].values
+    base_df_updated.loc[merged.index[matched_mask], aid_col] = merged.loc[matched_mask, 'AID (Billed)'].values
+    base_df_updated.loc[merged.index[matched_mask], excluded_col] = merged.loc[matched_mask, 'EXCLUDED'].values
+    base_df_updated.loc[merged.index[matched_mask], excluded_reason_col] = merged.loc[matched_mask, 'EXCLUDED_REASON'].values
+
+    # Update Observations column correctly
+    base_df_updated.loc[merged.index[matched_mask], obs_col] = "To Check- Data correction -Amendments"
+    base_df_updated.loc[merged.index[unmatched_mask], obs_col] = "To Check - Resource left"
+
+    # Fix EXCLUDED_REASON when EXCLUDED == 0
+    mask_excluded_zero = base_df_updated[excluded_col] == 0
+    base_df_updated.loc[mask_excluded_zero, excluded_reason_col] = 0
+
+    return base_df_updated
+
+
 mask_na = (
     base_df_updated[dep_col].isna() |
     base_df_updated[dep_col].astype(str).str.strip().eq("#N/A") |
