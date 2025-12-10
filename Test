@@ -1,19 +1,16 @@
 dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
 
-# Normalize everything to string, strip spaces
+# Convert everything to string and strip spaces
 base_df_updated[dep_col] = base_df_updated[dep_col].astype(str).str.strip()
 
-# Replace all known variants with np.nan
+# Replace all variants with proper missing marker
 base_df_updated[dep_col] = base_df_updated[dep_col].replace(
     ["#N/A", "N/A", "nan", "NaN", "<NA>"], pd.NA
 )
 
-# Now .isna() will catch them all
+# Now this will catch all 24
 mask_na = base_df_updated[dep_col].isna()
 print("Total missing rows:", mask_na.sum())
-print(base_df_updated[dep_col].unique()[:20])
-
-
 
 import pandas as pd
 
