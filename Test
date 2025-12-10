@@ -1,3 +1,12 @@
+mask_na = (
+    base_df_updated[dep_col].isna() |
+    base_df_updated[dep_col].astype(str).str.strip().eq("#N/A") |
+    base_df_updated[dep_col].astype(str).str.strip().eq("nan") |
+    base_df_updated[dep_col].astype(str).str.strip().eq("NaN")
+)
+
+print("Total flagged rows:", mask_na.sum())
+
 dep_col = f"DEP_CODE/PS_HR_ID{suffix}"
 
 # Convert everything to string and strip spaces
