@@ -89,9 +89,21 @@ def process_amendments(base_df_updated, amend_df, suffix):
     # ------------------------------------------
 
     obs_col = f"Observations{suffix}"
+    # ---- Detect the actual amended column name ----
+    possible = [c for c in merged.columns if c.startswith("DEP_CODE/PS_HR_ID") and c.endswith("_amend")]
+    
+    if len(possible) == 0:
+        print("⚠ ERROR: DEP_CODE/PS_HR_ID_amend NOT FOUND in merged columns.")
+        print("Merged dataframe columns are:")
+        print(list(merged.columns))
+        raise KeyError("DEP_CODE/PS_HR_ID_amend missing — column renamed unexpectedly during merge.")
+    
+    dep_amend_col = possible[0]       # The correct amended column name
+    
+    # ---- Use the detected column ----
+    mask_amended = mask_needs_fix & merged[dep_amend_col].notna()
+    mask_not_found = mask_needs_fix & merged[dep_amend_col].isna()
 
-    mask_amended = mask_needs_fix & merged["DEP_CODE/PS_HR_ID_amend"].notna()
-    mask_not_found = mask_needs_fix & merged["DEP_CODE/PS_HR_ID_amend"].isna()
 
     base_df_updated.loc[mask_amended, obs_col] = "To Check - Data correction - Amendments"
     base_df_updated.loc[mask_not_found, obs_col] = "To Check - Resource left"
