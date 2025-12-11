@@ -1,67 +1,29 @@
-Thanks for sticking with this, Kirti — if your Excel summary is still showing **all zeroes**, that means the `covered_ids` set isn’t being populated correctly. Let’s debug this carefully:
-
----
-
-### 🔍 Common causes
-1. **ID type mismatch**  
-   - In `df_final`, `Employee ID` might be stored as `int64`, while in `covered_ids` you’re adding strings (or vice‑versa).  
-   - `.isin()` will fail silently if types don’t match → all counts = 0.
-
-2. **Covered IDs not collected recursively**  
-   - If you only add roots + direct reports, deeper levels (L5, L6) aren’t included.  
-   - So most employees remain “uncovered”.
-
----
-
-### ✅ Fix: Normalize IDs + Recursive collector
-
-Here’s the corrected collector and coverage summary:
-
-```python
-def collect_covered_ids(df_final, root_id):
+def initialize_counts(df_final, bfg_filter):
     """
-    Recursively collect all employee IDs under a given root (MD or GCB3).
+    Capture initial counts of GCB3, GCB4, GCB5 employees
+    when user selects a BFG level.
     """
-    covered = set()
-    stack = [root_id]
-    while stack:
-        mgr = stack.pop()
-        # normalize to string
-        covered.add(str(mgr).strip())
-        children = df_final[df_final["Functional Manager Employee ID"] == mgr]["Employee ID"].dropna().tolist()
-        stack.extend(children)
-    return covered
+    df_bfg = df_final[df_final["BFG"] == bfg_filter]
+    counts = {
+        "GCB3": len(df_bfg[df_bfg["GCB"] == "GCB3"]),
+        "GCB4": len(df_bfg[df_bfg["GCB"] == "GCB4"]),
+        "GCB5": len(df_bfg[df_bfg["GCB"] == "GCB5"]),
+    }
+    return counts
 
 
-def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary.xlsx", bfg_level="Org Chart Coverage"):
+def update_coverage(covered_counts, emp_gcb):
     """
-    Save coverage summary into an Excel file for GCB3, GCB4, GCB5 employees.
+    Increment covered count for an employee’s GCB level.
     """
+    if emp_gcb in covered_counts:
+        covered_counts[emp_gcb] += 1
 
-    # Normalize IDs in df_final
-    df_final["Employee ID"] = df_final["Employee ID"].astype(str).str.strip()
-    df_final["Functional Manager Employee ID"] = df_final["Functional Manager Employee ID"].astype(str).str.strip()
-    covered_ids = {str(x).strip() for x in covered_ids if pd.notna(x)}
 
-    # Filter only GCB 3,4,5 employees
-    df_target = df_final[df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"])]
-
-    summary_data = []
-    for gcb_level in ["GCB3", "GCB4", "GCB5"]:
-        df_gcb = df_target[df_target["GCB"] == gcb_level]
-
-        initial_count = len(df_gcb)
-        covered_count = len(df_gcb[df_gcb["Employee ID"].isin(covered_ids)])
-        uncovered_count = initial_count - covered_count
-
-        summary_data.append({
-            "GCB": gcb_level,
-            "Analpan Count": initial_count,
-            "Org Chart Count Covered": covered_count,
-            "Org Chart Uncovered count": uncovered_count
-        })
-
-    # Write to Excel
+def export_summary(initial_counts, covered_counts, output_path="Coverage_Summary.xlsx", bfg_level="Selected BFG"):
+    """
+    Save summary into Excel with Analpan, Covered, Uncovered counts.
+    """
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
@@ -70,49 +32,29 @@ def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary
     ws.append([bfg_level])
     ws.append(["GCB", "Analpan Count", "Org Chart Count Covered", "Org Chart Uncovered count"])
 
-    for row in summary_data:
-        ws.append([row["GCB"], row["Analpan Count"], row["Org Chart Count Covered"], row["Org Chart Uncovered count"]])
+    for gcb in ["GCB3", "GCB4", "GCB5"]:
+        initial = initial_counts.get(gcb, 0)
+        covered = covered_counts.get(gcb, 0)
+        uncovered = initial - covered
+        ws.append([gcb, initial, covered, uncovered])
 
     wb.save(output_path)
     print(f"✅ Coverage summary saved to {output_path}")
-```
 
 ---
+# Step 1: When user selects BFG level
+initial_counts = initialize_counts(df_final, selected_bfg)
+covered_counts = {"GCB3": 0, "GCB4": 0, "GCB5": 0}
 
-### 🔑 Where to call it in your main loop
+# Step 2: During org chart generation
+for emp_id in employees_in_chart:
+    emp_gcb = df_final.loc[df_final["Employee ID"] == emp_id, "GCB"].values[0]
+    update_coverage(covered_counts, emp_gcb)
 
-```python
-roots = mds + standalone_gcb3s
-covered_ids = set()
-
-for root_id in roots:
-    # generate charts...
-    covered_ids |= collect_covered_ids(df_final, root_id)
-
-# After loop, run coverage summary
-check_coverage_to_excel(df_final, covered_ids,
-                        output_path=os.path.join(output_dir, "Coverage_Summary.xlsx"),
-                        bfg_level="Org Chart Coverage")
-```
-
----
-
-### 🎯 Debug tip
-Before saving to Excel, print a quick check:
-
-```python
-print("Covered IDs sample:", list(covered_ids)[:10])
-print("Total covered IDs:", len(covered_ids))
-```
-
-If this prints an empty list, the recursion isn’t finding children → check that your `Functional Manager Employee ID` column matches the `Employee ID` column exactly (same type, no spaces).
-
----
-
-👉 Try this with the normalization step. If you still see zeros, it means the **manager/employee linkage in your data isn’t matching**. In that case, I can help you debug by printing a small sample of `Employee ID` vs `Functional Manager Employee ID` to confirm they align. Would you like me to show you a quick diagnostic snippet to verify the linkage?
-
-
-
+# Step 3: After all charts are generated
+export_summary(initial_counts, covered_counts,
+               output_path=os.path.join(output_dir, "Coverage_Summary.xlsx"),
+               bfg_level=selected_bfg)
 
 =========================================
 
