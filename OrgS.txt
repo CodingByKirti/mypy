@@ -1,3 +1,44 @@
+def initialize_counts(df_final, bfg_filter=None):
+    """
+    Capture initial counts of GCB3, GCB4, GCB5 employees
+    when user selects a BFG level (or overall if no filter).
+
+    Parameters
+    ----------
+    df_final : pandas.DataFrame
+        Employee dataset with columns including:
+        - Employee ID
+        - GCB
+        - BFG (optional, if filtering by business function group)
+    bfg_filter : str or None
+        If provided, restrict counts to employees under this BFG level.
+        If None, counts are taken across the entire dataset.
+
+    Returns
+    -------
+    dict
+        Dictionary with baseline counts:
+        {
+            "GCB3": <count>,
+            "GCB4": <count>,
+            "GCB5": <count>
+        }
+    """
+    df_target = df_final.copy()
+
+    # Apply BFG filter if given
+    if bfg_filter is not None and "BFG" in df_target.columns:
+        df_target = df_target[df_target["BFG"] == bfg_filter]
+
+    counts = {
+        "GCB3": len(df_target[df_target["GCB"] == "GCB3"]),
+        "GCB4": len(df_target[df_target["GCB"] == "GCB4"]),
+        "GCB5": len(df_target[df_target["GCB"] == "GCB5"]),
+    }
+
+    return counts
+
+
 
 Sub CreateSmartArtFromSlideText()
     Dim pres As Presentation
