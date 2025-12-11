@@ -1,3 +1,49 @@
+def check_coverage(df_final, covered_ids):
+    """
+    Generate a summary of uncovered employees with GCB 3, 4, 5
+    across MD and GCB3 org hierarchies.
+    
+    Parameters
+    ----------
+    df_final : pandas.DataFrame
+        The master employee dataset with columns including:
+        - Employee ID
+        - Employee Name
+        - GCB
+        - Functional Manager Employee ID
+    covered_ids : set
+        All employee IDs that were included in org charts
+        (from MD roots and standalone GCB3 roots).
+    """
+
+    # Filter uncovered employees with GCB 3,4,5
+    uncovered = df_final[
+        df_final["Employee ID"].notna() &
+        ~df_final["Employee ID"].isin(covered_ids) &
+        df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"])
+    ]
+
+    if uncovered.empty:
+        print("✅ All GCB3, GCB4, and GCB5 employees are covered in MD/GCB3 org charts.")
+    else:
+        print("⚠️ Uncovered employees (GCB3–GCB5):")
+        for _, row in uncovered.iterrows():
+            emp_id = row["Employee ID"]
+            name = row.get("Employee Name", "")
+            gcb = row.get("GCB", "")
+            mgr_id = row.get("Functional Manager Employee ID", "")
+            print(f" - {emp_id} | {name} | {gcb} | Manager: {mgr_id}")
+
+        # Optional: summary counts by GCB level
+        summary = uncovered.groupby("GCB")["Employee ID"].count()
+        print("\nSummary counts of uncovered employees:")
+        for gcb_level, count in summary.items():
+            print(f"   {gcb_level}: {count}")
+
+check_coverage(df_final, covered_ids)
+
+
+
 import pandas as pd
 import pandas as pd
 
