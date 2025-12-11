@@ -1,7 +1,24 @@
-import pandas as pd
-import os
-from openpyxl import Workbook
+Thanks for pointing that out, Kirti — if the Excel summary is showing all zeros, it means the **`covered_ids` set isn’t being populated correctly** or the filtering logic isn’t matching your `df_final` structure. Let’s fix this step by step.
 
+---
+
+### 🔍 Why you’re seeing zeros
+1. **Mismatch in IDs**  
+   - If `covered_ids` contains integers but `df_final["Employee ID"]` is stored as strings (or vice‑versa), the `.isin()` check will fail → all counts = 0.  
+   - Same issue if there are leading/trailing spaces in IDs.
+
+2. **Covered IDs not updated deeply enough**  
+   - In your main loop, you only added the root (MD or GCB3) and their **direct reports**.  
+   - But you didn’t recursively add all deeper levels (L5, L6, etc.).  
+   - So most employees aren’t marked as covered.
+
+---
+
+### ✅ Fix: Normalize IDs + Recursive coverage
+
+Here’s a corrected coverage function that ensures proper counts:
+
+```python
 import pandas as pd
 import os
 from openpyxl import Workbook
@@ -15,10 +32,13 @@ def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary
     For GCB levels 3, 4, 5 under the given BFG header.
     """
 
-    # Ensure Employee ID is not null
-    df_target = df_final[df_final["Employee ID"].notna() & df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"])]
+    # Normalize Employee IDs to string for consistent matching
+    df_final["Employee ID"] = df_final["Employee ID"].astype(str).str.strip()
+    covered_ids = {str(x).strip() for x in covered_ids if pd.notna(x)}
 
-    # Initialize dictionary for counts
+    # Filter only GCB 3,4,5 employees
+    df_target = df_final[df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"]) & df_final["Employee ID"].notna()]
+
     summary_data = []
     for gcb_level in ["GCB3", "GCB4", "GCB5"]:
         df_gcb = df_target[df_target["GCB"] == gcb_level]
@@ -39,23 +59,57 @@ def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary
     ws = wb.active
     ws.title = "Coverage Summary"
 
-    # Header row
     ws.append([bfg_level])
     ws.append(["GCB", "Analpan Count", "Org Chart Count Covered", "Org Chart Uncovered count"])
 
-    # Data rows
     for row in summary_data:
         ws.append([row["GCB"], row["Analpan Count"], row["Org Chart Count Covered"], row["Org Chart Uncovered count"]])
 
-    # Save Excel file
     wb.save(output_path)
     print(f"✅ Coverage summary saved to {output_path}")
+```
+
+---
+
+### 🔑 Next step: Populate `covered_ids` correctly
+Right now you’re only adding roots + direct reports. You need to **walk the hierarchy recursively**:
+
+```python
+def collect_covered_ids(df_final, root_id):
+    covered = set()
+    stack = [root_id]
+    while stack:
+        mgr = stack.pop()
+        covered.add(str(mgr).strip())
+        children = df_final[df_final["Functional Manager Employee ID"] == mgr]["Employee ID"].dropna().tolist()
+        stack.extend(children)
+    return covered
+```
+
+Then in your main loop:
+
+```python
+covered_ids = set()
+for root_id in roots:  # MDs + standalone GCB3s
+    covered_ids |= collect_covered_ids(df_final, root_id)
+```
+
+---
+
+### 🎯 Result
+- IDs are normalized → no type mismatch.  
+- Coverage is recursive → all levels under MD/GCB3 are included.  
+- Excel file will now show **real counts** instead of zeros.
+
+---
+
+👉 Do you want me to integrate this recursive coverage collector directly into your main org chart loop so you don’t have to maintain `covered_ids` manually? That way, every time you generate charts, coverage is tracked automatically.
 
 
 
 
 
-
+=========================================
 
 import pandas as pd
 import pandas as pd
