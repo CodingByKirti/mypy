@@ -2,6 +2,10 @@ import pandas as pd
 import os
 from openpyxl import Workbook
 
+import pandas as pd
+import os
+from openpyxl import Workbook
+
 def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary.xlsx", bfg_level="BFG Selected Level"):
     """
     Save coverage summary into an Excel file:
@@ -9,52 +13,49 @@ def check_coverage_to_excel(df_final, covered_ids, output_path="Coverage_Summary
     - Covered count (Org Chart Count Covered)
     - Uncovered count (Org Chart Uncovered count)
     For GCB levels 3, 4, 5 under the given BFG header.
-    
-    Parameters
-    ----------
-    df_final : pandas.DataFrame
-        Employee dataset with columns: Employee ID, Employee Name, GCB, Functional Manager Employee ID
-    covered_ids : set
-        All employee IDs included in org charts (MD + standalone GCB3 roots)
-    output_path : str
-        Path to save the Excel summary
-    bfg_level : str
-        Header label for the summary (e.g., "MD Org Coverage" or "BFG Selected Level")
     """
 
-    # Filter only GCB 3,4,5 employees
-    df_target = df_final[df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"]) & df_final["Employee ID"].notna()]
+    # Ensure Employee ID is not null
+    df_target = df_final[df_final["Employee ID"].notna() & df_final["GCB"].isin(["GCB3", "GCB4", "GCB5"])]
 
-    # Initial counts by GCB
-    initial_counts = df_target.groupby("GCB")["Employee ID"].count()
+    # Initialize dictionary for counts
+    summary_data = []
+    for gcb_level in ["GCB3", "GCB4", "GCB5"]:
+        df_gcb = df_target[df_target["GCB"] == gcb_level]
 
-    # Covered counts
-    covered_counts = df_target[df_target["Employee ID"].isin(covered_ids)].groupby("GCB")["Employee ID"].count()
+        initial_count = len(df_gcb)
+        covered_count = len(df_gcb[df_gcb["Employee ID"].isin(covered_ids)])
+        uncovered_count = initial_count - covered_count
 
-    # Uncovered counts
-    uncovered_counts = df_target[~df_target["Employee ID"].isin(covered_ids)].groupby("GCB")["Employee ID"].count()
+        summary_data.append({
+            "GCB": gcb_level,
+            "Analpan Count": initial_count,
+            "Org Chart Count Covered": covered_count,
+            "Org Chart Uncovered count": uncovered_count
+        })
 
-    # Build summary DataFrame
-    summary = pd.DataFrame({
-        "Analpan Count": initial_counts,
-        "Org Chart Count Covered": covered_counts,
-        "Org Chart Uncovered count": uncovered_counts
-    }).fillna(0).astype(int)
-
-    # Add header row
+    # Write to Excel
     wb = Workbook()
     ws = wb.active
     ws.title = "Coverage Summary"
 
-    ws.append([bfg_level])  # header
+    # Header row
+    ws.append([bfg_level])
     ws.append(["GCB", "Analpan Count", "Org Chart Count Covered", "Org Chart Uncovered count"])
 
-    for gcb_level, row in summary.iterrows():
-        ws.append([gcb_level, row["Analpan Count"], row["Org Chart Count Covered"], row["Org Chart Uncovered count"]])
+    # Data rows
+    for row in summary_data:
+        ws.append([row["GCB"], row["Analpan Count"], row["Org Chart Count Covered"], row["Org Chart Uncovered count"]])
 
     # Save Excel file
     wb.save(output_path)
     print(f"✅ Coverage summary saved to {output_path}")
+
+
+
+
+
+
 
 import pandas as pd
 import pandas as pd
