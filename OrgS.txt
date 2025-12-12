@@ -1,3 +1,72 @@
+if __name__ == "__main__":
+    import os
+    import win32com.client
+
+    # Identify MDs
+    mds = df_final[df_final["GCB"] == "MD"]["Employee ID"].dropna().unique().tolist()
+
+    # Identify GCB3s
+    gcb3s = df_final[df_final["GCB"] == "GCB3"]["Employee ID"].dropna().unique().tolist()
+
+    # Find standalone GCB3s (not reporting to any MD)
+    md_ids_set = set(mds)
+    standalone_gcb3s = []
+    for gcb3_id in gcb3s:
+        mgr_vals = df_final.loc[df_final["Employee ID"] == gcb3_id, "Functional Manager Employee ID"].values
+        mgr_id = mgr_vals[0] if len(mgr_vals) else None
+        if mgr_id is None or mgr_id not in md_ids_set:
+            standalone_gcb3s.append(gcb3_id)
+
+    # Combine MDs + standalone GCB3s as roots
+    roots = mds + standalone_gcb3s
+
+    if not roots:
+        print("No MDs or standalone GCB3s found in df_final. Nothing to generate.")
+    else:
+        # Prepare shared PPT per BFG (adjust bfg_name/output_dir as needed)
+        ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+        ppt_app.Visible = True
+        pres = ppt_app.Presentations.Add()
+
+        covered_ids = set()
+
+        # Optional: pre-filter opens to this population (keep your logic if needed)
+        df_open_bfg = df_open_enriched[
+            df_open_enriched["Functional Manager Employee ID"].isin(df_final["Employee ID"])
+        ]
+
+        for root_id in roots:
+            role_vals = df_final.loc[df_final["Employee ID"] == root_id, "GCB"].values
+            role = role_vals[0] if len(role_vals) else "Unknown"
+            print(f"Generating for {role} {root_id}...")
+
+            # If you still want a graphical org chart per root (outside indented text), keep this:
+            draw_orgchart(root_id, df_final, df_open_bfg,
+                          direct_counts_actual, open_pos_counts, ppt_app)
+
+            # Generate indented Excel (per root) + add slides to shared PPT
+            export_indented_text_full(
+                root_id, df_final, df_open_bfg,
+                direct_counts_actual, open_pos_counts,
+                excel_path=os.path.join(output_dir, f"Indented_{role}_{root_id}.xlsx"),
+                ppt_path=None,              # skip per-root PPT saving
+                ppt_app=ppt_app,            # pass the app so local mode can still work if needed
+                pres=pres,                  # shared presentation: all slides go here
+                max_per_slide=7
+            )
+
+            # Coverage collection if needed
+            covered_ids |= collect_covered_ids(df_final, root_id)
+
+        # Save once for the whole BFG
+        pres.SaveAs(os.path.join(output_dir, f"Indented_BFG_{bfg_name}.pptx"))
+        pres.Close()
+
+        print(f"Workflow complete. Files saved under: {output_dir}")
+        check_coverage(df_final, covered_ids)
+
+
+
 def export_indented_text_full(level4_id,
                               df_actual,
                               df_open,
