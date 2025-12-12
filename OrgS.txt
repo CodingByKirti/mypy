@@ -12,7 +12,8 @@ def export_indented_text_full(level_id,
     Export indented hierarchy lines with batching:
       - Max 7 children per slide
       - Handles MD roots (GCB == 'MD') and uncovered GCB3 roots (GCB == '3')
-    Each slide is written to Excel (sheet) and PPT (slide).
+      - At last level: if >7 reportees, show details only for MD/GCB3/GCB4,
+        collapse GCB5/GCB6 into counts.
     """
 
     import os
@@ -34,7 +35,6 @@ def export_indented_text_full(level_id,
         footer = " | ".join([p for p in [gcb, country] if p])
         line = f"{header}\n{footer}" if footer else header
 
-        # Avoid boolean evaluation of pd.NA
         has_mgr = (mgr_id is not None) and (not pd.isna(mgr_id))
         if level >= 5 and has_mgr:
             if open_pos_counts.get(mgr_id, 0) > 0:
@@ -57,6 +57,15 @@ def export_indented_text_full(level_id,
         line = f"{header}\n{footer}" if footer else header
         return ("\t"*level) + line
 
+    def gcb_rank(val):
+        val = str(val).strip()
+        if val == "MD": return 1
+        if val == "3": return 2
+        if val == "4": return 3
+        if val == "5": return 4
+        if val == "6": return 5
+        return 99
+
     # Default paths
     excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_{level_id}.xlsx")
     ppt_path   = ppt_path   or os.path.join(os.getcwd(), f"Indented_{level_id}.pptx")
@@ -68,13 +77,11 @@ def export_indented_text_full(level_id,
     root_row = root_df.iloc[0]
     root_gcb = str(root_row.get("GCB", "")).strip()
 
-    # Root line and children
     if root_gcb == "MD":
         root_line = line_for_actual(root_row, level_id, level=4)
-    elif root_gcb == "3":  # standalone GCB3
+    elif root_gcb == "3":
         root_line = line_for_actual(root_row, level_id, level=3)
     else:
-        # fallback: treat as generic root
         root_line = line_for_actual(root_row, level_id, level=4)
 
     child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level_id]
@@ -98,7 +105,6 @@ def export_indented_text_full(level_id,
 
     def write_slide(lines):
         nonlocal slide_idx
-        # Excel
         if slide_idx == 1 and wb.active.title == "Slide_1" and wb.active.max_row == 1:
             ws = wb.active
             ws.delete_rows(1, ws.max_row)
@@ -107,7 +113,6 @@ def export_indented_text_full(level_id,
         ws.append(["Hierarchy"])
         for ln in lines:
             ws.append([ln])
-        # PPT
         slide = pres_local.Slides.Add(pres_local.Slides.Count+1, 12)
         tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
         tr.Font.Size = 9
@@ -118,7 +123,6 @@ def export_indented_text_full(level_id,
     for i in range(0, len(child_items), max_per_slide):
         batch = child_items[i:i+max_per_slide]
         lines = [root_line]
-        overflow_map = {}
 
         for kind, child in batch:
             if kind == "actual":
@@ -133,53 +137,49 @@ def export_indented_text_full(level_id,
                 gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
                 gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
 
-                for kind2, gc in gc_items[:max_per_slide]:
-                    if kind2 == "actual":
-                        gid = gc.get("Employee ID")
-                        gid = None if pd.isna(gid) else gid
-                        lines.append("\t\t" + line_for_actual(gc, gid, level=6))
-                    else:
-                        op_line = line_for_open(gc, level=2)
-                        if op_line: lines.append(op_line)
+                # Sort grandchildren
+                gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
 
-                if len(gc_items) > max_per_slide:
-                    overflow_map[child_line] = gc_items[max_per_slide:]
+                if len(gc_items) <= max_per_slide:
+                    for kind2, gc in gc_items:
+                        if kind2 == "actual":
+                            gid = gc.get("Employee ID")
+                            gid = None if pd.isna(gid) else gid
+                            lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+                        else:
+                            op_line = line_for_open(gc, level=2)
+                            if op_line: lines.append(op_line)
+                else:
+                    # Overflow: show details only for MD/GCB3/GCB4, collapse 5/6 into counts
+                    gcb5_count = 0
+                    gcb6_count = 0
+                    for kind2, gc in gc_items:
+                        gcb_val = str(gc.get("GCB", "")).strip()
+                        if gcb_val in ["MD", "3", "4"]:
+                            if kind2 == "actual":
+                                gid = gc.get("Employee ID")
+                                gid = None if pd.isna(gid) else gid
+                                lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+                            else:
+                                op_line = line_for_open(gc, level=2)
+                                if op_line: lines.append(op_line)
+                        elif gcb_val == "5":
+                            gcb5_count += 1
+                        elif gcb_val == "6":
+                            gcb6_count += 1
+                    if gcb5_count > 0:
+                        lines.append(f"\t\tGCB5 Count: {gcb5_count}")
+                    if gcb6_count > 0:
+                        lines.append(f"\t\tGCB6 Count: {gcb6_count}")
             else:
                 op_line = line_for_open(child, level=1)
                 if op_line: lines.append(op_line)
 
         write_slide(lines)
 
-        # Overflow slides
-        if overflow_map:
-            max_overflow_len = max(len(v) for v in overflow_map.values())
-            for j in range(0, max_overflow_len, max_per_slide):
-                lines2 = [root_line]
-                for kind, child in batch:
-                    if kind == "actual":
-                        cid2 = child.get("Employee ID")
-                        cid2 = None if pd.isna(cid2) else cid2
-                        child_line2 = "\t" + line_for_actual(child, cid2, level=5)
-                        lines2.append(child_line2)
-                        if child_line2 in overflow_map:
-                            chunk = overflow_map[child_line2][j:j+max_per_slide]
-                            for kind2, gc in chunk:
-                                if kind2 == "actual":
-                                    gid2 = gc.get("Employee ID")
-                                    gid2 = None if pd.isna(gid2) else gid2
-                                    lines2.append("\t\t" + line_for_actual(gc, gid2, level=6))
-                                else:
-                                    op_line = line_for_open(gc, level=2)
-                                    if op_line: lines2.append(op_line)
-                    else:
-                        op_line = line_for_open(child, level=1)
-                        if op_line: lines2.append(op_line)
-                write_slide(lines2)
-
     # Save Excel always
     wb.save(excel_path)
 
-    # Save PPT only if local pres was created
     if pres is None and ppt_path:
         pres_local.SaveAs(ppt_path)
         pres_local.Close()
@@ -187,7 +187,7 @@ def export_indented_text_full(level_id,
     print(f"Excel saved: {excel_path}")
     if pres is None and ppt_path:
         print(f"PPT saved: {ppt_path}")
-
+------------------------------
 
 
 
