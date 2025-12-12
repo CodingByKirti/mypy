@@ -1,3 +1,195 @@
+def export_indented_text_full(level4_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              excel_path=None,
+                              ppt_path=None,
+                              ppt_app=None,
+                              pres=None,           # <-- NEW: shared presentation
+                              max_per_slide=7):
+    """
+    Export indented hierarchy lines with batching:
+      - Max 7 L5 per slide under L4
+      - Max 7 L6 per slide under each L5
+    Each slide is written to Excel (sheet) and PPT (slide).
+    Overflow L6s for multiple L5s in the same batch are combined.
+    """
+
+    import os
+    import pandas as pd
+    import win32com.client
+    from openpyxl import Workbook
+
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() == "unspecified" else s
+
+    def line_for_actual(row, mgr_id=None, level=0):
+        name = clean(row.get("Employee Name", ""))
+        title = clean(row.get("Position Title", ""))
+        gcb   = clean(row.get("GCB", ""))
+        country = clean(row.get("Country R3", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+        if level == 6 and mgr_id:
+            if open_pos_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Open Positions: {open_pos_counts[mgr_id]}"
+            if direct_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Direct Reports: {direct_counts[mgr_id]}"
+        return line
+
+    def line_for_open(op_row, level=0):
+        title = clean(op_row.get("Position Title", ""))
+        if not title: return None
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        match = df_actual[df_actual["PID"] == pid]
+        if not match.empty:
+            gcb = clean(match.iloc[0].get("GCB", ""))
+            country = clean(match.iloc[0].get("Country R3", ""))
+        header = f"<Open Position> | {title}"
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+        return ("\t"*level) + line
+
+    # Default paths (Excel per root; PPT only used in per-root mode)
+    excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.xlsx")
+    ppt_path   = ppt_path   or os.path.join(os.getcwd(), f"Indented_MD_{level4_id}.pptx")
+
+    # L4
+    l4_df = df_actual[df_actual["Employee ID"] == level4_id]
+    if l4_df.empty:
+        raise ValueError(f"L4 Employee ID {level4_id} not found in df_actual.")
+    mgr_row = l4_df.iloc[0]
+    l4_line = line_for_actual(mgr_row, level4_id, level=4)
+
+    # Collect L5s
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level4_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == level4_id]
+    l5_items = []
+    for _, r in l5_actuals.iterrows():
+        if pd.notna(r.get("Employee ID")):
+            l5_items.append(("actual", r))
+    for _, r in l5_opens.iterrows():
+        l5_items.append(("open", r))
+
+    # Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Slide_1"
+    slide_idx = 1
+
+    # PowerPoint: use shared pres if provided; otherwise create local
+    if pres is None:
+        ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
+        ppt.Visible = True
+        pres_local = ppt.Presentations.Add()
+    else:
+        pres_local = pres  # shared presentation passed from main
+
+    def write_slide(lines):
+        nonlocal slide_idx
+        # Excel
+        if slide_idx == 1 and wb.active.title == "Slide_1" and wb.active.max_row == 1:
+            ws = wb.active
+            ws.delete_rows(1, ws.max_row)
+        else:
+            ws = wb.create_sheet(title=f"Slide_{slide_idx}")
+        ws.append(["Hierarchy"])
+        for ln in lines:
+            ws.append([ln])
+        # PPT
+        slide = pres_local.Slides.Add(pres_local.Slides.Count+1, 12)
+        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+        tr.Font.Size = 9
+        tr.Text = "\r".join(lines)
+        slide_idx += 1
+
+    # --- Batch L5s ---
+    for i in range(0, len(l5_items), max_per_slide):
+        l5_batch = l5_items[i:i+max_per_slide]
+
+        # 1. Build main hierarchy slide
+        lines = [l4_line]
+        overflow_map = {}  # {l5_line: [overflow L6s]}
+
+        for kind, l5 in l5_batch:
+            if kind == "actual":
+                l5_id = l5["Employee ID"]
+                l5_line = "\t" + line_for_actual(l5, l5_id, level=5)
+                lines.append(l5_line)
+
+                # Collect L6s
+                l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+                l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+                l6_items = []
+                for _, rr in l6_actuals.iterrows():
+                    if pd.notna(rr.get("Employee ID")):
+                        l6_items.append(("actual", rr))
+                for _, rr in l6_opens.iterrows():
+                    l6_items.append(("open", rr))
+
+                # First 7 L6 inline
+                for kind2, l6 in l6_items[:max_per_slide]:
+                    if kind2 == "actual":
+                        lines.append("\t\t" + line_for_actual(l6, l6["Employee ID"], level=6))
+                    else:
+                        op_line = line_for_open(l6, level=2)
+                        if op_line:
+                            lines.append(op_line)
+
+                # Save overflow for later
+                if len(l6_items) > max_per_slide:
+                    overflow_map[l5_line] = l6_items[max_per_slide:]
+            else:
+                op_line = line_for_open(l5, level=1)
+                if op_line:
+                    lines.append(op_line)
+
+        # Write the main hierarchy slide
+        write_slide(lines)
+
+        # 2. Write combined overflow slides for this batch
+        if overflow_map:
+            max_overflow_len = max(len(v) for v in overflow_map.values())
+            for j in range(0, max_overflow_len, max_per_slide):
+                lines2 = [l4_line]
+                for kind, l5 in l5_batch:
+                    if kind == "actual":
+                        l5_id2 = l5["Employee ID"]
+                        l5_line2 = "\t" + line_for_actual(l5, l5_id2, level=5)
+                        lines2.append(l5_line2)
+                        if l5_line2 in overflow_map:
+                            chunk = overflow_map[l5_line2][j:j+max_per_slide]
+                            for kind2, l6 in chunk:
+                                if kind2 == "actual":
+                                    lines2.append("\t\t" + line_for_actual(l6, l6["Employee ID"], level=6))
+                                else:
+                                    op_line = line_for_open(l6, level=2)
+                                    if op_line:
+                                        lines2.append(op_line)
+                    else:
+                        op_line = line_for_open(l5, level=1)
+                        if op_line:
+                            lines2.append(op_line)
+                write_slide(lines2)
+
+    # Save Excel always (per root)
+    wb.save(excel_path)
+
+    # Save/close PPT only if this function created its own local presentation (per-root mode)
+    if pres is None and ppt_path:
+        pres_local.SaveAs(ppt_path)
+        pres_local.Close()
+
+    print(f"Excel saved: {excel_path}")
+    if pres is None and ppt_path:
+        print(f"PPT saved: {ppt_path}")
+
+..................
 def initialize_counts(df_final, bfg_filter=None):
     """
     Capture initial counts of GCB3, GCB4, GCB5 employees
