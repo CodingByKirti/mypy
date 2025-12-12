@@ -1,3 +1,190 @@
+def export_indented_text_full(level_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              excel_path=None,
+                              ppt_path=None,
+                              ppt_app=None,
+                              pres=None,
+                              max_per_slide=7):
+    """
+    Export indented hierarchy lines with batching:
+      - Max 7 children per slide
+      - Handles MD roots (L4) and standalone GCB3 roots
+    Each slide is written to Excel (sheet) and PPT (slide).
+    """
+
+    import os
+    import pandas as pd
+    import win32com.client
+    from openpyxl import Workbook
+
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() == "unspecified" else s
+
+    def line_for_actual(row, mgr_id=None, level=0):
+        name = clean(row.get("Employee Name", ""))
+        title = clean(row.get("Position Title", ""))
+        gcb   = clean(row.get("GCB", ""))
+        country = clean(row.get("Country R3", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+
+        # Avoid boolean evaluation of pd.NA
+        has_mgr = (mgr_id is not None) and (not pd.isna(mgr_id))
+        if level >= 5 and has_mgr:
+            if open_pos_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Open Positions: {open_pos_counts[mgr_id]}"
+            if direct_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Direct Reports: {direct_counts[mgr_id]}"
+        return line
+
+    def line_for_open(op_row, level=0):
+        title = clean(op_row.get("Position Title", ""))
+        if not title: return None
+        pid = op_row.get("PID")
+        gcb, country = "", ""
+        match = df_actual[df_actual["PID"] == pid]
+        if not match.empty:
+            gcb = clean(match.iloc[0].get("GCB", ""))
+            country = clean(match.iloc[0].get("Country R3", ""))
+        header = f"<Open Position> | {title}"
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+        return ("\t"*level) + line
+
+    # Default paths
+    excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_{level_id}.xlsx")
+    ppt_path   = ppt_path   or os.path.join(os.getcwd(), f"Indented_{level_id}.pptx")
+
+    # Root row
+    root_df = df_actual[df_actual["Employee ID"] == level_id]
+    if root_df.empty:
+        raise ValueError(f"Employee ID {level_id} not found in df_actual.")
+    root_row = root_df.iloc[0]
+    root_gcb = root_row.get("GCB", "")
+    root_line = line_for_actual(root_row, level_id,
+                                level=3 if root_gcb == "GCB3" else 4)
+
+    # Collect children under root
+    child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level_id]
+    child_opens   = df_open[df_open["Functional Manager Employee ID"] == level_id]
+    child_items = [("actual", r) for _, r in child_actuals.iterrows()]
+    child_items += [("open", r) for _, r in child_opens.iterrows()]
+
+    # Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Slide_1"
+    slide_idx = 1
+
+    # PowerPoint
+    if pres is None:
+        ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
+        ppt.Visible = True
+        pres_local = ppt.Presentations.Add()
+    else:
+        pres_local = pres
+
+    def write_slide(lines):
+        nonlocal slide_idx
+        # Excel
+        if slide_idx == 1 and wb.active.title == "Slide_1" and wb.active.max_row == 1:
+            ws = wb.active
+            ws.delete_rows(1, ws.max_row)
+        else:
+            ws = wb.create_sheet(title=f"Slide_{slide_idx}")
+        ws.append(["Hierarchy"])
+        for ln in lines:
+            ws.append([ln])
+        # PPT
+        slide = pres_local.Slides.Add(pres_local.Slides.Count+1, 12)
+        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+        tr.Font.Size = 9
+        tr.Text = "\r".join(lines)
+        slide_idx += 1
+
+    # --- Batch children ---
+    for i in range(0, len(child_items), max_per_slide):
+        batch = child_items[i:i+max_per_slide]
+        lines = [root_line]
+        overflow_map = {}
+
+        for kind, child in batch:
+            if kind == "actual":
+                cid = child.get("Employee ID")
+                cid = None if pd.isna(cid) else cid
+                child_line = "\t" + line_for_actual(child, cid, level=5)
+                lines.append(child_line)
+
+                # Collect grandchildren
+                gc_actuals = df_actual[df_actual["Functional Manager Employee ID"] == cid]
+                gc_opens   = df_open[df_open["Functional Manager Employee ID"] == cid]
+                gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
+                gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
+
+                for kind2, gc in gc_items[:max_per_slide]:
+                    if kind2 == "actual":
+                        gid = gc.get("Employee ID")
+                        gid = None if pd.isna(gid) else gid
+                        lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+                    else:
+                        op_line = line_for_open(gc, level=2)
+                        if op_line: lines.append(op_line)
+
+                if len(gc_items) > max_per_slide:
+                    overflow_map[child_line] = gc_items[max_per_slide:]
+            else:
+                op_line = line_for_open(child, level=1)
+                if op_line: lines.append(op_line)
+
+        write_slide(lines)
+
+        # Overflow slides
+        if overflow_map:
+            max_overflow_len = max(len(v) for v in overflow_map.values())
+            for j in range(0, max_overflow_len, max_per_slide):
+                lines2 = [root_line]
+                for kind, child in batch:
+                    if kind == "actual":
+                        cid2 = child.get("Employee ID")
+                        cid2 = None if pd.isna(cid2) else cid2
+                        child_line2 = "\t" + line_for_actual(child, cid2, level=5)
+                        lines2.append(child_line2)
+                        if child_line2 in overflow_map:
+                            chunk = overflow_map[child_line2][j:j+max_per_slide]
+                            for kind2, gc in chunk:
+                                if kind2 == "actual":
+                                    gid2 = gc.get("Employee ID")
+                                    gid2 = None if pd.isna(gid2) else gid2
+                                    lines2.append("\t\t" + line_for_actual(gc, gid2, level=6))
+                                else:
+                                    op_line = line_for_open(gc, level=2)
+                                    if op_line: lines2.append(op_line)
+                    else:
+                        op_line = line_for_open(child, level=1)
+                        if op_line: lines2.append(op_line)
+                write_slide(lines2)
+
+    # Save Excel always
+    wb.save(excel_path)
+
+    # Save PPT only if local pres was created
+    if pres is None and ppt_path:
+        pres_local.SaveAs(ppt_path)
+        pres_local.Close()
+
+    print(f"Excel saved: {excel_path}")
+    if pres is None and ppt_path:
+        print(f"PPT saved: {ppt_path}")
+
+
+
+
 if __name__ == "__main__":
     import os
     import win32com.client
