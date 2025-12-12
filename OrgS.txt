@@ -11,7 +11,7 @@ def export_indented_text_full(level_id,
     """
     Export indented hierarchy lines with batching:
       - Max 7 children per slide
-      - Handles MD roots (L4) and standalone GCB3 roots
+      - Handles MD roots (GCB == 'MD') and uncovered GCB3 roots (GCB == '3')
     Each slide is written to Excel (sheet) and PPT (slide).
     """
 
@@ -66,11 +66,17 @@ def export_indented_text_full(level_id,
     if root_df.empty:
         raise ValueError(f"Employee ID {level_id} not found in df_actual.")
     root_row = root_df.iloc[0]
-    root_gcb = root_row.get("GCB", "")
-    root_line = line_for_actual(root_row, level_id,
-                                level=3 if root_gcb == "GCB3" else 4)
+    root_gcb = str(root_row.get("GCB", "")).strip()
 
-    # Collect children under root
+    # Root line and children
+    if root_gcb == "MD":
+        root_line = line_for_actual(root_row, level_id, level=4)
+    elif root_gcb == "3":  # standalone GCB3
+        root_line = line_for_actual(root_row, level_id, level=3)
+    else:
+        # fallback: treat as generic root
+        root_line = line_for_actual(root_row, level_id, level=4)
+
     child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level_id]
     child_opens   = df_open[df_open["Functional Manager Employee ID"] == level_id]
     child_items = [("actual", r) for _, r in child_actuals.iterrows()]
@@ -181,6 +187,7 @@ def export_indented_text_full(level_id,
     print(f"Excel saved: {excel_path}")
     if pres is None and ppt_path:
         print(f"PPT saved: {ppt_path}")
+
 
 
 
