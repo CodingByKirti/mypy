@@ -13,7 +13,7 @@ def export_indented_text_full(level_id,
       - Max 7 children per slide
       - Handles MD roots (GCB == 'MD') and uncovered GCB3 roots (GCB == '3')
       - At last level: if >7 reportees, show details only for MD/GCB3/GCB4,
-        collapse GCB5/GCB6 into counts.
+        collapse GCB5/GCB6 into counts, and ALWAYS keep open positions as boxes.
     """
 
     import os
@@ -131,16 +131,17 @@ def export_indented_text_full(level_id,
                 child_line = "\t" + line_for_actual(child, cid, level=5)
                 lines.append(child_line)
 
-                # Collect grandchildren
+                # Collect grandchildren (L6 under this L5)
                 gc_actuals = df_actual[df_actual["Functional Manager Employee ID"] == cid]
                 gc_opens   = df_open[df_open["Functional Manager Employee ID"] == cid]
                 gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
                 gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
 
-                # Sort grandchildren
+                # Sort grandchildren: MD > 3 > 4 > 5 > 6 (open positions later kept explicitly)
                 gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
 
                 if len(gc_items) <= max_per_slide:
+                    # Normal display
                     for kind2, gc in gc_items:
                         if kind2 == "actual":
                             gid = gc.get("Employee ID")
@@ -150,28 +151,41 @@ def export_indented_text_full(level_id,
                             op_line = line_for_open(gc, level=2)
                             if op_line: lines.append(op_line)
                 else:
-                    # Overflow: show details only for MD/GCB3/GCB4, collapse 5/6 into counts
+                    # Overflow: details for MD/3/4 + ALWAYS open positions; counts for 5/6
+                    details = []
+                    open_boxes = []
                     gcb5_count = 0
                     gcb6_count = 0
+
                     for kind2, gc in gc_items:
                         gcb_val = str(gc.get("GCB", "")).strip()
-                        if gcb_val in ["MD", "3", "4"]:
-                            if kind2 == "actual":
+                        if kind2 == "open":
+                            op_line = line_for_open(gc, level=2)
+                            if op_line: open_boxes.append(op_line)
+                        else:
+                            if gcb_val in ["MD", "3", "4"]:
                                 gid = gc.get("Employee ID")
                                 gid = None if pd.isna(gid) else gid
-                                lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+                                details.append("\t\t" + line_for_actual(gc, gid, level=6))
+                            elif gcb_val == "5":
+                                gcb5_count += 1
+                            elif gcb_val == "6":
+                                gcb6_count += 1
                             else:
-                                op_line = line_for_open(gc, level=2)
-                                if op_line: lines.append(op_line)
-                        elif gcb_val == "5":
-                            gcb5_count += 1
-                        elif gcb_val == "6":
-                            gcb6_count += 1
+                                # Unknown/blank GCB: treat as lower priority count
+                                gcb6_count += 1
+
+                    # Add details (MD/3/4), then open positions, then counts
+                    for d in details:
+                        lines.append(d)
+                    for op in open_boxes:
+                        lines.append(op)
                     if gcb5_count > 0:
                         lines.append(f"\t\tGCB5 Count: {gcb5_count}")
                     if gcb6_count > 0:
                         lines.append(f"\t\tGCB6 Count: {gcb6_count}")
             else:
+                # Child is an open position under the root (L5 level open)
                 op_line = line_for_open(child, level=1)
                 if op_line: lines.append(op_line)
 
@@ -180,14 +194,14 @@ def export_indented_text_full(level_id,
     # Save Excel always
     wb.save(excel_path)
 
+    # Save PPT only if local pres was created
     if pres is None and ppt_path:
         pres_local.SaveAs(ppt_path)
         pres_local.Close()
 
     print(f"Excel saved: {excel_path}")
     if pres is None and ppt_path:
-        print(f"PPT saved: {ppt_path}")
-------------------------------
+        print(f"PPT saved: {ppt_path}")------------------------------
 
 
 
