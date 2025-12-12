@@ -1,3 +1,26 @@
+def collect_covered_ids(df, root_id):
+    """
+    Recursively collect all employee IDs under a given root.
+    Includes the root itself and all descendants.
+    """
+    covered = set()
+    stack = [root_id]
+
+    while stack:
+        current = stack.pop()
+        if pd.isna(current):
+            continue
+        if current in covered:
+            continue
+        covered.add(current)
+
+        # Find direct reports of current
+        children = df.loc[df["Functional Manager Employee ID"] == current, "Employee ID"].dropna().tolist()
+        stack.extend(children)
+
+    return covered
+
+
 if __name__ == "__main__":
     import os
     import win32com.client
