@@ -1,5 +1,18 @@
-def export_indented_text_full(root_id,
-                              df_actual,
+def write_slide(pres, title_text, lines):
+    slide = pres.Slides.Add(pres.Slides.Count+1, 1)  # Title+Content layout
+    slide.Shapes.Title.TextFrame.TextRange.Text = title_text
+
+    left, top, width, height = 50, 100, 400, 50
+    spacing = 60
+
+    for i, line in enumerate(lines):
+        box = slide.Shapes.AddTextbox(1, left, top + i*spacing, width, height)
+        box.TextFrame.TextRange.Text = line
+        box.TextFrame.TextRange.ParagraphFormat.Alignment = 1  # center
+
+
+
+def export_indented_text_full(root_id,df_actual,
                               df_open,
                               direct_counts,
                               open_pos_counts,
