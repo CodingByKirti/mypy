@@ -1,3 +1,51 @@
+import tkinter as tk
+from tkinter import ttk
+
+def selectbfg_filter(df_input):
+    root = tk.Tk()
+    root.title("Select BFG and Options")
+
+    # --- BFG selection ---
+    tk.Label(root, text="Select BFG:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+    bfg_values = sorted(df_input["BFG"].dropna().unique().tolist())
+    bfg_combo = ttk.Combobox(root, values=bfg_values, state="readonly")
+    bfg_combo.grid(row=0, column=1, padx=10, pady=5)
+
+    # --- Show names option ---
+    tk.Label(root, text="Show Employee Names in Org Chart?").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+    name_combo = ttk.Combobox(root, values=["Yes", "No"], state="readonly")
+    name_combo.grid(row=1, column=1, padx=10, pady=5)
+    name_combo.current(0)  # default Yes
+
+    # --- Month selection ---
+    tk.Label(root, text="Select Current Month:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+    months = ["January","February","March","April","May","June",
+              "July","August","September","October","November","December"]
+    month_combo = ttk.Combobox(root, values=months, state="readonly")
+    month_combo.grid(row=2, column=1, padx=10, pady=5)
+
+    # --- Year selection ---
+    tk.Label(root, text="Select Current Year:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+    years = [str(y) for y in range(2020, 2031)]  # adjust range as needed
+    year_combo = ttk.Combobox(root, values=years, state="readonly")
+    year_combo.grid(row=3, column=1, padx=10, pady=5)
+
+    # --- Submit button ---
+    def submit():
+        root.selected_bfg = bfg_combo.get()
+        root.show_names = (name_combo.get().lower() == "yes")
+        root.selected_month = month_combo.get()
+        root.selected_year = year_combo.get()
+        root.destroy()
+
+    tk.Button(root, text="Submit", command=submit).grid(row=4, column=0, columnspan=2, pady=10)
+
+    root.mainloop()
+
+    return root.selected_bfg, root.show_names, root.selected_month, root.selected_year
+
+
+
 def initialize_counts(df_final, bfg_filter):
     """
     Capture initial counts of GCB3, GCB4, GCB5 employees
