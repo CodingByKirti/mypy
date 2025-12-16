@@ -1,3 +1,279 @@
+import pandas as pd
+
+def clean(val):
+    """
+    Normalize values for display in org chart.
+    Handles NaN, None, empty strings, whitespace, 'Unspecified', '#N/A', <NA>.
+    """
+    if val is None:
+        return ""
+    val = str(val).strip()
+    if val in ["", "Unspecified", "#N/A", "<NA>", "nan", "NaN"]:
+        return ""
+    return val
+
+
+def line_for_actual(row, mgr_id=None, level=0, show_names=True):
+    """
+    Build the text line for an employee row.
+    Includes name only if show_names=True.
+    """
+    name = clean(row.get("Employee Name", "")) if show_names else ""
+    title = clean(row.get("Position Title", ""))
+    gcb   = clean(row.get("GCB", ""))
+    country = clean(row.get("Country R3", ""))
+
+    header_parts = [p for p in [name, title] if p]
+    header = " | ".join(header_parts)
+    footer_parts = [p for p in [gcb, country] if p]
+    footer = " | ".join(footer_parts)
+
+    if footer:
+        line = f"{header}\n{footer}" if header else footer
+    else:
+        line = header
+
+    return line
+
+
+def export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              show_names=False,
+                              max_per_slide=10,
+                              expanded_list=None,
+                              pres=None):
+    """
+    Export indented text for a given root with progressive compression rules.
+    - Collapse GCB5+6 if >10 boxes
+    - Collapse GCB4+5+6 if still >10
+    - Final fallback: counts for all GCB levels + open positions
+    Returns a list of indented text lines.
+    """
+
+    lines = []
+    children = df_actual.loc[df_actual["Functional Manager Employee ID"] == root_id].to_dict("records")
+    open_boxes = df_open.loc[df_open["Functional Manager Employee ID"] == root_id].to_dict("records")
+
+    # Step 1: total boxes
+    total_boxes = len(children) + len(open_boxes)
+
+    # Collect counts
+    gcb_counts = {"MD": 0, "3": 0, "4": 0, "5": 0, "6": 0}
+    details = []
+    for child in children:
+        gcb = str(child.get("GCB", ""))
+        if gcb in ["MD", "3", "4"]:
+            details.append("\t" + line_for_actual(child, root_id, level=5, show_names=show_names))
+        if gcb in gcb_counts:
+            gcb_counts[gcb] += 1
+
+    # --- Compression logic ---
+    count_lines = []
+    if total_boxes > max_per_slide:
+        # Collapse GCB5+6
+        if gcb_counts["5"] or gcb_counts["6"]:
+            count_lines.append(f"Count {gcb_counts['5']} GCB5")
+            count_lines.append(f"Count {gcb_counts['6']} GCB6")
+
+        new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+        if new_total > max_per_slide:
+            # Collapse GCB4 as well
+            details = [d for d in details if not d.strip().endswith("GCB4")]
+            if gcb_counts["4"] or gcb_counts["5"] or gcb_counts["6"]:
+                count_lines = [
+                    f"Count {gcb_counts['4']} GCB4",
+                    f"Count {gcb_counts['5']} GCB5",
+                    f"Count {gcb_counts['6']} GCB6"
+                ]
+
+            new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+            if new_total > max_per_slide:
+                # Final fallback: counts for all GCB levels
+                count_lines = [
+                    f"Count {gcb_counts['3']} GCB3",
+                    f"Count {gcb_counts['4']} GCB4",
+                    f"Count {gcb_counts['5']} GCB5",
+                    f"Count {gcb_counts['6']} GCB6"
+                ]
+                details = []  # no individuals
+                if expanded_list is not None and pres is not None:
+                    create_expanded_slide(root_id, children, open_boxes, pres, show_names, expanded_list)
+
+    # --- Append to lines ---
+    for d in details:
+        lines.append(d)
+    if count_lines:
+        indented_block = "\n".join("\t\t" + line for line in count_lines if not line.endswith("0"))
+        lines.append(indented_block)
+    for op in open_boxes:
+        lines.append("\t\t" + line_for_actual(op, root_id, level=5, show_names=show_names))
+
+    return lines
+
+
+def create_expanded_slide(level5_id, children, open_boxes, pres, show_names, expanded_list):
+    """
+    Create an expanded slide for a Level-5 employee with too many direct reports.
+    Shows:
+      - GCB3 and GCB4 individually
+      - GCB5+6 combined in one box
+      - Open positions in one box
+    Also stores (employee name, slide number) in expanded_list.
+    """
+
+    slide = pres.Slides.Add(pres.Slides.Count+1, 1)
+    slide.Shapes.Title.TextFrame.TextRange.Text = f"{level5_id} (Expanded)"
+
+    gcb3s = [c for c in children if str(c.get("GCB")) == "3"]
+    gcb4s = [c for c in children if str(c.get("GCB")) == "4"]
+    gcb5s = [c for c in children if str(c.get("GCB")) == "5"]
+    gcb6s = [c for c in children if str(c.get("GCB")) == "6"]
+
+    left, top, width, height = 50, 100, 300, 50
+    spacing = 60
+
+    def add_box(text, l, t):
+        box = slide.Shapes.AddTextbox(1, l, t, width, height)
+        box.TextFrame.TextRange.Text = text
+        box.TextFrame.TextRange.ParagraphFormat.Alignment = 1
+        return box
+
+    offset = 0
+    for i, emp in enumerate(gcb3s):
+        name = clean(emp.get("Employee Name", "")) if show_names else ""
+        title = clean(emp.get("Position Title", ""))
+        text = " | ".join([p for p in [name, title] if p])
+        add_box(f"GCB3: {text}", left, top + offset + i*spacing)
+    offset += len(gcb3s)*spacing
+
+    for i, emp in enumerate(gcb4s):
+        name = clean(emp.get("Employee Name", "")) if show_names else ""
+        title = clean(emp.get("Position Title", ""))
+        text = " | ".join([p for p in [name, title] if p])
+        add_box(f"GCB4: {text}", left, top + offset + i*spacing)
+    offset += len(gcb4s)*spacing
+
+    gcb5_count = len(gcb5s)
+    gcb6_count = len(gcb6s)
+    if gcb5_count or gcb6_count:
+        add_box(f"Count {gcb5_count} GCB5\nCount {gcb6_count} GCB6", left, top + offset)
+        offset += spacing
+
+    if open_boxes:
+        op_texts = []
+        for op in open_boxes:
+            title = clean(op.get("Position Title", ""))
+            op_texts.append(f"Open: {title}")
+        add_box("\n".join(op_texts), left, top + offset)
+
+    expanded_list.append((level5_id, slide.SlideIndex))
+    return slide.SlideIndex
+
+
+def add_summary_slide(pres, expanded_list):
+    """
+    Add a final slide listing all Level-5 employees with expanded slides.
+    """
+    if not expanded_list:
+        return
+
+    slide = pres.Slides.Add(pres.Slides.Count+1, 1)
+    slide.Shapes.Title.TextFrame.TextRange.Text = "Expanded Level-5 Employees"
+
+    summary_text = [f"{emp} → Slide {idx}" for emp, idx in expanded_list]
+    textbox = slide.Shapes.AddTextbox(1, 50, 100, 400, 400)
+    textbox.TextFrame.TextRange.Text = "\n".join(summary_text)
+    textbox.TextFrame.ParagraphFormat.Alignment = 1
+
+
+def generate_orgchart_ppt(df_actual, df_open, selected_bfg, pres,
+                          show_names=True, max_per_slide=10,
+                          excel_path="OrgChart_Validation.xlsx"):
+    """
+    Generate a PPT with indented org charts for all MD and GCB3 under selected BFG.
+    Adds:
+      - Extra slide listing employees with too many direct reports
+      - Validation summary (actual vs considered counts)
+      - Writes validation summary into Excel
+    """
+
+    expanded_list = []
+    validation_rows = []
+
+    # Filter for selected BFG
+    df_actual_bfg = df_actual[df_actual["BFG"] == selected_bfg]
+    df_open_bfg   = df_open[df_open["BFG"] == selected_bfg]
+
+    # Get all MD and GCB3 roots (including standalone GCB3s)
+    roots = df_actual_bfg[df_actual_bfg["GCB"].isin(["MD", "3"])]["Employee ID"].unique()
+
+    for root_id in roots:
+        # Export indented text lines with compression rules
+        lines = export_indented_text_full(
+            root_id,
+            df_actual_bfg,
+            df_open_bfg,
+            direct_counts=None,
+            open_pos_counts=None,
+            show_names=show_names,
+            max_per_slide=max_per_slide,
+            expanded_list=expanded_list,
+            pres=pres
+        )
+
+        # Create a slide for this root
+        slide = pres.Slides.Add(pres.Slides.Count+1, 1)
+        root_name = df_actual_bfg.loc[df_actual_bfg["Employee ID"] == root_id, "Employee Name"].values[0]
+        slide.Shapes.Title.TextFrame.TextRange.Text = f"{root_name} ({selected_bfg})"
+
+        left, top, width, height = 50, 100, 400, 50
+        spacing = 60
+        for i, line in enumerate(lines):
+            box = slide.Shapes.AddTextbox(1, left, top + i*spacing, width, height)
+            box.TextFrame.TextRange.Text = line
+            box.TextFrame.TextRange.ParagraphFormat.Alignment = 1
+
+        # --- Validation summary ---
+        actual_count = len(df_actual_bfg[df_actual_bfg["Functional Manager Employee ID"] == root_id])
+        open_count   = len(df_open_bfg[df_open_bfg["Functional Manager Employee ID"] == root_id])
+        considered_count = sum(1 for l in lines if l.strip())  # number of boxes actually shown
+
+        validation_rows.append({
+            "Root Employee": root_name,
+            "Employee ID": root_id,
+            "Actual Direct Reports": actual_count,
+            "Open Positions": open_count,
+            "Considered in Org Chart": considered_count
+        })
+
+    # --- Extra slide for expanded employees ---
+    add_summary_slide(pres, expanded_list)
+
+    # --- Write validation summary to Excel ---
+    df_validation = pd.DataFrame(validation_rows)
+    df_validation.to_excel(excel_path, index=False)
+
+    return pres, df_validation
+
+# Create a new PPT
+pres = ppt_app.Presentations.Add()
+
+# Generate org chart PPT + validation summary
+pres, df_validation = generate_orgchart_ppt(
+    df_actual=df_final,
+    df_open=df_open_bfg,
+    selected_bfg="Finance",
+    pres=pres,
+    show_names=True,
+    max_per_slide=10,
+    excel_path="OrgChart_Validation.xlsx"
+)
+
+print(df_validation)
+..........................................
 def collect_covered_ids(df, root_id):
     """
     Recursively collect all employee IDs under a given root.
