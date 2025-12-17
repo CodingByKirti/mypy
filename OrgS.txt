@@ -1,3 +1,36 @@
+....
+# --- Compression logic ---
+count_lines = []
+if total_boxes > max_per_slide:
+    # Step 1: collapse GCB5+6 into counts
+    if gcb_counts["5"] or gcb_counts["6"]:
+        count_lines.append(f"Count {gcb_counts['5']} GCB5")
+        count_lines.append(f"Count {gcb_counts['6']} GCB6")
+
+    new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+    if new_total > max_per_slide:
+        # Step 2: collapse GCB4 as well
+        details = [d for d in details if not d.strip().endswith("GCB4")]
+        count_lines = [
+            f"Count {gcb_counts['4']} GCB4",
+            f"Count {gcb_counts['5']} GCB5",
+            f"Count {gcb_counts['6']} GCB6"
+        ]
+
+        new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+        if new_total > max_per_slide:
+            # Step 3: final fallback — counts for all GCB levels
+            details = []
+            count_lines = [
+                f"Count {gcb_counts['3']} GCB3",
+                f"Count {gcb_counts['4']} GCB4",
+                f"Count {gcb_counts['5']} GCB5",
+                f"Count {gcb_counts['6']} GCB6"
+            ]
+            if expanded_list is not None:
+                expanded_list.append(root_id)
+.................
+
 def export_indented_text_full(root_id,
                               df_actual,
                               df_open,
