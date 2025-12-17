@@ -1,3 +1,79 @@
+def export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              show_names=False,
+                              max_per_slide=10,
+                              expanded_list=None):
+    """
+    Export indented text for a given root with progressive compression rules.
+    - Collapse GCB5+6 if >10 boxes
+    - Collapse GCB4+5+6 if still >10
+    - Final fallback: counts for all GCB levels + open positions
+    """
+
+    lines = []
+    # IMPORTANT: children/open_boxes must come from full dataset, not BFG-filtered subset
+    children = df_actual.loc[df_actual["Functional Manager Employee ID"] == root_id].to_dict("records")
+    open_boxes = df_open.loc[df_open["Functional Manager Employee ID"] == root_id].to_dict("records")
+
+    total_boxes = len(children) + len(open_boxes)
+
+    # Collect counts
+    gcb_counts = {"MD": 0, "3": 0, "4": 0, "5": 0, "6": 0}
+    details = []
+    for child in children:
+        gcb = str(child.get("GCB", ""))
+        if gcb in ["MD", "3", "4"]:
+            details.append("\t" + line_for_actual(child, root_id, level=5, show_names=show_names))
+        if gcb in gcb_counts:
+            gcb_counts[gcb] += 1
+
+    # --- Compression logic ---
+    count_lines = []
+    if total_boxes > max_per_slide:
+        # Step 1: collapse GCB5+6
+        if gcb_counts["5"] or gcb_counts["6"]:
+            count_lines.append(f"Count {gcb_counts['5']} GCB5")
+            count_lines.append(f"Count {gcb_counts['6']} GCB6")
+
+        new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+        if new_total > max_per_slide:
+            # Step 2: collapse GCB4 as well
+            details = [d for d in details if not d.strip().endswith("GCB4")]
+            count_lines = [
+                f"Count {gcb_counts['4']} GCB4",
+                f"Count {gcb_counts['5']} GCB5",
+                f"Count {gcb_counts['6']} GCB6"
+            ]
+
+            new_total = len(details) + (1 if count_lines else 0) + len(open_boxes)
+            if new_total > max_per_slide:
+                # Step 3: final fallback
+                details = []
+                count_lines = [
+                    f"Count {gcb_counts['3']} GCB3",
+                    f"Count {gcb_counts['4']} GCB4",
+                    f"Count {gcb_counts['5']} GCB5",
+                    f"Count {gcb_counts['6']} GCB6"
+                ]
+                if expanded_list is not None:
+                    expanded_list.append(root_id)
+
+    # --- Append to lines ---
+    for d in details:
+        lines.append(d)
+    if count_lines:
+        indented_block = "\n".join("\t\t" + line for line in count_lines if not line.endswith("0"))
+        lines.append(indented_block)
+    for op in open_boxes:
+        lines.append("\t\t" + line_for_actual(op, root_id, level=5, show_names=show_names))
+
+    return lines
+
+
+
 import pandas as pd
 
 def clean(val):
