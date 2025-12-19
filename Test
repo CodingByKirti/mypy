@@ -1,3 +1,192 @@
+def export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              ppt_app,
+                              pres,
+                              max_per_slide=10,
+                              show_names=True,
+                              expanded_list=None):
+    """
+    Generate org chart for a single root (MD or standalone GCB3).
+    Progressive compression at L6:
+      A) ≤ max_per_slide: show all
+      B) > max_per_slide: collapse GCB5+6 counts
+      C) > max_per_slide: collapse GCB4+5+6 counts
+      D) > max_per_slide: collapse all 3/4/5/6 counts, mark 'Expanded' and add expanded slide
+    Always keep open positions as boxes.
+    expanded_list: list to collect overflow cases for summary slide.
+    """
+
+    import pandas as pd
+
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() in {"unspecified", "#n/a"} else s
+
+    def line_for_actual(row, mgr_id=None, level=0):
+        name = clean(row.get("Employee Name", "")) if show_names else ""
+        title = clean(row.get("Position Title", ""))
+        gcb   = clean(row.get("GCB", ""))
+        country = clean(row.get("Country R3", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = " | ".join([p for p in [gcb, country] if p])
+        line = f"{header}\n{footer}" if footer else header
+        return line
+
+    def line_for_open(op_row, level=0):
+        title = clean(op_row.get("Position Title", ""))
+        if not title: return None
+        header = f"<Open Position> | {title}"
+        return ("\t"*level) + header
+
+    def gcb_rank(val):
+        val = str(val).strip()
+        if val == "MD": return 1
+        if val == "3": return 2
+        if val == "4": return 3
+        if val == "5": return 4
+        if val == "6": return 5
+        return 99
+
+    root_df = df_actual[df_actual["Employee ID"] == root_id]
+    if root_df.empty:
+        return
+    root_row = root_df.iloc[0]
+    root_line = line_for_actual(root_row, root_id, level=4)
+
+    child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == root_id]
+    child_opens   = df_open[df_open["Functional Manager Employee ID"] == root_id]
+    child_items = [("actual", r) for _, r in child_actuals.iterrows()]
+    child_items += [("open", r) for _, r in child_opens.iterrows()]
+
+    def write_slide(lines, title=None):
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+        tr.Font.Size = 9
+        tr.Text = (title + "\r") if title else ""
+        tr.Text += "\r".join(lines)
+
+    def create_expanded_slide(l5_row, gc_actuals, gc_opens):
+        l5_id = l5_row.get("Employee ID")
+        l5_line = "\t" + line_for_actual(l5_row, l5_id, level=5)
+        lines_exp = [root_line, l5_line]
+        gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
+        gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
+        gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
+        for kind2, gc in gc_items:
+            if kind2 == "actual":
+                gid = gc.get("Employee ID")
+                lines_exp.append("\t\t" + line_for_actual(gc, gid, level=6))
+            else:
+                op_line = line_for_open(gc, level=2)
+                if op_line: lines_exp.append(op_line)
+        write_slide(lines_exp, title="Expanded L5 details")
+
+    # --- Batch children ---
+    for i in range(0, len(child_items), max_per_slide):
+        batch = child_items[i:i+max_per_slide]
+        lines = [root_line]
+
+        for kind, child in batch:
+            if kind == "actual":
+                cid = child.get("Employee ID")
+                child_line = "\t" + line_for_actual(child, cid, level=5)
+                lines.append(child_line)
+
+                gc_actuals = df_actual[df_actual["Functional Manager Employee ID"] == cid]
+                gc_opens   = df_open[df_open["Functional Manager Employee ID"] == cid]
+                gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
+                gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
+                gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
+
+                if len(gc_items) <= max_per_slide:
+                    for kind2, gc in gc_items:
+                        if kind2 == "actual":
+                            gid = gc.get("Employee ID")
+                            lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+                        else:
+                            op_line = line_for_open(gc, level=2)
+                            if op_line: lines.append(op_line)
+                else:
+                    details = []
+                    open_boxes = []
+                    gcb_counts = {"3":0,"4":0,"5":0,"6":0}
+                    for kind2, gc in gc_items:
+                        gcb_val = str(gc.get("GCB", "")).strip()
+                        if kind2 == "open":
+                            op_line = line_for_open(gc, level=2)
+                            if op_line: open_boxes.append(op_line)
+                        else:
+                            if gcb_val == "3":
+                                details.append("\t\t" + line_for_actual(gc, gc.get("Employee ID"), level=6))
+                            elif gcb_val in ["4","5","6"]:
+                                gcb_counts[gcb_val] += 1
+
+                    count_lines = []
+                    new_total = len(details) + len(open_boxes) + sum(gcb_counts.values())
+
+                    if new_total > max_per_slide:
+                        # Case B: collapse 5+6
+                        if gcb_counts["5"]>0: count_lines.append(f"\t\t{gcb_counts['5']} X GCB5")
+                        if gcb_counts["6"]>0: count_lines.append(f"\t\t{gcb_counts['6']} X GCB6")
+                        new_total = len(details)+len(open_boxes)+len(count_lines)
+
+                        if new_total > max_per_slide:
+                            # Case C: collapse 4+5+6
+                            if gcb_counts["4"]>0: count_lines.append(f"\t\t{gcb_counts['4']} X GCB4")
+                            new_total = len(details)+len(open_boxes)+len(count_lines)
+
+                            if new_total > max_per_slide:
+                                # Case D: collapse all
+                                count_lines = []
+                                for lvl in ["3","4","5","6"]:
+                                    if gcb_counts[lvl]>0:
+                                        count_lines.append(f"\t\t{gcb_counts[lvl]} X GCB{lvl}")
+                                if expanded_list is not None:
+                                    expanded_list.append((clean(root_row.get("Employee Name","")),
+                                                          clean(child.get("Employee ID")),
+                                                          clean(child.get("Employee Name",""))))
+                                # Write compressed slide first
+                                for d in details: lines.append(d)
+                                for op in open_boxes: lines.append(op)
+                                if count_lines: lines.append("\n".join(count_lines))
+                                write_slide(lines)
+                                # Then expanded slide
+                                create_expanded_slide(child, gc_actuals, gc_opens)
+                                continue
+
+                    for d in details: lines.append(d)
+                    for op in open_boxes: lines.append(op)
+                    if count_lines: lines.append("\n".join(count_lines))
+
+            else:
+                op_line = line_for_open(child, level=1)
+                if op_line: lines.append(op_line)
+
+        write_slide(lines)
+
+
+import win32com.client
+
+ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+ppt_app.Visible = True
+pres = ppt_app.Presentations.Add()
+
+expanded_across_roots = []
+
+for root_id in roots:   # roots = MDs + uncovered GCB3 IDs
+    export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+
+
+--------
+
+
 =====
 def export_indented_text_full(root_id,
                               df_actual,
