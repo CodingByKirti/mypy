@@ -1,4 +1,6 @@
-def export_indented_text_full(level_id,
+=====
+# Complete code testing for indented ppt with summary slide # 19-12-2025
+def export_indented_text_full(level_ids,
                               df_actual,
                               df_open,
                               direct_counts,
@@ -6,18 +8,18 @@ def export_indented_text_full(level_id,
                               excel_path=None,
                               ppt_path=None,
                               ppt_app=None,
-                              pres=None,
-                              max_per_slide=10,     # <-- default now 10
-                              show_names=True):     # <-- new flag
+                              max_per_slide=10,
+                              show_names=True):
     """
-    Export indented hierarchy lines with batching:
-      - Max 10 children per slide
-      - Handles MD roots (GCB == 'MD') and uncovered GCB3 roots (GCB == '3')
-      - At last level: if >10 reportees, progressively collapse:
-          * First collapse GCB5/GCB6 into counts
-          * If still >10, collapse GCB4+5+6 into counts
-          * If still >10, collapse all GCB levels into counts
-        Always keep open positions as boxes.
+    Generate org charts for:
+      - All MD roots and standalone GCB3 roots (IDs supplied via level_ids)
+    Level-6 compression (progressive):
+      A) ≤ 10: show all
+      B) > 10: collapse GCB5+6 counts, keep MD/3/4 details + open positions
+      C) > 10: collapse GCB4+5+6 counts, keep GCB3 details + open positions
+      D) > 10: collapse all 3/4/5/6 counts + open positions, mark 'expanded' and add an expanded slide
+    Always keep open positions as explicit boxes.
+    Adds one summary slide at the end listing all expanded L5 managers across all roots.
     """
     import os
     import pandas as pd
@@ -27,9 +29,9 @@ def export_indented_text_full(level_id,
     def clean(x):
         if pd.isna(x): return ""
         s = str(x).strip()
-        return "" if s.lower() == "unspecified" else s
+        return "" if s.lower() in {"unspecified", "#n/a"} else s
 
-    def line_for_actual(row, mgr_id=None, level=0, show_names=show_names):
+    def line_for_actual(row, mgr_id=None, level=0):
         name = clean(row.get("Employee Name", "")) if show_names else ""
         title = clean(row.get("Position Title", ""))
         gcb   = clean(row.get("GCB", ""))
@@ -37,7 +39,6 @@ def export_indented_text_full(level_id,
         header = " | ".join([p for p in [name, title] if p])
         footer = " | ".join([p for p in [gcb, country] if p])
         line = f"{header}\n{footer}" if footer else header
-
         has_mgr = (mgr_id is not None) and (not pd.isna(mgr_id))
         if level >= 5 and has_mgr:
             if open_pos_counts.get(mgr_id, 0) > 0:
@@ -69,45 +70,22 @@ def export_indented_text_full(level_id,
         if val == "6": return 5
         return 99
 
-    # Default paths
-    excel_path = excel_path or os.path.join(os.getcwd(), f"Indented_{level_id}.xlsx")
-    ppt_path   = ppt_path   or os.path.join(os.getcwd(), f"Indented_{level_id}.pptx")
+    # Files
+    excel_path = excel_path or os.path.join(os.getcwd(), "Indented_All.xlsx")
+    ppt_path   = ppt_path   or os.path.join(os.getcwd(), "Indented_All.pptx")
 
-    # Root row
-    root_df = df_actual[df_actual["Employee ID"] == level_id]
-    if root_df.empty:
-        raise ValueError(f"Employee ID {level_id} not found in df_actual.")
-    root_row = root_df.iloc[0]
-    root_gcb = str(root_row.get("GCB", "")).strip()
-
-    if root_gcb == "MD":
-        root_line = line_for_actual(root_row, level_id, level=4, show_names=show_names)
-    elif root_gcb == "3":
-        root_line = line_for_actual(root_row, level_id, level=3, show_names=show_names)
-    else:
-        root_line = line_for_actual(root_row, level_id, level=4, show_names=show_names)
-
-    child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level_id]
-    child_opens   = df_open[df_open["Functional Manager Employee ID"] == level_id]
-    child_items = [("actual", r) for _, r in child_actuals.iterrows()]
-    child_items += [("open", r) for _, r in child_opens.iterrows()]
-
-    # Excel workbook
+    # Excel + PPT setup
     wb = Workbook()
     ws = wb.active
     ws.title = "Slide_1"
     slide_idx = 1
-    expanded_list = []
+    expanded_list = []  # [(root_name, l5_id, l5_name)]
 
-    # PowerPoint
-    if pres is None:
-        ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
-        ppt.Visible = True
-        pres_local = ppt.Presentations.Add()
-    else:
-        pres_local = pres
+    ppt = ppt_app or win32com.client.Dispatch("PowerPoint.Application")
+    ppt.Visible = True
+    pres_local = ppt.Presentations.Add()
 
-    def write_slide(lines):
+    def write_slide(lines, title=None):
         nonlocal slide_idx
         if slide_idx == 1 and wb.active.title == "Slide_1" and wb.active.max_row == 1:
             ws = wb.active
@@ -117,77 +95,115 @@ def export_indented_text_full(level_id,
         ws.append(["Hierarchy"])
         for ln in lines:
             ws.append([ln])
+
         slide = pres_local.Slides.Add(pres_local.Slides.Count+1, 12)
         tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
         tr.Font.Size = 9
-        tr.Text = "\r".join(lines)
+        tr.Text = (title + "\r") if title else ""
+        tr.Text += "\r".join(lines)
         slide_idx += 1
 
-    # --- Batch children ---
-    for i in range(0, len(child_items), max_per_slide):
-        batch = child_items[i:i+max_per_slide]
-        lines = [root_line]
+    def create_expanded_slide(root_row, l5_row, gc_actuals, gc_opens):
+        """Create a separate expanded slide for the L5 manager with overflow."""
+        root_line = line_for_actual(root_row, root_row.get("Employee ID"), level=4)
+        l5_id = l5_row.get("Employee ID")
+        l5_line = "\t" + line_for_actual(l5_row, l5_id, level=5)
+        lines = [root_line, l5_line, "\t[Expanded details]"]
 
-        for kind, child in batch:
-            if kind == "actual":
-                cid = child.get("Employee ID")
-                cid = None if pd.isna(cid) else cid
-                child_line = "\t" + line_for_actual(child, cid, level=5, show_names=show_names)
-                lines.append(child_line)
+        # Show all grandchildren explicitly on expanded slide (no compression here)
+        gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
+        gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
+        gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
 
-                # Collect grandchildren
-                gc_actuals = df_actual[df_actual["Functional Manager Employee ID"] == cid]
-                gc_opens   = df_open[df_open["Functional Manager Employee ID"] == cid]
-                gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
-                gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
-                gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
+        for kind2, gc in gc_items:
+            if kind2 == "actual":
+                gid = gc.get("Employee ID")
+                gid = None if pd.isna(gid) else gid
+                lines.append("\t\t" + line_for_actual(gc, gid, level=6))
+            else:
+                op_line = line_for_open(gc, level=2)
+                if op_line: lines.append(op_line)
 
-                if len(gc_items) <= max_per_slide:
-                    for kind2, gc in gc_items:
-                        if kind2 == "actual":
-                            gid = gc.get("Employee ID")
-                            gid = None if pd.isna(gid) else gid
-                            lines.append("\t\t" + line_for_actual(gc, gid, level=6, show_names=show_names))
-                        else:
-                            op_line = line_for_open(gc, level=2)
-                            if op_line: lines.append(op_line)
-                else:
-                    # Overflow handling: progressive compression
-                    details = []
-                    open_boxes = []
-                    gcb_counts = {"3":0,"4":0,"5":0,"6":0}
-                    for kind2, gc in gc_items:
-                        gcb_val = str(gc.get("GCB", "")).strip()
-                        if kind2 == "open":
-                            op_line = line_for_open(gc, level=2)
-                            if op_line: open_boxes.append(op_line)
-                        else:
-                            if gcb_val in ["MD","3","4"]:
+        write_slide(lines, title="Expanded L5 details")
+
+    # --- Iterate roots (MDs + standalone GCB3s) ---
+    for level_id in level_ids:
+        root_df = df_actual[df_actual["Employee ID"] == level_id]
+        if root_df.empty:
+            continue
+        root_row = root_df.iloc[0]
+        root_gcb = str(root_row.get("GCB", "")).strip()
+
+        # Root display
+        if root_gcb == "MD":
+            root_line = line_for_actual(root_row, level_id, level=4)
+        elif root_gcb == "3":
+            root_line = line_for_actual(root_row, level_id, level=3)
+        else:
+            root_line = line_for_actual(root_row, level_id, level=4)
+
+        # L5 under root
+        child_actuals = df_actual[df_actual["Functional Manager Employee ID"] == level_id]
+        child_opens   = df_open[df_open["Functional Manager Employee ID"] == level_id]
+        child_items = [("actual", r) for _, r in child_actuals.iterrows()]
+        child_items += [("open", r) for _, r in child_opens.iterrows()]
+
+        for i in range(0, len(child_items), max_per_slide):
+            batch = child_items[i:i+max_per_slide]
+            lines = [root_line]
+
+            for kind, child in batch:
+                if kind == "actual":
+                    cid = child.get("Employee ID")
+                    cid = None if pd.isna(cid) else cid
+                    child_line = "\t" + line_for_actual(child, cid, level=5)
+                    lines.append(child_line)
+
+                    # L6 under this L5
+                    gc_actuals = df_actual[df_actual["Functional Manager Employee ID"] == cid]
+                    gc_opens   = df_open[df_open["Functional Manager Employee ID"] == cid]
+                    gc_items = [("actual", rr) for _, rr in gc_actuals.iterrows()]
+                    gc_items += [("open", rr) for _, rr in gc_opens.iterrows()]
+                    gc_items.sort(key=lambda tup: gcb_rank(tup[1].get("GCB", "")))
+
+                    if len(gc_items) <= max_per_slide:
+                        # Case A: show all
+                        for kind2, gc in gc_items:
+                            if kind2 == "actual":
                                 gid = gc.get("Employee ID")
                                 gid = None if pd.isna(gid) else gid
-                                details.append("\t\t" + line_for_actual(gc, gid, level=6, show_names=show_names))
-                            elif gcb_val in ["5","6"]:
-                                gcb_counts[gcb_val] += 1
+                                lines.append("\t\t" + line_for_actual(gc, gid, level=6))
                             else:
-                                gcb_counts["6"] += 1
+                                op_line = line_for_open(gc, level=2)
+                                if op_line: lines.append(op_line)
+                    else:
+                        # Cases B/C/D: progressive compression
+                        details = []      # MD, GCB3, GCB4 individuals
+                        open_boxes = []   # open positions
+                        gcb_counts = {"3": 0, "4": 0, "5": 0, "6": 0}
 
-                    count_lines = []
-                    new_total = len(details) + len(open_boxes) + sum(gcb_counts.values())
+                        for kind2, gc in gc_items:
+                            gcb_val = str(gc.get("GCB", "")).strip()
+                            if kind2 == "open":
+                                op_line = line_for_open(gc, level=2)
+                                if op_line: open_boxes.append(op_line)
+                            else:
+                                if gcb_val in ["MD", "3", "4"]:
+                                    gid = gc.get("Employee ID")
+                                    gid = None if pd.isna(gid) else gid
+                                    details.append("\t\t" + line_for_actual(gc, gid, level=6))
+                                elif gcb_val in ["5", "6"]:
+                                    gcb_counts[gcb_val] += 1
+                                else:
+                                    gcb_counts["6"] += 1  # unknown → treat as 6
 
-                    if new_total > max_per_slide:
-                        # Step 1: collapse 5+6
+                        # Start with raw totals
                         count_lines = []
-                        if gcb_counts["5"] > 0:
-                            count_lines.append(f"\t\t{gcb_counts['5']} X GCB5")
-                        if gcb_counts["6"] > 0:
-                            count_lines.append(f"\t\t{gcb_counts['6']} X GCB6")
-                        new_total = len(details) + len(open_boxes) + len(count_lines)
+                        new_total = len(details) + len(open_boxes) + sum(gcb_counts.values())
 
                         if new_total > max_per_slide:
-                            # Step 2: collapse 4+5+6
+                            # Step B: collapse 5+6 into counts (keep MD/3/4 details + opens)
                             count_lines = []
-                            if gcb_counts["4"] > 0:
-                                count_lines.append(f"\t\t{gcb_counts['4']} X GCB4")
                             if gcb_counts["5"] > 0:
                                 count_lines.append(f"\t\t{gcb_counts['5']} X GCB5")
                             if gcb_counts["6"] > 0:
@@ -195,47 +211,69 @@ def export_indented_text_full(level_id,
                             new_total = len(details) + len(open_boxes) + len(count_lines)
 
                             if new_total > max_per_slide:
-                                # Step 3: final fallback — collapse all GCB levels
-                                details = []  # drop individual MD/3/4 details
+                                # Step C: collapse 4+5+6 into counts (keep GCB3 details + opens)
                                 count_lines = []
-                                if gcb_counts["3"] > 0:
-                                    count_lines.append(f"\t\t{gcb_counts['3']} X GCB3")
+                                # Convert existing MD/3/4 details → keep only GCB3 details
+                                keep_details = []
+                                for d in details:
+                                    # If the line contains '| GCB4' or '| GCBMD', we will count instead
+                                    if "\n4" in d or "\nMD" in d:
+                                        # will be represented via counts below
+                                        continue
+                                    keep_details.append(d)
+                                details = keep_details
+
+                                # Add counts for 4,5,6
                                 if gcb_counts["4"] > 0:
                                     count_lines.append(f"\t\t{gcb_counts['4']} X GCB4")
                                 if gcb_counts["5"] > 0:
                                     count_lines.append(f"\t\t{gcb_counts['5']} X GCB5")
                                 if gcb_counts["6"] > 0:
                                     count_lines.append(f"\t\t{gcb_counts['6']} X GCB6")
-                                    
-                                expanded_list.append((cid, root_row.get("Employee Name", "")))
+                                new_total = len(details) + len(open_boxes) + len(count_lines)
 
-        # --- Append after compression (always) ---
-        for d in details:
-            lines.append(d)
-        for op in open_boxes:
-            lines.append(op)
-        if count_lines:
-            lines.append("\n".join(count_lines))
-        write_slide(lines)
+                                if new_total > max_per_slide:
+                                    # Step D: collapse all 3/4/5/6 into one count box + opens, mark expanded
+                                    total_counts = gcb_counts["3"] + gcb_counts["4"] + gcb_counts["5"] + gcb_counts["6"]
+                                    details = []  # drop individuals
+                                    count_lines = [f"\t\t{total_counts} X GCB3+4+5+6\n\t\t[Expanded]"]
+                                    # Track for summary and add an expanded slide
+                                    expanded_list.append((
+                                        clean(root_row.get("Employee Name", "")),
+                                        clean(child.get("Employee ID")),
+                                        clean(child.get("Employee Name", ""))
+                                    ))
+                                    create_expanded_slide(root_row, child, gc_actuals, gc_opens)
 
-    # After batching loop, add summary slide if any expanded cases
+                        # Append after compression (always)
+                        for d in details:
+                            lines.append(d)
+                        for op in open_boxes:
+                            lines.append(op)
+                        if count_lines:
+                            # Put counts into a single box line to preserve SmartArt behavior
+                            lines.append("\n".join(count_lines))
+
+                else:
+                    # L5 open under root
+                    op_line = line_for_open(child, level=1)
+                    if op_line: lines.append(op_line)
+
+            # Write the slide for this batch of L5s
+            write_slide(lines)
+
+    # One summary slide at the very end
     if expanded_list:
-        slide = pres_local.Slides.Add(pres_local.Slides.Count+1, 12)
-        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
-        tr.Font.Size = 12
-        tr.Text = "Expanded level-5 reportees (final fallback applied):\r" + \
-                  "\r".join([f"- L5: {l5} under {mgr}" for l5, mgr in expanded_list])
+        summary_lines = ["Expanded L5 managers (final fallback applied):"]
+        for root_name, l5_id, l5_name in expanded_list:
+            summary_lines.append(f"- {l5_name} (ID: {l5_id}) under {root_name}")
+        write_slide(summary_lines, title="Summary")
 
-    # Save once at end
-    wb.save(excel_path)
-    if pres is None and ppt_path:
+    # Save once
+    wb.save(excel_path or os.path.join(os.getcwd(), "Indented_All.xlsx"))
+    if ppt_path:
         pres_local.SaveAs(ppt_path)
-        pres_local.Close()
-
-    print(f"Excel saved: {excel_path}")
-    if pres is None and ppt_path:
-        print(f"PPT saved: {ppt_path}")
-=====
+    pres_local.Close()
 
 
 
