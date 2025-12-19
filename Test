@@ -12,6 +12,182 @@ def export_indented_text_full(root_id,
                               show_names=True,
                               expanded_list=None):
     """
+    Build org chart for a single root (MD or standalone GCB3).
+
+    Fitting rule under each L5 (max_per_slide = 10):
+      - First try: show ALL individuals (GCB3, GCB4, GCB5, GCB6) + one Open Positions box if present.
+      - If overflow, compress:
+        Case B: keep GCB3+GCB4 individuals, show counts for GCB5 and GCB6 + open box if present.
+        Case C: show counts for GCB3, GCB4, GCB5, GCB6 + open box if present. Also create an expanded slide.
+      - Special case: if an L5 has ONLY GCB5/6 and total (5/6 individuals + open box) ≤ limit, show individual 5/6 boxes.
+      - Expanded slide shows:
+        [Expanded list] header, all GCB3+GCB4 individuals, ONE combined GCB5+GCB6 count box, and one Open Positions box (if any).
+    """
+
+    # ---------- helpers ----------
+    def clean(x):
+        if pd.isna(x): return ""
+        s = str(x).strip()
+        return "" if s.lower() in {"unspecified", "#n/a"} else s
+
+    def line_for_actual(row, mgr_id=None):
+        name = clean(row.get("Employee Name", "")) if show_names else ""
+        title = clean(row.get("Position Title", ""))
+        gcb   = clean(row.get("GCB", ""))
+        header = " | ".join([p for p in [name, title] if p])
+        footer = f"GCB{gcb}" if gcb and gcb not in {"MD"} else (gcb if gcb == "MD" else "")
+        line = header if not footer else f"{header}\n{footer}"
+        # add counts
+        if mgr_id is not None and not pd.isna(mgr_id):
+            dr = direct_counts.get(mgr_id, 0)
+            op = open_pos_counts.get(mgr_id, 0)
+            if dr > 0: line += f"\n→ Direct Reports: {dr}"
+            if op > 0: line += f"\n→ Open Positions: {op}"
+        return line
+
+    def add_text_slide(lines, title=None):
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # ppLayoutBlank
+        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+        tr.Font.Size = 10
+        tr.Text = (title + "\r") if title else ""
+        tr.Text += "\r".join(lines)
+
+    def count_box(label, count, tabs=2):
+        return (("\t" * tabs) + f"{count} X {label}") if count > 0 else None
+
+    def open_box(open_count, tabs=2):
+        return (("\t" * tabs) + f"<Open Positions> X {open_count}") if open_count > 0 else None
+
+    # ---------- root ----------
+    root_df = df_actual[df_actual["Employee ID"] == root_id]
+    if root_df.empty:
+        return
+    root_row  = root_df.iloc[0]
+    root_name = clean(root_row.get("Employee Name", ""))
+    root_line = line_for_actual(root_row, mgr_id=root_id)
+
+    # ---------- L5 under root ----------
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == root_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == root_id]
+    l5_items = [("actual", r) for _, r in l5_actuals.iterrows()]
+    l5_items += [("open", r) for _, r in l5_opens.iterrows()]
+
+    # page L5s by max_per_slide
+    for i in range(0, len(l5_items), max_per_slide):
+        batch = l5_items[i:i+max_per_slide]
+        main_lines = [root_line]
+        expanded_payloads = []
+
+        for kind, l5 in batch:
+            if kind == "open":
+                op_line = ("\t" + f"<Open Position> | {clean(l5.get('Position Title',''))}")
+                main_lines.append(op_line)
+                continue
+
+            # L5 actual
+            l5_id   = l5.get("Employee ID")
+            l5_name = clean(l5.get("Employee Name", ""))
+            l5_line = "\t" + line_for_actual(l5, mgr_id=l5_id)
+            main_lines.append(l5_line)
+
+            # ---------- L6 under this L5 ----------
+            l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+            l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+            gcb3_boxes, gcb4_boxes, gcb5_boxes, gcb6_boxes = [], [], [], []
+            for _, rr in l6_actuals.iterrows():
+                gcb = str(rr.get("GCB", "")).strip()
+                line = "\t\t" + line_for_actual(rr, mgr_id=rr.get("Employee ID"))
+                if gcb == "3": gcb3_boxes.append(line)
+                elif gcb == "4": gcb4_boxes.append(line)
+                elif gcb == "5": gcb5_boxes.append(line)
+                elif gcb == "6": gcb6_boxes.append(line)
+                else: gcb6_boxes.append(line)  # unknown → treat as 6
+
+            n_open = len(l6_opens.index)
+            open_count_box = open_box(n_open, tabs=2)
+            open_box_count_flag = 1 if open_count_box else 0
+
+            # ---------- special case: only 5/6 present and fits ----------
+            if not gcb3_boxes and not gcb4_boxes:
+                total_boxes_only_56 = len(gcb5_boxes) + len(gcb6_boxes) + open_box_count_flag
+                if total_boxes_only_56 <= max_per_slide:
+                    main_lines += gcb5_boxes + gcb6_boxes
+                    if open_count_box: main_lines.append(open_count_box)
+                    continue
+
+            # ---------- Try full individuals first (only combine counts when needed) ----------
+            total_full = len(gcb3_boxes) + len(gcb4_boxes) + len(gcb5_boxes) + len(gcb6_boxes) + open_box_count_flag
+            if total_full <= max_per_slide:
+                main_lines += gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
+                if open_count_box: main_lines.append(open_count_box)
+                continue
+
+            # ---------- Case B: compress 5/6 into counts, keep 3/4 individuals ----------
+            caseB = list(gcb3_boxes) + list(gcb4_boxes)
+            c5 = len(gcb5_boxes)
+            c6 = len(gcb6_boxes)
+            if c5 > 0: caseB.append(count_box("GCB5", c5))
+            if c6 > 0: caseB.append(count_box("GCB6", c6))
+            if open_count_box: caseB.append(open_count_box)
+            if len([b for b in caseB if b]) <= max_per_slide:
+                main_lines += [b for b in caseB if b]
+                continue
+
+            # ---------- Case C: compress 3/4 as counts too, and add expanded slide ----------
+            caseC = []
+            if len(gcb3_boxes) > 0: caseC.append(count_box("GCB3", len(gcb3_boxes)))
+            if len(gcb4_boxes) > 0: caseC.append(count_box("GCB4", len(gcb4_boxes)))
+            if c5 > 0: caseC.append(count_box("GCB5", c5))
+            if c6 > 0: caseC.append(count_box("GCB6", c6))
+            if open_count_box: caseC.append(open_count_box)
+            main_lines += [b for b in caseC if b]
+
+            # Prepare expanded slide payload for THIS L5
+            combined_56 = c5 + c6
+            expanded_lines = [
+                root_line,
+                "\t" + line_for_actual(l5, mgr_id=l5_id),
+                "\t[Expanded list]"
+            ]
+            expanded_lines += gcb3_boxes + gcb4_boxes
+            if combined_56 > 0:
+                expanded_lines.append(count_box("GCB5+GCB6", combined_56))
+            if open_count_box:
+                expanded_lines.append(open_count_box)
+
+            expanded_payloads.append({
+                "title": f"Expanded for L5: {l5_name}",
+                "lines": expanded_lines,
+                "summary_tuple": (root_name, l5_id, l5_name)
+            })
+
+        # write main slide
+        add_text_slide(main_lines, title=f"Org chart: {root_name}")
+        # write expanded slides for ALL overflow L5s in this batch
+        for payload in expanded_payloads:
+            add_text_slide(payload["lines"], title=payload["title"])
+            if expanded_list is not None:
+                expanded_list.append(payload["summary_tuple"])
+ñnnnnnnnnnnnnnnmmmmmmmm
+
+
+
+
+import pandas as pd
+import win32com.client
+
+def export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              ppt_app,
+                              pres,
+                              max_per_slide=10,
+                              show_names=True,
+                              expanded_list=None):
+    """
     Org chart for a single root (MD or standalone GCB3).
     """
 
