@@ -1,3 +1,58 @@
+
+import win32com.client
+
+# PowerPoint setup
+ppt_app = win32com.client.Dispatch("PowerPoint.Application")
+ppt_app.Visible = True
+pres = ppt_app.Presentations.Add()
+
+# Build roots
+all_mds = df_actual[df_actual["GCB"].astype(str).str.strip() == "MD"][["Employee ID","Functional Manager Employee ID"]].copy()
+
+# Choose ONLY top-level MDs (manager not MD or missing). If you want all MDs, just use all_mds["Employee ID"].
+md_ids = all_mds["Employee ID"].dropna()
+md_manager_ids = all_mds["Functional Manager Employee ID"].dropna()
+top_level_mds = all_mds[~all_mds["Functional Manager Employee ID"].isin(md_ids)]["Employee ID"].dropna().tolist()
+
+# Standalone GCB3s (not under any MD)
+gcb3_all = df_actual[df_actual["GCB"].astype(str).str.strip() == "3"]
+standalone_gcb3 = gcb3_all[~gcb3_all["Functional Manager Employee ID"].isin(md_ids)]["Employee ID"].dropna().tolist()
+
+# Final roots list (de-duped)
+roots = list(dict.fromkeys(top_level_mds + standalone_gcb3))
+
+# Collect expanded cases across all roots
+expanded_across_roots = []
+
+# Generate charts
+for root_id in roots:
+    export_indented_text_full(root_id,
+                              df_actual,
+                              df_open,
+                              direct_counts,
+                              open_pos_counts,
+                              ppt_app,
+                              pres,
+                              max_per_slide=10,
+                              show_names=True,
+                              expanded_list=expanded_across_roots)
+
+# Final summary slide across all roots
+if expanded_across_roots:
+    slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+    tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
+    tr.Font.Size = 12
+    tr.Text = "Expanded L5 managers (final fallback applied):\r" + \
+              "\r".join([f"- {l5_name} (ID: {l5_id}) under {root_name}"
+                         for root_name, l5_id, l5_name in expanded_across_roots])
+
+# Save once at the end — use a full path and make sure file is not open elsewhere
+pres.SaveAs(r"C:\Users\Kirti\Documents\OrgCharts_All.pptx")
+pres.Close()
+
+::::::::::
+
+
 import pandas as pd
 import win32com.client
 
