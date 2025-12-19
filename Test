@@ -4,34 +4,15 @@ import win32com.client
 def export_indented_text_full(root_id,
                               df_actual,
                               df_open,
+                              direct_counts,
+                              open_pos_counts,
                               ppt_app,
                               pres,
                               max_per_slide=10,
                               show_names=True,
                               expanded_list=None):
     """
-    Generate org chart for a single root (MD or standalone GCB3).
-
-    L6 fitting rule (under each L5):
-      - Count boxes as:
-        • individual GCB3 boxes
-        • individual GCB4 boxes
-        • one count box for GCB5
-        • one count box for GCB6
-        • one 'Open Positions' count box (if any)
-      - If only GCB5/6 present and total (individual 5/6 + open box) ≤ 10 → show 5/6 as individual boxes.
-      - Otherwise progressively collapse:
-        Case A: try GCB3 + GCB4 individuals + (count5 + count6) + open box (≤ 10)
-        Case B: collapse GCB4 into a count (keep GCB3 individuals) + (count5 + count6) + open box (≤ 10)
-        Case C: collapse GCB3 as well → main shows only counts (3,4,5,6) + open box.
-                Create one expanded slide for this L5 showing:
-                  • [Expanded list] header
-                  • all GCB3 and GCB4 individuals
-                  • a single combined count box for GCB5+GCB6
-                  • one Open Positions count box (if any)
-
-    Expanded slides are rendered immediately after the corresponding main slide and only once per L5.
-    If expanded_list is provided, entries are appended for a final summary slide in the main driver.
+    Org chart for a single root (MD or standalone GCB3).
     """
 
     # ---------- helpers ----------
@@ -40,16 +21,23 @@ def export_indented_text_full(root_id,
         s = str(x).strip()
         return "" if s.lower() in {"unspecified", "#n/a"} else s
 
-    def line_for_actual(row):
+    def line_for_actual(row, mgr_id=None):
         name = clean(row.get("Employee Name", "")) if show_names else ""
         title = clean(row.get("Position Title", ""))
         gcb   = clean(row.get("GCB", ""))
         header = " | ".join([p for p in [name, title] if p])
         footer = f"GCB{gcb}" if gcb and gcb not in {"MD"} else (gcb if gcb == "MD" else "")
-        return header if not footer else f"{header}\n{footer}"
+        line = header if not footer else f"{header}\n{footer}"
+        # add counts
+        if mgr_id is not None and not pd.isna(mgr_id):
+            if direct_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Direct Reports: {direct_counts[mgr_id]}"
+            if open_pos_counts.get(mgr_id, 0) > 0:
+                line += f"\n→ Open Positions: {open_pos_counts[mgr_id]}"
+        return line
 
     def add_text_slide(lines, title=None):
-        slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # ppLayoutBlank
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # blank layout
         tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
         tr.Font.Size = 10
         tr.Text = (title + "\r") if title else ""
@@ -67,7 +55,7 @@ def export_indented_text_full(root_id,
         return
     root_row  = root_df.iloc[0]
     root_name = clean(root_row.get("Employee Name", ""))
-    root_line = line_for_actual(root_row)
+    root_line = line_for_actual(root_row, mgr_id=root_id)
 
     # ---------- L5 under root ----------
     l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == root_id]
@@ -79,11 +67,10 @@ def export_indented_text_full(root_id,
     for i in range(0, len(l5_items), max_per_slide):
         batch = l5_items[i:i+max_per_slide]
         main_lines = [root_line]
-        expanded_payloads = []  # collect expanded slides to render after the main one
+        expanded_payloads = []
 
         for kind, l5 in batch:
             if kind == "open":
-                # L5 open position (as a single box)
                 op_line = ("\t" + f"<Open Position> | {clean(l5.get('Position Title',''))}")
                 main_lines.append(op_line)
                 continue
@@ -91,101 +78,70 @@ def export_indented_text_full(root_id,
             # L5 actual
             l5_id   = l5.get("Employee ID")
             l5_name = clean(l5.get("Employee Name", ""))
-            l5_line = "\t" + line_for_actual(l5)
+            l5_line = "\t" + line_for_actual(l5, mgr_id=l5_id)
             main_lines.append(l5_line)
 
             # ---------- L6 under this L5 ----------
             l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
             l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
 
-            # partition actuals
-            gcb3_boxes = []
-            gcb4_boxes = []
-            gcb5_boxes = []
-            gcb6_boxes = []
+            gcb3_boxes, gcb4_boxes, gcb5_boxes, gcb6_boxes = [], [], [], []
             for _, rr in l6_actuals.iterrows():
                 gcb = str(rr.get("GCB", "")).strip()
-                line = "\t\t" + line_for_actual(rr)
-                if gcb == "3":
-                    gcb3_boxes.append(line)
-                elif gcb == "4":
-                    gcb4_boxes.append(line)
-                elif gcb == "5":
-                    gcb5_boxes.append(line)
-                elif gcb == "6":
-                    gcb6_boxes.append(line)
-                else:
-                    # unknown → treat as 6
-                    gcb6_boxes.append(line)
+                line = "\t\t" + line_for_actual(rr, mgr_id=rr.get("Employee ID"))
+                if gcb == "3": gcb3_boxes.append(line)
+                elif gcb == "4": gcb4_boxes.append(line)
+                elif gcb == "5": gcb5_boxes.append(line)
+                elif gcb == "6": gcb6_boxes.append(line)
+                else: gcb6_boxes.append(line)
 
-            # open positions count box (one box only)
             n_open = len(l6_opens.index)
             open_count_box = open_box(n_open, tabs=2)
 
-            # ---------- special case: only 5/6 present and fits ----------
-            if len(gcb3_boxes) == 0 and len(gcb4_boxes) == 0:
+            # special case: only 5/6 present and fit
+            if not gcb3_boxes and not gcb4_boxes:
                 total_boxes_only_56 = len(gcb5_boxes) + len(gcb6_boxes) + (1 if open_count_box else 0)
                 if total_boxes_only_56 <= max_per_slide:
-                    # show individual 5/6 and open box if any
                     main_lines += gcb5_boxes + gcb6_boxes
-                    if open_count_box:
-                        main_lines.append(open_count_box)
-                    continue  # next L5
+                    if open_count_box: main_lines.append(open_count_box)
+                    continue
 
-            # ---------- Case A: try full mix with counts for 5 and 6 ----------
-            c5 = len(gcb5_boxes)
-            c6 = len(gcb6_boxes)
-            caseA_boxes = list(gcb3_boxes) + list(gcb4_boxes)
-            if c5 > 0:
-                caseA_boxes.append(count_box("GCB5", c5))
-            if c6 > 0:
-                caseA_boxes.append(count_box("GCB6", c6))
-            if open_count_box:
-                caseA_boxes.append(open_count_box)
+            # Case A
+            caseA = gcb3_boxes + gcb4_boxes
+            if gcb5_boxes: caseA.append(count_box("GCB5", len(gcb5_boxes)))
+            if gcb6_boxes: caseA.append(count_box("GCB6", len(gcb6_boxes)))
+            if open_count_box: caseA.append(open_count_box)
+            if len([b for b in caseA if b]) <= max_per_slide:
+                main_lines += [b for b in caseA if b]
+                continue
 
-            if len([b for b in caseA_boxes if b]) <= max_per_slide:
-                main_lines += [b for b in caseA_boxes if b]
-                continue  # next L5
+            # Case B
+            caseB = gcb3_boxes[:]
+            if gcb4_boxes: caseB.append(count_box("GCB4", len(gcb4_boxes)))
+            if gcb5_boxes: caseB.append(count_box("GCB5", len(gcb5_boxes)))
+            if gcb6_boxes: caseB.append(count_box("GCB6", len(gcb6_boxes)))
+            if open_count_box: caseB.append(open_count_box)
+            if len([b for b in caseB if b]) <= max_per_slide:
+                main_lines += [b for b in caseB if b]
+                continue
 
-            # ---------- Case B: collapse GCB4 into a count, keep GCB3 individuals ----------
-            caseB_boxes = list(gcb3_boxes)
-            if len(gcb4_boxes) > 0:
-                caseB_boxes.append(count_box("GCB4", len(gcb4_boxes)))
-            if c5 > 0:
-                caseB_boxes.append(count_box("GCB5", c5))
-            if c6 > 0:
-                caseB_boxes.append(count_box("GCB6", c6))
-            if open_count_box:
-                caseB_boxes.append(open_count_box)
+            # Case C
+            caseC = []
+            if gcb3_boxes: caseC.append(count_box("GCB3", len(gcb3_boxes)))
+            if gcb4_boxes: caseC.append(count_box("GCB4", len(gcb4_boxes)))
+            if gcb5_boxes: caseC.append(count_box("GCB5", len(gcb5_boxes)))
+            if gcb6_boxes: caseC.append(count_box("GCB6", len(gcb6_boxes)))
+            if open_count_box: caseC.append(open_count_box)
+            main_lines += [b for b in caseC if b]
 
-            if len([b for b in caseB_boxes if b]) <= max_per_slide:
-                main_lines += [b for b in caseB_boxes if b]
-                continue  # next L5
-
-            # ---------- Case C: collapse GCB3 as well; main shows only counts + open ----------
-            caseC_boxes = []
-            if len(gcb3_boxes) > 0:
-                caseC_boxes.append(count_box("GCB3", len(gcb3_boxes)))
-            if len(gcb4_boxes) > 0:
-                caseC_boxes.append(count_box("GCB4", len(gcb4_boxes)))
-            if c5 > 0:
-                caseC_boxes.append(count_box("GCB5", c5))
-            if c6 > 0:
-                caseC_boxes.append(count_box("GCB6", c6))
-            if open_count_box:
-                caseC_boxes.append(open_count_box)
-
-            main_lines += [b for b in caseC_boxes if b]
-
-            # prepare expanded slide payload (only once per L5)
-            combined_56 = c5 + c6
+            # Expanded slide payload
             expanded_lines = [
-                root_line,                         # keep root context for clarity
-                "\t" + line_for_actual(l5),        # L5 header
-                "\t[Expanded list]"                # required header
+                root_line,
+                "\t" + line_for_actual(l5, mgr_id=l5_id),
+                "\t[Expanded list]"
             ]
-            expanded_lines += gcb3_boxes          # show all GCB3 individuals
-            expanded_lines += gcb4_boxes          # show all GCB4 individuals
+            expanded_lines += gcb3_boxes + gcb4_boxes
+            combined_56 = len(gcb5_boxes) + len(gcb6_boxes)
             if combined_56 > 0:
                 expanded_lines.append(count_box("GCB5+GCB6", combined_56))
             if open_count_box:
@@ -194,15 +150,20 @@ def export_indented_text_full(root_id,
             expanded_payloads.append({
                 "title": f"Expanded for L5: {l5_name}",
                 "lines": expanded_lines,
-                "summary_tuple": (root_name, clean(l5_id), l5_name)
+                "summary_tuple": (root_name, l5_id, l5_name)
             })
 
-        # write main slide first (then expanded slides for L5s in this batch)
+        # write main slide
         add_text_slide(main_lines, title=f"Org chart: {root_name}")
+        # write expanded slides for all overflow L5s
         for payload in expanded_payloads:
             add_text_slide(payload["lines"], title=payload["title"])
             if expanded_list is not None:
                 expanded_list.append(payload["summary_tuple"])
+----
+
+
+
 
 -----
 import win32com.client
