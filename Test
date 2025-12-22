@@ -1,4 +1,131 @@
 
+
+
+Fixing alignment inside the combined count boxes
+
+You’re seeing misalignment because each line is being prefixed with tabs or spaces independently. In PowerPoint, line-level indenting gets compounded per line. The fix is:
+
+- Apply a single indent to the whole box.
+- Use PowerPoint’s newline \r (not \n) for lines.
+- Don’t add leading spaces/tabs to each line; build one string and let paragraph formatting handle alignment.
+
+---
+
+Updated helpers: single indent, clean lines, PowerPoint newlines
+
+`python
+def combinedbox34(c3, c4, tabs=2):
+    """
+    Returns ONE box string for 3/4 with clean alignment:
+    - One indent applied to the whole box
+    - Each line has no leading tabs/spaces
+    - Uses PowerPoint newline \r
+    """
+    if (c3 or 0) + (c4 or 0) <= 0:
+        return None
+    lines = []
+    if c3 and c3 > 0:
+        lines.append(f"{c3} X GCB3")
+    if c4 and c4 > 0:
+        lines.append(f"{c4} X GCB4")
+    indent = "\t" * tabs
+    return indent + ("\r".join(lines))
+
+
+def combinedbox56(c5, c6, tabs=2):
+    """
+    Returns ONE box string for 5/6 with clean alignment:
+    - One indent applied to the whole box
+    - Each line has no leading tabs/spaces
+    - Uses PowerPoint newline \r
+    """
+    if (c5 or 0) + (c6 or 0) <= 0:
+        return None
+    lines = []
+    if c5 and c5 > 0:
+        lines.append(f"{c5} X GCB5")
+    if c6 and c6 > 0:
+        lines.append(f"{c6} X GCB6")
+    indent = "\t" * tabs
+    return indent + ("\r".join(lines))
+`
+
+Use these instead of returning separate lines. They produce one string per group, with consistent left edges for “3 X GCB5” and “1 X GCB6”.
+
+---
+
+Optional: enforce alignment via paragraph formatting
+
+After adding text, you can normalize alignment and indent to avoid surprises:
+
+`python
+def addtextslide(lines, title=None):
+    slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # ppLayoutBlank
+    shp = slide.Shapes.AddTextbox(1, 50, 50, 800, 500)
+    tr = shp.TextFrame.TextRange
+    tr.Font.Size = 10
+    tr.Text = (title + "\r") if title else ""
+    tr.Text += "\r".join(lines)
+
+    # Normalize alignment for the entire text box
+    tr.ParagraphFormat.Alignment = 1  # ppAlignLeft
+    tr.ParagraphFormat.FirstLineIndent = 0
+    tr.ParagraphFormat.LeftIndent = 0
+
+    # For each paragraph, remove unintended extra indents
+    for i in range(1, tr.Paragraphs().Count + 1):
+        p = tr.Paragraphs(i)
+        p.ParagraphFormat.Alignment = 1  # left
+        p.ParagraphFormat.FirstLineIndent = 0
+        p.ParagraphFormat.LeftIndent = 0
+`
+
+This strips accidental per-line indent and keeps everything flush-left inside the box. Your group-level indent is from the single "\t" * tabs prefix only.
+
+---
+
+Where to use the combined boxes
+
+- Case B (collapse 5/6 only):
+`python
+caseb = gcb3boxes + gcb4_boxes
+b56 = combinedbox56(c5, c6, tabs=2)
+if b56: case_b.append(b56)
+if opencountbox: caseb.append(opencount_box)
+`
+
+- Case C (collapse 3/4 and 5/6):
+`python
+case_c = []
+b34 = combinedbox34(c3, c4, tabs=2)
+b56 = combinedbox56(c5, c6, tabs=2)
+if b34: case_c.append(b34)
+if b56: case_c.append(b56)
+if opencountbox: casec.append(opencount_box)
+mainlines += casec
+`
+
+- Expanded slide (3/4 individuals + 5/6 combined box):
+`python
+expandedlines += gcb3boxes + gcb4_boxes
+b56 = combinedbox56(c5, c6, tabs=2)
+if b56: expanded_lines.append(b56)
+if opencountbox: expandedlines.append(opencount_box)
+`
+
+---
+
+If alignment still looks off, remove tabs completely and rely purely on paragraph indents (set LeftIndent for the combined boxes’ paragraphs to a fixed value). I can show that variant if you prefer a tabless approach.
+
+
+
+
+
+
+
+
+
+
 Understood, Kirti — you don’t want a combined label like GCB5+GCB6.  
 You want two separate lines when collapsing:
 
