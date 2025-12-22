@@ -1,4 +1,27 @@
+def combined_count_box_34(c3, c4, tabs=2):
+    """
+    Return count boxes for GCB3 and GCB4 if counts > 0.
+    Each grade gets its own box line.
+    """
+    boxes = []
+    if c3 > 0:
+        boxes.append(("\t" * tabs) + f"{c3} X GCB3")
+    if c4 > 0:
+        boxes.append(("\t" * tabs) + f"{c4} X GCB4")
+    return boxes  # returns a list of strings (may be empty)
 
+
+def combined_count_box_56(c5, c6, tabs=2):
+    """
+    Return count boxes for GCB5 and GCB6 if counts > 0.
+    Each grade gets its own box line.
+    """
+    boxes = []
+    if c5 > 0:
+        boxes.append(("\t" * tabs) + f"{c5} X GCB5")
+    if c6 > 0:
+        boxes.append(("\t" * tabs) + f"{c6} X GCB6")
+    return boxes  # returns a list of strings (may be empty)
 
 import pandas as pd
 import win32com.client
