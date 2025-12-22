@@ -1,16 +1,18 @@
+import re
+
 def clean_lines(lines):
     cleaned = []
     for line in lines:
-        # Always keep valid Open Positions boxes
-        if "<Open Positions>" in line:
-            cleaned.append(line)
-        # Drop any line that looks like a bad NaN/GCB entry
-        elif "nan" in line.lower() or "unspecified" in line.lower():
-            continue
-        else:
-            cleaned.append(line)
-    return cleaned
+        s = line.strip()
 
+        # Drop the entire line if it contains a standalone 'nan' token
+        # (case-insensitive, but won't match words like 'Finance')
+        if re.search(r'\bnan\b', s, flags=re.I):
+            continue
+
+        cleaned.append(line)
+
+    return cleaned
 
 Fixing alignment inside the combined count boxes
 
