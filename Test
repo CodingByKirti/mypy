@@ -1,4 +1,50 @@
 
+
+def combined_count_box_34(c3, c4, tabs=2):
+    """
+    Return ONE combined box for GCB3+GCB4 if either count > 0.
+    Shows total and only non-zero per-grade breakdown.
+    """
+    total = c3 + c4
+    if total <= 0:
+        return None
+    breakdown = []
+    if c3 > 0:
+        breakdown.append(f"3:{c3}")
+    if c4 > 0:
+        breakdown.append(f"4:{c4}")
+    return (("\t" * tabs) + f"{total} X GCB3+GCB4 ({', '.join(breakdown)})")
+
+
+def combined_count_box_56(c5, c6, tabs=2):
+    """
+    Return ONE combined box for GCB5+GCB6 if either count > 0.
+    Shows total and only non-zero per-grade breakdown.
+    """
+    total = c5 + c6
+    if total <= 0:
+        return None
+    breakdown = []
+    if c5 > 0:
+        breakdown.append(f"5:{c5}")
+    if c6 > 0:
+        breakdown.append(f"6:{c6}")
+    return (("\t" * tabs) + f"{total} X GCB5+GCB6 ({', '.join(breakdown)})")
+
+
+
+..........
+............
+
+
+
+
+
+
+
+
+
+
 caseB = list(gcb3_boxes) + list(gcb4_boxes)
 caseB += combined_count_box_56(c5, c6)  # EXTEND, not append
 if open_count_box:
