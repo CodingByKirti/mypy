@@ -1,4 +1,47 @@
 
+caseB = list(gcb3_boxes) + list(gcb4_boxes)
+caseB += combined_count_box_56(c5, c6)  # EXTEND, not append
+if open_count_box:
+    caseB.append(open_count_box)
+
+if len(caseB) <= max_per_slide:
+    main_lines += caseB
+    continue
+
+
+
+......
+
+
+caseC = []
+caseC += combined_count_box_34(c3, c4)  # EXTEND, not append
+caseC += combined_count_box_56(c5, c6)  # EXTEND, not append
+if open_count_box:
+    caseC.append(open_count_box)
+
+main_lines += caseC
+
+
+
+
+
+....
+
+expanded_lines = [
+    root_line,
+    "\t" + line_for_actual(l5, mgr_id=l5_id),
+    "\t[Expanded list]"
+]
+expanded_lines += gcb3_boxes
+expanded_lines += gcb4_boxes
+expanded_lines += combined_count_box_56(c5, c6)  # EXTEND, not append
+if open_count_box:
+    expanded_lines.append(open_count_box)
+.....
+
+
+
+
 case b
 caseB = gcb3_boxes + gcb4_boxes
 caseB += combined_count_box_56(c5, c6)
