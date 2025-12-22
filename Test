@@ -1,4 +1,106 @@
 
+Understood, Kirti — you don’t want a combined label like GCB5+GCB6.  
+You want two separate lines when collapsing:
+
+`
+3 X GCB5
+1 X GCB6
+`
+
+…and the same for GCB3 and GCB4:
+
+`
+5 X GCB3
+6 X GCB4
+`
+
+Only show a line if the count is > 0.
+
+---
+
+Updated helper definitions
+
+`python
+def combinedbox34(c3, c4, tabs=2):
+    """
+    Return up to two lines: one for GCB3, one for GCB4.
+    Only include if count > 0.
+    """
+    boxes = []
+    if c3 > 0:
+        boxes.append(("\t" * tabs) + f"{c3} X GCB3")
+    if c4 > 0:
+        boxes.append(("\t" * tabs) + f"{c4} X GCB4")
+    return boxes
+
+
+def combinedbox56(c5, c6, tabs=2):
+    """
+    Return up to two lines: one for GCB5, one for GCB6.
+    Only include if count > 0.
+    """
+    boxes = []
+    if c5 > 0:
+        boxes.append(("\t" * tabs) + f"{c5} X GCB5")
+    if c6 > 0:
+        boxes.append(("\t" * tabs) + f"{c6} X GCB6")
+    return boxes
+`
+
+---
+
+How to use them
+
+- Case B (collapse 5/6 only, keep 3/4 individuals):
+`python
+caseB = gcb3boxes + gcb4boxes
+caseB += combinedbox56(c5, c6)
+if opencountbox: caseB.append(opencountbox)
+`
+
+- Case C (collapse both 3/4 and 5/6):
+`python
+caseC = []
+caseC += combinedbox34(c3, c4)
+caseC += combinedbox56(c5, c6)
+if opencountbox: caseC.append(opencountbox)
+main_lines += caseC
+`
+
+- Expanded slide (individuals for 3/4, counts for 5/6):
+`python
+expandedlines += gcb3boxes + gcb4_boxes
+expandedlines += combinedbox_56(c5, c6)
+if opencountbox: expandedlines.append(opencount_box)
+`
+
+---
+
+✅ Example outputs
+
+- If c3 = 5, c4 = 6:  
+  `
+  5 X GCB3
+  6 X GCB4
+  `
+
+- If c5 = 3, c6 = 1:  
+  `
+  3 X GCB5
+  1 X GCB6
+  `
+
+- If one grade is zero, only the non‑zero line appears.  
+- If both are zero, no box at all.
+
+---
+
+This way you’ll always get two boxes maximum when collapsing: one for 3/4 (with up to two lines inside), one for 5/6 (with up to two lines inside). Would you like me to paste the full corrected function with these helpers integrated, so you can drop it straight in?
+
+
+
+
+
 
 def combined_count_box_34(c3, c4, tabs=2):
     """
