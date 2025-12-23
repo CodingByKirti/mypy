@@ -3,7 +3,32 @@ import pandas as pd
 from pptx import Presentation
 
 # ---------- Helpers ----------
+from pptx import Presentation
+from pptx.util import Inches, Pt
 
+def add_text_slide(lines, pres):
+    """
+    Add a new slide with the given indented text lines.
+    Each line is added as a paragraph in a text box.
+    """
+    # create a blank slide
+    slide_layout = pres.slide_layouts[5]  # usually a blank layout
+    slide = pres.slides.add_slide(slide_layout)
+
+    # add a textbox
+    left = Inches(1)
+    top = Inches(1)
+    width = Inches(8)
+    height = Inches(5)
+    textbox = slide.shapes.add_textbox(left, top, width, height)
+    tf = textbox.text_frame
+    tf.word_wrap = True
+
+    # add each line as a paragraph
+    for line in lines:
+        p = tf.add_paragraph()
+        p.text = line
+        p.font.size = Pt(12)
 def clean(text):
     if text is None:
         return ""
