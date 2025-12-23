@@ -44,35 +44,36 @@ def export_indented_text_full(root_id,
                 line += " | " + " ".join(meta)
         return line
 
-    def add_text_slide(lines, title=None):
+    def add_text_slide_grouped(root_line, l5_blocks, title=None):
         slide = pres.Slides.Add(pres.Slides.Count+1, 12)
-        tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
-        tr.Font.Size = 10
-        tr.Text = (title + "\r") if title else ""
-        tr.Text += "\r".join([ln.replace("\t", "    ") for ln in lines])
+        y = 50
+        # Root at top
+        root_shape = slide.Shapes.AddTextbox(1, 50, y, 800, 20)
+        root_shape.TextFrame.TextRange.Text = root_line
+        y += 30
+        # Each L5 block is a list of strings (L5 + its L6s)
+        for block in l5_blocks:
+            shape = slide.Shapes.AddTextbox(1, 70, y, 800, 100)
+            shape.TextFrame.TextRange.Text = "\r".join(block)
+            y += 120
 
     def combined_count_box_md34(c_md, c3, c4, tabs=2):
-        lines = []
-        if c_md > 0: lines.append(f"{c_md} X MD")
-        if c3 > 0:  lines.append(f"{c3} X GCB3")
-        if c4 > 0:  lines.append(f"{c4} X GCB4")
-        if not lines: return None
-        indent = "\t" * tabs
-        return indent + ("\r".join(lines))
+        parts = []
+        if c_md > 0: parts.append(f"{c_md} X MD")
+        if c3 > 0:  parts.append(f"{c3} X GCB3")
+        if c4 > 0:  parts.append(f"{c4} X GCB4")
+        if not parts: return None
+        return ("\t" * tabs) + " | ".join(parts)
 
     def combined_count_box_56(c5, c6, tabs=2):
-        lines = []
-        if c5 > 0: lines.append(f"{c5} X GCB5")
-        if c6 > 0: lines.append(f"{c6} X GCB6")
-        if not lines: return None
-        indent = "\t" * tabs
-        return indent + ("\r".join(lines))
+        parts = []
+        if c5 > 0: parts.append(f"{c5} X GCB5")
+        if c6 > 0: parts.append(f"{c6} X GCB6")
+        if not parts: return None
+        return ("\t" * tabs) + " | ".join(parts)
 
     def open_box(open_count, tabs=2):
         return (("\t" * tabs) + f"<Open Positions> X {open_count}") if open_count > 0 else None
-
-    def clean_lines(lines):
-        return [ln for ln in lines if ln and not re.search(r'\bnan\b', ln.strip(), flags=re.I)]
 
     # ---------- root ----------
     root_df = df_actual[df_actual["Employee ID"] == root_id]
@@ -89,18 +90,17 @@ def export_indented_text_full(root_id,
 
     for i in range(0, len(l5_items), max_per_slide):
         batch = l5_items[i:i+max_per_slide]
-        main_lines = [root_line]
+        l5_blocks = []
         expanded_payloads = []
 
         for kind, l5 in batch:
             if kind == "open":
-                main_lines.append("\t<Open Position> | " + clean(l5.get("Position Title","")))
+                l5_blocks.append(["\t<Open Position> | " + clean(l5.get("Position Title",""))])
                 continue
 
             l5_id   = l5.get("Employee ID")
             l5_name = clean(l5.get("Employee Name", ""))
             l5_line = "\t" + line_for_actual(l5, mgr_id=l5_id)
-            main_lines.append(l5_line)
 
             # ---------- L6 under this L5 ----------
             l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
@@ -122,24 +122,20 @@ def export_indented_text_full(root_id,
             open_flag = 1 if open_count_box else 0
 
             total_full = c_md + c3 + c4 + c5 + c6 + open_flag
+            block_lines = [l5_line]
+
             if total_full <= max_per_slide:
-                main_lines += md_boxes + gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
+                block_lines += md_boxes + gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
                 for _, op in l6_opens.iterrows():
-                    main_lines.append("\t\t<Open Position> | " + clean(op.get("Position Title","")))
+                    block_lines.append("\t\t<Open Position> | " + clean(op.get("Position Title","")))
             else:
-                # compress into two boxes
                 b_md34 = combined_count_box_md34(c_md, c3, c4, tabs=2)
                 b_56   = combined_count_box_56(c5, c6, tabs=2)
-                if b_md34: main_lines.append(b_md34)
-                if b_56:   main_lines.append(b_56)
-                if open_count_box: main_lines.append(open_count_box)
+                if b_md34: block_lines.append(b_md34)
+                if b_56:   block_lines.append(b_56)
+                if open_count_box: block_lines.append(open_count_box)
 
-                # Expanded slide payload
-                expanded_lines = [
-                    root_line,
-                    "\t" + line_for_actual(l5, mgr_id=l5_id),
-                    "\t[Expanded list]"
-                ]
+                expanded_lines = [root_line, l5_line, "\t[Expanded list]"]
                 expanded_lines += md_boxes + gcb3_boxes + gcb4_boxes
                 b_56 = combined_count_box_56(c5, c6, tabs=2)
                 if b_56: expanded_lines.append(b_56)
@@ -151,20 +147,18 @@ def export_indented_text_full(root_id,
                     "summary_tuple": (root_name, l5_id, l5_name)
                 })
 
-        # write main slide
-        main_lines = clean_lines(main_lines)
-        add_text_slide(main_lines)
+            l5_blocks.append(block_lines)
+
+        # write main slide (grouped blocks)
+        add_text_slide_grouped(root_line, l5_blocks)
 
         # write expanded slides
         for payload in expanded_payloads:
-            lines = clean_lines(payload["lines"])
-            add_text_slide(lines, title=payload.get("title"))
+            add_text_slide_grouped(root_line, [payload["lines"]], title=payload.get("title"))
             if expanded_list is not None:
                 expanded_list.append(payload["summary_tuple"])
 
     return True
-
-
 
 .......................
 def add_text_slide(lines, title=None):
