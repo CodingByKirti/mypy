@@ -11,9 +11,6 @@ def export_indented_text_full(root_id,
                               max_per_slide=10,
                               show_names=True,
                               expanded_list=None):
-    """
-    Org chart for a single root (MD or standalone GCB3).
-    """
 
     # ---------- helpers ----------
     def clean(x):
@@ -21,20 +18,13 @@ def export_indented_text_full(root_id,
         s = str(x).strip()
         return "" if s.lower() in {"unspecified", "#n/a"} else s
 
-    MD_TITLE_RE = re.compile(r'\bmanaging\s*director\b', flags=re.I)
-    MD_ABBR_RE  = re.compile(r'\bM\.?\s*D\.?\b', flags=re.I)
-
     def is_md(row):
         title = clean(row.get("Position Title", ""))
         role  = clean(row.get("Role", ""))
-        t = title.lower()
-        r = role.lower()
-        if r in {"md", "managing director"}:
-            return True
-        if MD_TITLE_RE.search(t) or MD_ABBR_RE.search(title):
-            return True
-        if "managingdirector" in t or "director - managing" in t:
-            return True
+        gcb   = str(row.get("GCB", "")).strip().upper()
+        if gcb == "MD": return True
+        if role.lower() in {"md", "managing director"}: return True
+        if "managing director" in title.lower(): return True
         return False
 
     def line_for_actual(row, mgr_id=None):
@@ -55,28 +45,26 @@ def export_indented_text_full(root_id,
         return line
 
     def add_text_slide(lines, title=None):
-        slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # ppLayoutBlank
+        slide = pres.Slides.Add(pres.Slides.Count+1, 12)  # blank layout
         tr = slide.Shapes.AddTextbox(1, 50, 50, 800, 500).TextFrame.TextRange
         tr.Font.Size = 10
         tr.Text = (title + "\r") if title else ""
         tr.Text += "\r".join(lines)
 
     def combined_count_box_md34(c_md, c3, c4, tabs=2):
-        total = (c_md or 0) + (c3 or 0) + (c4 or 0)
-        if total <= 0: return None
         lines = []
         if c_md > 0: lines.append(f"{c_md} X MD")
         if c3 > 0:  lines.append(f"{c3} X GCB3")
         if c4 > 0:  lines.append(f"{c4} X GCB4")
+        if not lines: return None
         indent = "\t" * tabs
         return indent + ("\r".join(lines))
 
     def combined_count_box_56(c5, c6, tabs=2):
-        total = (c5 or 0) + (c6 or 0)
-        if total <= 0: return None
         lines = []
         if c5 > 0: lines.append(f"{c5} X GCB5")
         if c6 > 0: lines.append(f"{c6} X GCB6")
+        if not lines: return None
         indent = "\t" * tabs
         return indent + ("\r".join(lines))
 
@@ -88,8 +76,7 @@ def export_indented_text_full(root_id,
 
     # ---------- root ----------
     root_df = df_actual[df_actual["Employee ID"] == root_id]
-    if root_df.empty:
-        return
+    if root_df.empty: return
     root_row  = root_df.iloc[0]
     root_name = clean(root_row.get("Employee Name", ""))
     root_line = line_for_actual(root_row, mgr_id=root_id)
@@ -100,7 +87,6 @@ def export_indented_text_full(root_id,
     l5_items = [("actual", r) for _, r in l5_actuals.iterrows()]
     l5_items += [("open", r) for _, r in l5_opens.iterrows()]
 
-    # page L5s by max_per_slide
     for i in range(0, len(l5_items), max_per_slide):
         batch = l5_items[i:i+max_per_slide]
         main_lines = [root_line]
@@ -112,7 +98,6 @@ def export_indented_text_full(root_id,
                 main_lines.append(op_line)
                 continue
 
-            # L5 actual
             l5_id   = l5.get("Employee ID")
             l5_name = clean(l5.get("Employee Name", ""))
             l5_line = "\t" + line_for_actual(l5, mgr_id=l5_id)
@@ -141,14 +126,13 @@ def export_indented_text_full(root_id,
             open_count_box = open_box(n_open, tabs=2)
             open_flag = 1 if open_count_box else 0
 
-            # ---------- Try full individuals first ----------
             total_full = c_md + c3 + c4 + c5 + c6 + open_flag
             if total_full <= max_per_slide:
                 main_lines += md_boxes + gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
                 if open_count_box: main_lines.append(open_count_box)
                 continue
 
-            # ---------- Case C: compress MD+3+4 and 5+6 ----------
+            # ---------- Overflow: compress into two boxes ----------
             caseC = []
             b_md34 = combined_count_box_md34(c_md, c3, c4, tabs=2)
             b_56   = combined_count_box_56(c5, c6, tabs=2)
@@ -175,20 +159,23 @@ def export_indented_text_full(root_id,
             })
 
         # write main slide
+            # write main slide
         main_lines = clean_lines(main_lines)
         add_text_slide(main_lines)
-    
+
         # write expanded slides
         for payload in expanded_payloads:
             lines = clean_lines(payload["lines"])
             add_text_slide(lines, title=payload.get("title"))
             if expanded_list is not None:
                 expanded_list.append(payload["summary_tuple"])
-    
+
         # completed successfully
         return True
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 import re
 import pandas as pd
