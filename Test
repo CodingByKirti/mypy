@@ -1,3 +1,32 @@
+def add_text_slide(lines, title=None):
+    slide = pres.Slides.Add(pres.Slides.Count+1, 12)
+    shape = slide.Shapes.AddTextbox(1, 50, 50, 800, 500)
+    tf = shape.TextFrame
+    tr = tf.TextRange
+    tr.Font.Size = 10
+
+    if title:
+        tr.Text = title
+        para = tr.Paragraphs(1)
+        para.ParagraphFormat.Bullet.Visible = False
+        para.IndentLevel = 1
+    else:
+        tr.Text = ""
+
+    for raw in lines:
+        indent = raw.count("\t")
+        text = raw.replace("\t", "")
+        if not text.strip():
+            continue
+        sep = "" if tr.Text == "" else "\r"
+        tr.InsertAfter(sep + text)
+        para = tr.Paragraphs(tr.Paragraphs.Count)
+        para.ParagraphFormat.Bullet.Visible = True
+        para.IndentLevel = max(1, min(5, indent + 1))
+
+
+
+
 import re
 import pandas as pd
 
