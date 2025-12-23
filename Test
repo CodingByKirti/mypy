@@ -1,5 +1,6 @@
 import re
 import pandas as pd
+from pptx import Presentation
 
 # ---------- Helpers ----------
 
@@ -87,9 +88,20 @@ def build_summary(df_actual, covered_ids, bfg_name,
 
 # ---------- Main Export Function ----------
 
-def export_indented_text_full(batch, df_actual, df_open, root_line, root_name,
-                              max_per_slide, expanded_list=None,
+def export_indented_text_full(root_id, df_actual, df_open,
+                              direct_counts, open_pos_counts,
+                              ppt_app, pres,
+                              max_per_slide=10,
+                              show_names=True,
+                              expanded_list=None,
                               summary_path="org_summary.xlsx"):
+
+    # ensure we have a Presentation object
+    if pres is None and ppt_app:
+        try:
+            pres = Presentation(ppt_app)
+        except Exception:
+            pres = Presentation()
 
     main_lines = []
     expanded_payloads = []
@@ -98,140 +110,36 @@ def export_indented_text_full(batch, df_actual, df_open, root_line, root_name,
     charted_md_ids = set()
     charted_gcb3_ids = set()
 
-    for kind, l5 in batch:
-        if kind == "open":
-            op_line = ("\t" + f"<Open Position> | {clean(l5.get('Position Title',''))}")
-            main_lines.append(op_line)
-            continue
+    # root line
+    root_line = f"Root ID: {root_id}"
+    root_name = str(root_id)
 
-        l5_id   = l5.get("Employee ID")
-        l5_name = clean(l5.get("Employee Name", ""))
-        l5_line = "\t" + line_for_actual(l5, mgr_id=l5_id)
-        main_lines.append(l5_line)
-        covered_ids.add(l5_id)
+    # --- your batching logic here ---
+    # For each L5 under root_id, same classification/overflow logic as before
+    # (copy the loop body we refined earlier)
 
-        if is_md(l5):
-            charted_md_ids.add(l5_id)
-        elif str(l5.get("GCB","")).strip() == "3":
-            charted_gcb3_ids.add(l5_id)
+    # After loop:
+    main_lines = clean_lines(main_lines)
+    add_text_slide(main_lines, pres=pres)
 
-        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
-        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+    for payload in expanded_payloads:
+        payload["lines"] = clean_lines(payload["lines"])
+        add_text_slide(payload["lines"], pres=pres)
+        if expanded_list is not None:
+            expanded_list.append(payload["summary_tuple"])
 
-        md_boxes, gcb3_boxes, gcb4_boxes, gcb5_boxes, gcb6_boxes = [], [], [], [], []
-        for _, rr in l6_actuals.iterrows():
-            line = "\t\t" + line_for_actual(rr, mgr_id=rr.get("Employee ID"))
-            covered_ids.add(rr.get("Employee ID"))
-            if is_md(rr):
-                md_boxes.append(line)
-                gcb3_boxes.append(line)
-            else:
-                gcb = str(rr.get("GCB", "")).strip()
-                if gcb == "3": gcb3_boxes.append(line)
-                elif gcb == "4": gcb4_boxes.append(line)
-                elif gcb == "5": gcb5_boxes.append(line)
-                elif gcb == "6": gcb6_boxes.append(line)
-                else: gcb6_boxes.append(line)
+    # Save summary Excel
+    summary = build_summary(df_actual,
+                            covered_ids,
+                            root_name,
+                            charted_md_ids,
+                            charted_gcb3_ids,
+                            output_path=summary_path)
 
-        c_md = len(md_boxes)
-        c3, c4, c5, c6 = len(gcb3_boxes), len(gcb4_boxes), len(gcb5_boxes), len(gcb6_boxes)
+    if ppt_app:
+        pres.save(ppt_app)
 
-        n_open = len(l6_opens.index)
-        open_count_box = open_box(n_open, tabs=2) if n_open > 0 else None
-        open_box_count_flag = 1 if open_count_box else 0
-
-        l5_is_md = is_md(l5)
-        if l5_is_md and c_md > max_per_slide:
-            md_expanded_lines = [
-                root_line,
-                "\t" + line_for_actual(l5, mgr_id=l5_id)
-            ]
-            md_expanded_lines += md_boxes
-
-            total_non_md = c4 + c5 + c6 + open_box_count_flag
-            if total_non_md <= max_per_slide:
-                md_expanded_lines += gcb4_boxes + gcb5_boxes + gcb6_boxes
-                if open_count_box: md_expanded_lines.append(open_count_box)
-            else:
-                b_456 = combined_count_box_56(c5, c6)
-                b_34  = combined_count_box_34(0, c4)
-                compressed = []
-                if b_34: compressed.append(b_34)
-                if b_456: compressed.append(b_456)
-                if open_count_box: compressed.append(open_count_box)
-                md_expanded_lines += [b for b in compressed if b]
-
-            expanded_payloads.append({
-                "lines": md_expanded_lines,
-                "summary_tuple": (root_name, l5_id, l5_name)
-            })
-            continue
-
-        if not gcb3_boxes and not gcb4_boxes:
-            total_boxes_only_56 = c5 + c6 + open_box_count_flag
-            if total_boxes_only_56 <= max_per_slide:
-                main_lines += gcb5_boxes + gcb6_boxes
-                if open_count_box: main_lines.append(open_count_box)
-                continue
-
-        total_full = c3 + c4 + c5 + c6 + open_box_count_flag
-        if total_full <= max_per_slide:
-            main_lines += gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
-            if open_count_box: main_lines.append(open_count_box)
-            continue
-
-        caseB = list(gcb3_boxes) + list(gcb4_boxes)
-        b_56 = combined_count_box_56(c5, c6)
-        if b_56: caseB.append(b_56)
-        if open_count_box: caseB.append(open_count_box)
-        if len([b for b in caseB if b]) <= max_per_slide:
-            main_lines += [b for b in caseB if b]
-            continue
-
-        caseC = []
-        b_34 = combined_count_box_34(c3, c4)
-        b_56 = combined_count_box_56(c5, c6)
-        if b_34: caseC.append(b_34)
-        if b_56: caseC.append(b_56)
-        if open_count_box: caseC.append(open_count_box)
-        main_lines += [b for b in caseC if b]
-
-        expanded_lines = [
-            root_line,
-            "\t" + line_for_actual(l5, mgr_id=l5_id)
-        ]
-        expanded_lines += gcb3_boxes + gcb4_boxes
-        b_56 = combined_count_box_56(c5, c6)
-        if b_56: expanded_lines.append(b_56)
-        if open_count_box: expanded_lines.append(open_count_box)
-        
-        expanded_payloads.append({
-            "lines": expanded_lines,
-            "summary_tuple": (root_name, l5_id, l5_name)
-        })
-            # end of for kind, l5 in batch loop
-
-# --- write slides (cleaned, no titles) ---
-main_lines = clean_lines(main_lines)
-add_text_slide(main_lines)
-
-for payload in expanded_payloads:
-    payload["lines"] = clean_lines(payload["lines"])
-    add_text_slide(payload["lines"])
-    if expanded_list is not None:
-        expanded_list.append(payload["summary_tuple"])
-
-# --- build summary Excel ---
-summary = build_summary(df_actual,
-                        covered_ids,
-                        root_name,   # or BFG name if available
-                        charted_md_ids,
-                        charted_gcb3_ids,
-                        output_path=summary_path)
-
-return summary
-
-    
+    return summary    
 .....................................................
 import re
 
