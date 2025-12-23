@@ -1,5 +1,241 @@
 import re
 import pandas as pd
+
+# --------- helpers (minimal, no PPT changes) ---------
+
+def clean(x):
+    return "" if x is None else str(x).strip()
+
+MD_TITLE_RE = re.compile(r'\bmanaging\s*director\b', flags=re.I)
+MD_ABBR_RE  = re.compile(r'\bM\.?\s*D\.?\b', flags=re.I)
+
+def is_md(record):
+    """Pure MD detection. Does not map MDs to GCB."""
+    gcb_raw = record.get("GCB", "")
+    gcb = str(gcb_raw).strip().upper()  # accept 3, '3', 'GCB3', etc.
+
+    title = clean(record.get("Position Title", ""))
+    role  = clean(record.get("Role", ""))
+
+    # If upstream filter already isolates MDs/GCB3, we still detect MDs purely.
+    if role.lower() in {"md", "managing director"}:
+        return True
+    t = title.lower()
+    if MD_TITLE_RE.search(t) or MD_ABBR_RE.search(title):
+        return True
+    if "managingdirector" in t or "director - managing" in t:
+        return True
+
+    # Do NOT infer MD from GCB here; keep MD pure and separate from GCB.
+    return False
+
+def line_for_actual(record):
+    emp_id = clean(record.get("Employee ID", ""))
+    name   = clean(record.get("Employee Name", ""))
+    title  = clean(record.get("Position Title", ""))
+    gcb    = clean(record.get("GCB", ""))
+    return f"{name} | {title} | GCB{gcb} | ID:{emp_id}"
+
+def open_box(count, tabs=1):
+    if count and count > 0:
+        return ("\t"*tabs) + f"<Open Positions> X {count}"
+    return None
+
+def combined_count_box_34(c3, c4):
+    total = (c3 or 0) + (c4 or 0)
+    if total > 0:
+        return "\t\tCombined GCB3+4 count: " + str(total)
+    return None
+
+def combined_count_box_56(c5, c6):
+    total = (c5 or 0) + (c6 or 0)
+    if total > 0:
+        return "\t\tCombined GCB5+6 count: " + str(total)
+    return None
+
+def clean_lines(lines):
+    cleaned = []
+    for line in lines:
+        s = line.strip()
+        if re.search(r'\bnan\b', s, flags=re.I):
+            continue
+        cleaned.append(line)
+    return cleaned
+
+# --------- main export (old signature) ---------
+
+def export_indented_text_full(root_id, df_actual, df_open,
+                              direct_counts, open_pos_counts,
+                              ppt_app, pres,
+                              max_per_slide=10,
+                              show_names=True,
+                              expanded_list=None,
+                              summary_path=None):
+    """
+    Minimal revision: fix MD misclassification and overflow for L5 MDs.
+    No changes to your COM add_text_slide(lines, title=None).
+    """
+
+    # Root context lines (keep simple, no slide title changes)
+    root_line = f"Root ID: {root_id}"
+    root_name = str(root_id)
+
+    main_lines = []
+    expanded_payloads = []
+
+    # 1) Resolve L5 under root_id (assuming df_actual provides functional manager links)
+    l5_actuals = df_actual[df_actual["Functional Manager Employee ID"] == root_id]
+    l5_opens   = df_open[df_open["Functional Manager Employee ID"] == root_id]
+
+    # Place L5 opens first if needed
+    for _, op in l5_opens.iterrows():
+        op_title = clean(op.get("Position Title", ""))
+        main_lines.append("\t" + f"<Open Position> | {op_title}")
+
+    # For each L5 actual under the root
+    for _, l5 in l5_actuals.iterrows():
+        l5_id   = l5.get("Employee ID")
+        l5_name = clean(l5.get("Employee Name", ""))
+        l5_line = "\t" + line_for_actual(l5)
+        main_lines.append(l5_line)
+
+        # 2) L6 classification under this L5
+        l6_actuals = df_actual[df_actual["Functional Manager Employee ID"] == l5_id]
+        l6_opens   = df_open[df_open["Functional Manager Employee ID"] == l5_id]
+
+        md_boxes, gcb3_boxes, gcb4_boxes, gcb5_boxes, gcb6_boxes = [], [], [], [], []
+        for _, rr in l6_actuals.iterrows():
+            line = "\t\t" + line_for_actual(rr)
+
+            if is_md(rr):
+                md_boxes.append(line)   # pure MD bucket
+                continue
+
+            gcb = clean(rr.get("GCB", "")).upper()
+            if gcb in {"3", "GCB3"}:
+                gcb3_boxes.append(line)
+            elif gcb in {"4", "GCB4"}:
+                gcb4_boxes.append(line)
+            elif gcb in {"5", "GCB5"}:
+                gcb5_boxes.append(line)
+            elif gcb in {"6", "GCB6"}:
+                gcb6_boxes.append(line)
+            else:
+                # Keep unknowns out of GCB6; represent them as GCB6 fallback only if you must.
+                gcb6_boxes.append(line)
+
+        c_md = len(md_boxes)
+        c3, c4, c5, c6 = len(gcb3_boxes), len(gcb4_boxes), len(gcb5_boxes), len(gcb6_boxes)
+
+        # L6 open positions summary
+        n_open_l6 = len(l6_opens.index)
+        l6_open_box = open_box(n_open_l6, tabs=2)
+        open_flag = 1 if l6_open_box else 0
+
+        # 3) Special overflow: if this L5 person is MD and he has >10 direct MDs at L6
+        l5_is_md = is_md(l5)
+        if l5_is_md and c_md > max_per_slide:
+            # Expanded slide centered on this L5 MD
+            expanded_lines = [
+                root_line,
+                "\t" + line_for_actual(l5),
+            ]
+            # Show all MDs under him first
+            expanded_lines += md_boxes
+
+            # Then 4/5/6 individuals if they fit, else combine counts
+            non_md_total = c4 + c5 + c6 + open_flag
+            if non_md_total <= max_per_slide:
+                expanded_lines += gcb4_boxes + gcb5_boxes + gcb6_boxes
+                if l6_open_box: expanded_lines.append(l6_open_box)
+            else:
+                b_34 = combined_count_box_34(0, c4)
+                b_56 = combined_count_box_56(c5, c6)
+                if b_34: expanded_lines.append(b_34)
+                if b_56: expanded_lines.append(b_56)
+                if l6_open_box: expanded_lines.append(l6_open_box)
+
+            expanded_payloads.append({
+                "lines": expanded_lines,
+                "summary_tuple": (root_name, l5_id, l5_name)
+            })
+            # On main slide, we already showed the L5 line; skip his L6 details to avoid crowding.
+            continue
+
+        # 4) Standard placement under L5 (MD first, then 3/4/5/6)
+        # Try full individuals first: MD + 3/4/5/6 + open
+        total_full = c_md + c3 + c4 + c5 + c6 + open_flag
+        if total_full <= max_per_slide:
+            # MDs first (stakeholders), then others
+            main_lines += md_boxes + gcb3_boxes + gcb4_boxes + gcb5_boxes + gcb6_boxes
+            if l6_open_box: main_lines.append(l6_open_box)
+            continue
+
+        # If only 5/6 present (no MD, 3/4), and fits
+        if c_md == 0 and c3 == 0 and c4 == 0:
+            total_56 = c5 + c6 + open_flag
+            if total_56 <= max_per_slide:
+                if c5: main_lines += gcb5_boxes
+                if c6: main_lines += gcb6_boxes
+                if l6_open_box: main_lines.append(l6_open_box)
+                continue
+
+        # Case B: keep MD and 3/4 individuals; compress 5/6
+        caseB = list(md_boxes) + list(gcb3_boxes) + list(gcb4_boxes)
+        b_56 = combined_count_box_56(c5, c6)
+        if b_56: caseB.append(b_56)
+        if l6_open_box: caseB.append(l6_open_box)
+        if len(caseB) <= max_per_slide:
+            main_lines += caseB
+            continue
+
+        # Case C: show MD individuals; compress 3/4 and 5/6
+        caseC = list(md_boxes)
+        b_34 = combined_count_box_34(c3, c4)
+        b_56 = combined_count_box_56(c5, c6)
+        if b_34: caseC.append(b_34)
+        if b_56: caseC.append(b_56)
+        if l6_open_box: caseC.append(l6_open_box)
+        main_lines += caseC
+
+        # Build expanded for this L5 showing full details (MD + 3/4 individuals; 5/6 compressed)
+        expanded_lines = [
+            root_line,
+            "\t" + line_for_actual(l5)
+        ]
+        # MDs fully listed
+        expanded_lines += md_boxes
+        # 3/4 individuals next
+        expanded_lines += gcb3_boxes + gcb4_boxes
+        # 5/6 combined counts
+        b_56 = combined_count_box_56(c5, c6)
+        if b_56: expanded_lines.append(b_56)
+        # open positions
+        if l6_open_box: expanded_lines.append(l6_open_box)
+
+        expanded_payloads.append({
+            "lines": expanded_lines,
+            "summary_tuple": (root_name, l5_id, l5_name)
+        })
+
+    # 5) Write slides (no change to your COM API; title=None)
+    main_lines = clean_lines(main_lines)
+    add_text_slide(main_lines, title=None)
+
+    for payload in expanded_payloads:
+        lines = clean_lines(payload["lines"])
+        add_text_slide(lines, title=None)
+        if expanded_list is not None:
+            expanded_list.append(payload["summary_tuple"])
+
+    # No changes to pres/ppt saving here (keep your existing saving workflow outside)
+    # No summary builder here since you asked to keep minimal changes
+    return True
+.........................................................................
+
+
+import re
+import pandas as pd
 from pptx import Presentation
 def is_md(record):
     gcb = str(record.get("GCB", "")).strip()
