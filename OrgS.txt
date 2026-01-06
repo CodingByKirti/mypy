@@ -1,3 +1,30 @@
+for _, rr in l6_actuals.iterrows():
+    line = "\t\t" + line_for_actual(rr, mgr_id=rr.get("Employee ID"))
+    if is_md(rr): md_boxes.append(line)
+    elif str(rr.get("GCB","")).strip() == "3": gcb3_boxes.append(line)
+    elif str(rr.get("GCB","")).strip() == "4": gcb4_boxes.append(line)
+    elif str(rr.get("GCB","")).strip() == "5": gcb5_boxes.append(line)
+    elif str(rr.get("GCB","")).strip() == "6": gcb6_boxes.append(line)
+    else: gcb6_boxes.append(line)
+
+    # NEW: detect extra GCB3 at L6
+    if str(rr.get("GCB","")).strip() == "3" and rr.get("BFG") == selected_bfg:
+        if rr.get("Employee ID") not in processed_roots:
+            extra_roots.add(rr.get("Employee ID"))
+
+# Generate extra slides for GCB3s found at L6
+for extra_id in extra_roots:
+    export_indented_text_full(extra_id, df_actual, df_open,
+                              direct_counts, open_pos_counts,
+                              ppt_app, pres, max_per_slide,
+                              show_names, expanded_list)
+    processed_roots.add(extra_id)
+
+
+processed_roots = set()
+extra_roots = set()
+
+
 ....
 # --- Compression logic ---
 count_lines = []
