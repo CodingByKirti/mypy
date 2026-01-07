@@ -1,3 +1,35 @@
+import os
+import openpyxl
+
+def delete_sheet_from_folder(folder_path, sheet_name="L2 View"):
+    """
+    Delete a specific sheet from all Excel files in a folder.
+    
+    Args:
+        folder_path (str): Path to the folder containing Excel files.
+        sheet_name (str): Name of the sheet to delete (default: 'L2 View').
+    """
+    for filename in os.listdir(folder_path):
+        if filename.endswith((".xlsx", ".xlsm")):  # handle modern Excel formats
+            file_path = os.path.join(folder_path, filename)
+            try:
+                wb = openpyxl.load_workbook(file_path)
+                if sheet_name in wb.sheetnames:
+                    # Remove the sheet
+                    ws = wb[sheet_name]
+                    wb.remove(ws)
+                    wb.save(file_path)
+                    print(f"Deleted '{sheet_name}' from {filename}")
+                else:
+                    print(f"'{sheet_name}' not found in {filename}, skipped.")
+            except Exception as e:
+                print(f"Error processing {filename}: {e}")
+
+# Example usage:
+# delete_sheet_from_folder(r"C:\Users\YourName\Documents\ExcelFiles")
+
+
+
 # include open pos
 
 import pandas as pd
