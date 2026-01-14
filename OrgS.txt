@@ -1,3 +1,123 @@
+Option Explicit
+
+Sub ConvertIndentedTextToOrgChart()
+    Dim dlg As FileDialog
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim sa As Shape
+    Dim layout As SmartArtLayout
+    Dim lines() As String
+    Dim line As String
+    Dim i As Long
+    
+    ' Prompt user to select a PPTX file
+    Set dlg = Application.FileDialog(msoFileDialogFilePicker)
+    With dlg
+        .Title = "Select a PowerPoint file"
+        .Filters.Clear
+        .Filters.Add "PowerPoint Files", "*.pptx;*.pptm"
+        If .Show <> -1 Then Exit Sub
+    End With
+    
+    ' Open the presentation
+    Set pres = Application.Presentations.Open(dlg.SelectedItems(1), WithWindow:=False)
+    
+    ' Get Organization Chart SmartArt layout
+    Set layout = Application.SmartArtLayouts("Hierarchy1") ' often Org Chart
+    If layout Is Nothing Then
+        MsgBox "Organization Chart SmartArt layout not found.", vbCritical
+        Exit Sub
+    End If
+    
+    ' Loop through slides
+    For Each sld In pres.Slides
+        For i = sld.Shapes.Count To 1 Step -1
+            Set shp = sld.Shapes(i)
+            
+            If shp.HasTextFrame Then
+                If shp.TextFrame.HasText Then
+                    ' Split text into lines
+                    lines = Split(NormalizeText(shp.TextFrame.TextRange.Text), vbCrLf)
+                    
+                    ' Add SmartArt Organization Chart
+                    Set sa = sld.Shapes.AddSmartArt(layout, shp.Left, shp.Top, shp.Width, shp.Height)
+                    
+                    ' Clear default node text
+                    sa.SmartArt.AllNodes(1).TextFrame2.TextRange.Text = ""
+                    
+                    ' Build hierarchy based on indentation
+                    BuildHierarchy sa, lines
+                    
+                    ' Delete original text box
+                    shp.Delete
+                End If
+            End If
+        Next i
+    Next sld
+    
+    ' Save and close
+    pres.Save
+    pres.Close
+End Sub
+
+' ---------- Helpers ----------
+
+Private Function NormalizeText(ByVal s As String) As String
+    Dim t As String
+    t = Replace(s, vbCrLf, vbLf)
+    t = Replace(t, vbCr, vbLf)
+    t = Replace(t, vbLf, vbCrLf)
+    NormalizeText = Trim$(t)
+End Function
+
+Private Sub BuildHierarchy(sa As Shape, lines() As String)
+    Dim currentNode As SmartArtNode
+    Dim parentNode As SmartArtNode
+    Dim indentLevel As Long
+    Dim prevIndent As Long
+    Dim i As Long
+    
+    Set currentNode = sa.SmartArt.AllNodes(1)
+    
+    For i = LBound(lines) To UBound(lines)
+        indentLevel = CountLeadingSpaces(lines(i)) \ 4 ' assume 4 spaces = 1 indent
+        
+        If Trim$(lines(i)) <> "" Then
+            If i = LBound(lines) Then
+                ' First line = root
+                currentNode.TextFrame2.TextRange.Text = Trim$(lines(i))
+                prevIndent = indentLevel
+                Set parentNode = currentNode
+            Else
+                If indentLevel = prevIndent Then
+                    ' Same level → sibling
+                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeAfter)
+                ElseIf indentLevel > prevIndent Then
+                    ' Deeper indent → child
+                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeBelow)
+                    Set parentNode = currentNode
+                Else
+                    ' Shallower indent → go back up
+                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeAfter)
+                End If
+                currentNode.TextFrame2.TextRange.Text = Trim$(lines(i))
+                prevIndent = indentLevel
+            End If
+        End If
+    Next i
+End Sub
+
+Private Function CountLeadingSpaces(ByVal s As String) As Long
+    Dim i As Long
+    For i = 1 To Len(s)
+        If Mid$(s, i, 1) <> " " Then Exit For
+    Next i
+    CountLeadingSpaces = i - 1
+End Function
+
+////////////////////////////////////////////////////////
+
 for _, rr in l6_actuals.iterrows():
     line = "\t\t" + line_for_actual(rr, mgr_id=rr.get("Employee ID"))
     if is_md(rr): md_boxes.append(line)
