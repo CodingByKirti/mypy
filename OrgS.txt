@@ -1,6 +1,6 @@
 Option Explicit
 
-Sub ConvertIndentedTextToOrgChart()
+Sub ConvertIndentedTextToOrgChart_Robust()
     Dim dlg As FileDialog
     Dim pres As Presentation
     Dim sld As Slide
@@ -8,10 +8,11 @@ Sub ConvertIndentedTextToOrgChart()
     Dim sa As Shape
     Dim layout As SmartArtLayout
     Dim lines() As String
-    Dim line As String
     Dim i As Long
     
-    ' Prompt user to select a PPTX file
+    On Error GoTo Fail
+    
+    ' 1) Pick a file
     Set dlg = Application.FileDialog(msoFileDialogFilePicker)
     With dlg
         .Title = "Select a PowerPoint file"
@@ -20,50 +21,85 @@ Sub ConvertIndentedTextToOrgChart()
         If .Show <> -1 Then Exit Sub
     End With
     
-    ' Open the presentation
+    ' 2) Open presentation (no window)
     Set pres = Application.Presentations.Open(dlg.SelectedItems(1), WithWindow:=False)
     
-    ' Get Organization Chart SmartArt layout
-    Set layout = Application.SmartArtLayouts("Hierarchy1") ' often Org Chart
+    ' 3) Get Organization Chart layout safely
+    Set layout = GetOrgChartLayoutSafe()
     If layout Is Nothing Then
-        MsgBox "Organization Chart SmartArt layout not found.", vbCritical
-        Exit Sub
+        MsgBox "Organization Chart SmartArt layout not found. Please ensure SmartArt is available.", vbCritical
+        GoTo Cleanup
     End If
     
-    ' Loop through slides
+    ' 4) Process slides
     For Each sld In pres.Slides
+        ' Iterate shapes in reverse to avoid index issues when deleting
         For i = sld.Shapes.Count To 1 Step -1
             Set shp = sld.Shapes(i)
             
-            If shp.HasTextFrame Then
-                If shp.TextFrame.HasText Then
-                    ' Split text into lines
-                    lines = Split(NormalizeText(shp.TextFrame.TextRange.Text), vbCrLf)
-                    
-                    ' Add SmartArt Organization Chart
-                    Set sa = sld.Shapes.AddSmartArt(layout, shp.Left, shp.Top, shp.Width, shp.Height)
-                    
-                    ' Clear default node text
-                    sa.SmartArt.AllNodes(1).TextFrame2.TextRange.Text = ""
-                    
-                    ' Build hierarchy based on indentation
-                    BuildHierarchy sa, lines
-                    
-                    ' Delete original text box
-                    shp.Delete
-                End If
+            If HasUsableText(shp) Then
+                lines = Split(NormalizeText(shp.TextFrame.TextRange.Text), vbCrLf)
+                If UBound(lines) < 0 Then GoTo NextShape
+                
+                ' Add SmartArt at same position/size
+                Set sa = sld.Shapes.AddSmartArt(layout, shp.Left, shp.Top, shp.Width, shp.Height)
+                
+                ' Build hierarchy from indentation
+                BuildOrgChartFromIndentedLines sa, lines
+                
+                ' Delete original text box (optional)
+                shp.Delete
             End If
+NextShape:
         Next i
     Next sld
     
-    ' Save and close
+    ' 5) Save and close
     pres.Save
-    pres.Close
+    
+Cleanup:
+    If Not pres Is Nothing Then pres.Close
+    Exit Sub
+    
+Fail:
+    MsgBox "Error: " & Err.Description, vbCritical
+    Resume Cleanup
 End Sub
 
 ' ---------- Helpers ----------
 
+Private Function GetOrgChartLayoutSafe() As SmartArtLayout
+    ' Try common names first
+    On Error Resume Next
+    Set GetOrgChartLayoutSafe = Application.SmartArtLayouts("Hierarchy1")
+    If Not GetOrgChartLayoutSafe Is Nothing Then Exit Function
+    Set GetOrgChartLayoutSafe = Application.SmartArtLayouts("HierarchyOrganizationChart")
+    If Not GetOrgChartLayoutSafe Is Nothing Then Exit Function
+    On Error GoTo 0
+    
+    ' Fallback: scan layouts for hierarchy + organization
+    Dim sal As SmartArtLayout
+    For Each sal In Application.SmartArtLayouts
+        If (InStr(1, sal.Name, "Hierarchy", vbTextCompare) > 0 Or _
+            InStr(1, sal.Description, "Hierarchy", vbTextCompare) > 0) Then
+            If (InStr(1, sal.Name, "Organization", vbTextCompare) > 0 Or _
+                InStr(1, sal.Description, "Organization", vbTextCompare) > 0) Then
+                Set GetOrgChartLayoutSafe = sal
+                Exit Function
+            End If
+        End If
+    Next sal
+End Function
+
+Private Function HasUsableText(shp As Shape) As Boolean
+    On Error Resume Next
+    HasUsableText = (shp.HasTextFrame = msoTrue) And _
+                    (shp.TextFrame.HasText = msoTrue) And _
+                    (Trim$(shp.TextFrame.TextRange.Text) <> "")
+End Function
+
 Private Function NormalizeText(ByVal s As String) As String
+    ' Normalize line breaks and trim
     Dim t As String
     t = Replace(s, vbCrLf, vbLf)
     t = Replace(t, vbCr, vbLf)
@@ -71,51 +107,91 @@ Private Function NormalizeText(ByVal s As String) As String
     NormalizeText = Trim$(t)
 End Function
 
-Private Sub BuildHierarchy(sa As Shape, lines() As String)
-    Dim currentNode As SmartArtNode
-    Dim parentNode As SmartArtNode
-    Dim indentLevel As Long
-    Dim prevIndent As Long
-    Dim i As Long
-    
-    Set currentNode = sa.SmartArt.AllNodes(1)
-    
-    For i = LBound(lines) To UBound(lines)
-        indentLevel = CountLeadingSpaces(lines(i)) \ 4 ' assume 4 spaces = 1 indent
-        
-        If Trim$(lines(i)) <> "" Then
-            If i = LBound(lines) Then
-                ' First line = root
-                currentNode.TextFrame2.TextRange.Text = Trim$(lines(i))
-                prevIndent = indentLevel
-                Set parentNode = currentNode
-            Else
-                If indentLevel = prevIndent Then
-                    ' Same level → sibling
-                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeAfter)
-                ElseIf indentLevel > prevIndent Then
-                    ' Deeper indent → child
-                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeBelow)
-                    Set parentNode = currentNode
-                Else
-                    ' Shallower indent → go back up
-                    Set currentNode = parentNode.InsertNode(msoSmartArtNodeAfter)
-                End If
-                currentNode.TextFrame2.TextRange.Text = Trim$(lines(i))
-                prevIndent = indentLevel
-            End If
+Private Function GetIndentLevel(ByVal s As String) As Long
+    ' Tabs count as 1 level; every 4 spaces = 1 level
+    Dim i As Long, tabs As Long, spaces As Long, ch As String
+    For i = 1 To Len(s)
+        ch = Mid$(s, i, 1)
+        If ch = vbTab Then
+            tabs = tabs + 1
+        ElseIf ch = " " Then
+            spaces = spaces + 1
+        Else
+            Exit For
         End If
     Next i
-End Sub
-
-Private Function CountLeadingSpaces(ByVal s As String) As Long
-    Dim i As Long
-    For i = 1 To Len(s)
-        If Mid$(s, i, 1) <> " " Then Exit For
-    Next i
-    CountLeadingSpaces = i - 1
+    GetIndentLevel = tabs + (spaces \ 4)
 End Function
 
+Private Sub BuildOrgChartFromIndentedLines(sa As Shape, lines() As String)
+    Dim levelParents() As SmartArtNode   ' parent node per level
+    Dim lastNodeAtLevel() As SmartArtNode ' last created node per level (for siblings)
+    Dim maxLevels As Long: maxLevels = 20 ' adjust if needed
+    ReDim levelParents(0 To maxLevels)
+    ReDim lastNodeAtLevel(0 To maxLevels)
+    
+    Dim i As Long, lvl As Long
+    Dim textLine As String
+    Dim node As SmartArtNode
+    Dim parent As SmartArtNode
+    
+    ' Initialize root
+    sa.SmartArt.AllNodes(1).TextFrame2.TextRange.Text = ""
+    Set levelParents(0) = sa.SmartArt.AllNodes(1)
+    Set lastNodeAtLevel(0) = levelParents(0)
+    
+    For i = LBound(lines) To UBound(lines)
+        textLine = Trim$(lines(i))
+        If textLine = "" Then GoTo NextLine
+        
+        lvl = GetIndentLevel(lines(i))
+        If lvl < 0 Then lvl = 0
+        If lvl > maxLevels Then lvl = maxLevels
+        
+        If lvl = 0 And lastNodeAtLevel(0).TextFrame2.TextRange.Text = "" Then
+            ' First root line fills the existing root node
+            lastNodeAtLevel(0).TextFrame2.TextRange.Text = textLine
+        Else
+            ' Determine parent for this level
+            If lvl = 0 Then
+                ' Another root-level item → sibling of root
+                Set node = lastNodeAtLevel(0).InsertNode(msoSmartArtNodeAfter)
+                node.TextFrame2.TextRange.Text = textLine
+                Set lastNodeAtLevel(0) = node
+                Set levelParents(0) = node
+            Else
+                ' Child or deeper
+                If levelParents(lvl - 1) Is Nothing Then
+                    ' If missing parent, fallback to nearest available above
+                    Dim back As Long
+                    back = lvl - 1
+                    Do While back >= 0 And levelParents(back) Is Nothing
+                        back = back - 1
+                    Loop
+                    If back < 0 Then
+                        Set parent = sa.SmartArt.AllNodes(1)
+                    Else
+                        Set parent = levelParents(back)
+                    End If
+                Else
+                    Set parent = levelParents(lvl - 1)
+                End If
+                
+                ' If we already created a node at this level, add a sibling; else add a child
+                If Not lastNodeAtLevel(lvl) Is Nothing Then
+                    Set node = lastNodeAtLevel(lvl).InsertNode(msoSmartArtNodeAfter)
+                Else
+                    Set node = parent.InsertNode(msoSmartArtNodeBelow)
+                End If
+                
+                node.TextFrame2.TextRange.Text = textLine
+                Set lastNodeAtLevel(lvl) = node
+                Set levelParents(lvl) = node
+            End If
+        End If
+NextLine:
+    Next i
+End Sub
 ////////////////////////////////////////////////////////
 
 for _, rr in l6_actuals.iterrows():
