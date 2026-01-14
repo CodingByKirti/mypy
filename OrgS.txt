@@ -1,4 +1,4 @@
-Sub DebugConvertTextBoxes()
+Sub DebugConvertTextBoxes_ActivePres()
     Dim pres As Presentation
     Dim sld As Slide
     Dim shp As Shape
@@ -7,15 +7,17 @@ Sub DebugConvertTextBoxes()
     Dim lines() As String
     Dim i As Long
     
-    ' Use the active presentation for testing
+    ' Work on the currently open presentation
     Set pres = ActivePresentation
     
     ' Get Organization Chart layout
+    On Error Resume Next
     Set layout = Application.SmartArtLayouts("Hierarchy1")
     If layout Is Nothing Then
         Debug.Print "SmartArt layout not found!"
         Exit Sub
     End If
+    On Error GoTo 0
     
     ' Loop through slides
     For Each sld In pres.Slides
@@ -52,7 +54,6 @@ Sub DebugConvertTextBoxes()
     
     Debug.Print "Done."
 End Sub
-
 .....................
 
 Option Explicit
