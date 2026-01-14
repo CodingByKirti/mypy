@@ -1,3 +1,60 @@
+Sub DebugConvertTextBoxes()
+    Dim pres As Presentation
+    Dim sld As Slide
+    Dim shp As Shape
+    Dim sa As Shape
+    Dim layout As SmartArtLayout
+    Dim lines() As String
+    Dim i As Long
+    
+    ' Use the active presentation for testing
+    Set pres = ActivePresentation
+    
+    ' Get Organization Chart layout
+    Set layout = Application.SmartArtLayouts("Hierarchy1")
+    If layout Is Nothing Then
+        Debug.Print "SmartArt layout not found!"
+        Exit Sub
+    End If
+    
+    ' Loop through slides
+    For Each sld In pres.Slides
+        Debug.Print "Slide " & sld.SlideIndex & " ----------------"
+        
+        For i = 1 To sld.Shapes.Count
+            Set shp = sld.Shapes(i)
+            Debug.Print "  Shape " & i & ": " & shp.Name & " | Type=" & shp.Type
+            
+            If shp.HasTextFrame Then
+                Debug.Print "    HasTextFrame = True"
+                If shp.TextFrame.HasText Then
+                    Debug.Print "    Text = " & shp.TextFrame.TextRange.Text
+                    
+                    ' Split text into lines
+                    lines = Split(shp.TextFrame.TextRange.Text, vbCrLf)
+                    
+                    ' Add SmartArt
+                    Set sa = sld.Shapes.AddSmartArt(layout, shp.Left, shp.Top, shp.Width, shp.Height)
+                    sa.SmartArt.AllNodes(1).TextFrame2.TextRange.Text = lines(0)
+                    
+                    Debug.Print "    SmartArt created."
+                    
+                    ' Delete original
+                    shp.Delete
+                Else
+                    Debug.Print "    TextFrame but no text."
+                End If
+            Else
+                Debug.Print "    No TextFrame (probably just a rectangle)."
+            End If
+        Next i
+    Next sld
+    
+    Debug.Print "Done."
+End Sub
+
+.....................
+
 Option Explicit
 
 Sub ConvertIndentedTextToOrgChart_Robust()
