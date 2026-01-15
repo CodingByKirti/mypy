@@ -1,62 +1,61 @@
 import win32com.client as win32
+import time
 
-# Launch PowerPoint
 ppt = win32.Dispatch("PowerPoint.Application")
 ppt.Visible = True
 
 presentation_path = r"C:\path\to\input.pptx"
 pres = ppt.Presentations.Open(presentation_path)
 
-ORG_CHART_INDEX = 97  # ← your correct SmartArt layout index
+ORG_CHART_INDEX = 97  # found earlier
 
 for slide in pres.Slides:
     for shape in slide.Shapes:
         if shape.HasTextFrame and shape.TextFrame.HasText:
 
-            # Read text from textbox
             text = shape.TextFrame.TextRange.Text
-            lines = text.split("\r")  # split lines
+            lines = [l for l in text.split("\r") if l.strip()]
 
-            # Store original position/size
             left, top, width, height = shape.Left, shape.Top, shape.Width, shape.Height
 
-            # Fetch the SmartArt layout COM object
             layout = ppt.SmartArtLayouts.Item(ORG_CHART_INDEX)
 
-            # Insert SmartArt ORGANIZATION CHART
+            # Insert SmartArt
             smart = slide.Shapes.AddSmartArt(layout, left, top, width, height)
 
-            # Insert the root node text
-            root = smart.SmartArt.AllNodes(1)
+            sa = smart.SmartArt
+
+            # ❗ Wait until nodes are created (COM needs a moment)
+            for _ in range(10):
+                if sa.AllNodes.Count > 0:
+                    break
+                time.sleep(0.2)
+
+            # If still no root node, forcibly create one
+            if sa.AllNodes.Count == 0:
+                root = sa.Nodes.Add()
+            else:
+                root = sa.AllNodes(1)
+
             root.TextFrame2.TextRange.Text = lines[0].strip()
 
-            # Tracking parents by indent level
             parent_nodes = {0: root}
 
-            # Build hierarchy
             for line in lines[1:]:
-                if not line.strip():
-                    continue  # skip blank lines
-
                 indent = len(line) - len(line.lstrip())
-                level = indent // 4  # assuming indent = 4 spaces per level
+                level = indent // 4
 
-                # Add new node under its parent
-                parent = parent_nodes.get(level, parent_nodes[max(parent_nodes.keys())])
+                # Safety: fallback if indent level missing
+                parent = parent_nodes.get(level, parent_nodes[0])
+
                 newnode = parent.AddNode()
-
                 newnode.TextFrame2.TextRange.Text = line.strip()
 
-                # Update parent for deeper levels
                 parent_nodes[level + 1] = newnode
 
-            # Delete original text box
             shape.Delete()
-
-            # Process only first text box per slide
             break
 
-# Save & close
 pres.Save()
 pres.Close()
 ppt.Quit()
