@@ -7,17 +7,22 @@ ppt.Visible = True
 presentation_path = r"C:\path\to\input.pptx"
 pres = ppt.Presentations.Open(presentation_path)
 
+# SmartArt layout constant for Organization Chart
+ORG_CHART_LAYOUT = "urn:microsoft.com/office/officeart/2005/8/layout/OrgChart"
+
 for slide in pres.Slides:
     for shape in slide.Shapes:
         if shape.HasTextFrame and shape.TextFrame.HasText:
             
-            lines = shape.TextFrame.TextRange.Text.split("\r")
-            
+            text = shape.TextFrame.TextRange.Text
+            lines = text.split("\r")
+
             left, top, width, height = shape.Left, shape.Top, shape.Width, shape.Height
             
+            # MUST BE POSITIONAL ARGUMENTS
             smart = slide.Shapes.AddSmartArt(
-                Layout=6,  # org chart
-                Left=left, Top=top, Width=width, Height=height
+                ppt.SmartArtLayouts(ORG_CHART_LAYOUT),
+                left, top, width, height
             )
             
             root = smart.SmartArt.AllNodes(1)
@@ -26,9 +31,9 @@ for slide in pres.Slides:
             parent_nodes = {0: root}
             
             for line in lines[1:]:
-                indentation = len(line) - len(line.lstrip())
-                level = indentation // 4
-                
+                indent = len(line) - len(line.lstrip())
+                level = indent // 4
+
                 newnode = parent_nodes[level].AddNode()
                 newnode.TextFrame2.TextRange.Text = line.strip()
                 
@@ -40,7 +45,6 @@ for slide in pres.Slides:
 pres.Save()
 pres.Close()
 ppt.Quit()
-
 ,.,.,.,.,.,.,.,.,.,,,.
 
 Sub DebugConvertTextBoxes_ActivePres()
