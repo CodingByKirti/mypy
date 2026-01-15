@@ -1,3 +1,48 @@
+
+import win32com.client as win32
+
+ppt = win32.Dispatch("PowerPoint.Application")
+ppt.Visible = True
+
+presentation_path = r"C:\path\to\input.pptx"
+pres = ppt.Presentations.Open(presentation_path)
+
+for slide in pres.Slides:
+    for shape in slide.Shapes:
+        if shape.HasTextFrame and shape.TextFrame.HasText:
+            
+            lines = shape.TextFrame.TextRange.Text.split("\r")
+            
+            left, top, width, height = shape.Left, shape.Top, shape.Width, shape.Height
+            
+            smart = slide.Shapes.AddSmartArt(
+                Layout=6,  # org chart
+                Left=left, Top=top, Width=width, Height=height
+            )
+            
+            root = smart.SmartArt.AllNodes(1)
+            root.TextFrame2.TextRange.Text = lines[0].strip()
+            
+            parent_nodes = {0: root}
+            
+            for line in lines[1:]:
+                indentation = len(line) - len(line.lstrip())
+                level = indentation // 4
+                
+                newnode = parent_nodes[level].AddNode()
+                newnode.TextFrame2.TextRange.Text = line.strip()
+                
+                parent_nodes[level + 1] = newnode
+            
+            shape.Delete()
+            break
+
+pres.Save()
+pres.Close()
+ppt.Quit()
+
+,.,.,.,.,.,.,.,.,.,,,.
+
 Sub DebugConvertTextBoxes_ActivePres()
     Dim pres As Presentation
     Dim sld As Slide
