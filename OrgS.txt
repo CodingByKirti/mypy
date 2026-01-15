@@ -1,4 +1,14 @@
 import win32com.client as win32
+ppt = win32.Dispatch("PowerPoint.Application")
+ppt.Visible = True
+
+test = ppt.SmartArtLayouts.Item(97)
+print("Layout:", test.Name)
+print("Can insert?", test.Type)
+
+
+
+import win32com.client as win32
 import time
 
 ppt = win32.Dispatch("PowerPoint.Application")
