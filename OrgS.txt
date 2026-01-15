@@ -1,72 +1,40 @@
 import win32com.client as win32
-ppt = win32.Dispatch("PowerPoint.Application")
-ppt.Visible = True
-
-test = ppt.SmartArtLayouts.Item(97)
-print("Layout:", test.Name)
-print("Can insert?", test.Type)
-
-
-
-import win32com.client as win32
 import time
 
 ppt = win32.Dispatch("PowerPoint.Application")
 ppt.Visible = True
 
-presentation_path = r"C:\path\to\input.pptx"
-pres = ppt.Presentations.Open(presentation_path)
+pres = ppt.Presentations.Add()
 
-ORG_CHART_INDEX = 97  # found earlier
+valid_layouts = []
 
-for slide in pres.Slides:
-    for shape in slide.Shapes:
-        if shape.HasTextFrame and shape.TextFrame.HasText:
+for i in range(1, ppt.SmartArtLayouts.Count + 1):
+    layout = ppt.SmartArtLayouts.Item(i)
+    name = layout.Name
+    
+    print(f"Testing layout {i}: {name}")
 
-            text = shape.TextFrame.TextRange.Text
-            lines = [l for l in text.split("\r") if l.strip()]
+    # Insert SmartArt temporarily
+    shp = pres.Slides(1).Shapes.AddSmartArt(layout, 50, 50, 300, 200)
+    sa = shp.SmartArt
+    
+    time.sleep(0.2)  # allow COM to initialize
 
-            left, top, width, height = shape.Left, shape.Top, shape.Width, shape.Height
+    try:
+        node_count = sa.AllNodes.Count
+        print("  Node count:", node_count)
 
-            layout = ppt.SmartArtLayouts.Item(ORG_CHART_INDEX)
+        if node_count > 0:
+            valid_layouts.append((i, name, node_count))
+    except:
+        print("  Node count: ERROR")
 
-            # Insert SmartArt
-            smart = slide.Shapes.AddSmartArt(layout, left, top, width, height)
+    shp.Delete()
 
-            sa = smart.SmartArt
+print("\nVALID LAYOUTS FOUND:")
+for layout_info in valid_layouts:
+    print(layout_info)
 
-            # ❗ Wait until nodes are created (COM needs a moment)
-            for _ in range(10):
-                if sa.AllNodes.Count > 0:
-                    break
-                time.sleep(0.2)
-
-            # If still no root node, forcibly create one
-            if sa.AllNodes.Count == 0:
-                root = sa.Nodes.Add()
-            else:
-                root = sa.AllNodes(1)
-
-            root.TextFrame2.TextRange.Text = lines[0].strip()
-
-            parent_nodes = {0: root}
-
-            for line in lines[1:]:
-                indent = len(line) - len(line.lstrip())
-                level = indent // 4
-
-                # Safety: fallback if indent level missing
-                parent = parent_nodes.get(level, parent_nodes[0])
-
-                newnode = parent.AddNode()
-                newnode.TextFrame2.TextRange.Text = line.strip()
-
-                parent_nodes[level + 1] = newnode
-
-            shape.Delete()
-            break
-
-pres.Save()
 pres.Close()
 ppt.Quit()
 ,.,.,.,.,.,.,.,.,.,,,.
